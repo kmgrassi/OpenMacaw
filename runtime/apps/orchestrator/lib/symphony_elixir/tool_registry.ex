@@ -211,8 +211,7 @@ defmodule SymphonyElixir.ToolRegistry do
           {:error, :not_allowed} ->
             failure_response(%{
               "error" => %{
-                "message" =>
-                  "Dynamic tool #{inspect(name)} is not allowed by this agent's tool policy.",
+                "message" => "Dynamic tool #{inspect(name)} is not allowed by this agent's tool policy.",
                 "supportedTools" => allowed_tools
               }
             })
@@ -257,46 +256,79 @@ defmodule SymphonyElixir.ToolRegistry do
   """
   @spec resolve_for_agent(String.t()) :: {:ok, map()} | {:error, term()}
   def resolve_for_agent(agent_id) when is_binary(agent_id) and agent_id != "" do
-    with {:ok, config} <- tool_grant_config() do
-      query = %{
-        "agent_id" => "eq.#{agent_id}",
-        "mode" => "eq.include",
-        "tool.enabled" => "eq.true",
-        "select" => "tool!inner(slug,enabled)",
-        "order" => "created_at.asc.nullslast"
-      }
+    # Two queries instead of a PostgREST embedded join (`tool!inner(...)`): the
+    # embed requires the agent_tool_grant -> tool foreign key to be present in
+    # PostgREST's schema cache, which it is not in production. Fetch the granted
+    # tool ids, then resolve their slugs from the `tool` catalog, mirroring the
+    # platform's resolver.
+    with {:ok, config} <- tool_grant_config(),
+         {:ok, tool_ids} <- granted_tool_ids(config, agent_id),
+         {:ok, slug_by_id} <- enabled_tool_slugs(config, tool_ids) do
+      tool_names =
+        tool_ids
+        |> Enum.flat_map(fn id -> List.wrap(Map.get(slug_by_id, id)) end)
+        |> Enum.filter(&match?({:ok, _module}, get(&1)))
+        |> Enum.uniq()
 
-      case PostgRESTClient.get(tool_grant_client(config), config.grant_table, query,
-             log_metadata:
-               tool_grant_log_metadata("tool_registry.resolve_for_agent", config.grant_table,
-                 agent_id: agent_id
-               )
-           ) do
-        {:ok, rows} when is_list(rows) ->
-          tool_names =
-            rows
-            |> Enum.flat_map(&granted_tool_name/1)
-            |> Enum.uniq()
-
-          {:ok,
-           %{
-             agent_id: agent_id,
-             dynamic_tool_names: tool_names,
-             dynamic_tool_specs: specs(tool_names),
-             tool_definitions: definitions(tool_names),
-             source: "agent_tool_grant"
-           }}
-
-        {:ok, _body} ->
-          {:error, :invalid_response}
-
-        {:error, _reason} = error ->
-          error
-      end
+      {:ok,
+       %{
+         agent_id: agent_id,
+         dynamic_tool_names: tool_names,
+         dynamic_tool_specs: specs(tool_names),
+         tool_definitions: definitions(tool_names),
+         source: "agent_tool_grant"
+       }}
     end
   end
 
   def resolve_for_agent(_agent_id), do: {:error, :invalid_agent_id}
+
+  defp granted_tool_ids(config, agent_id) do
+    query = %{
+      "agent_id" => "eq.#{agent_id}",
+      "mode" => "eq.include",
+      "select" => "tool_id",
+      "order" => "created_at.asc.nullslast"
+    }
+
+    case PostgRESTClient.get(tool_grant_client(config), config.grant_table, query,
+           log_metadata: tool_grant_log_metadata("tool_registry.resolve_for_agent.grants", config.grant_table, agent_id: agent_id)
+         ) do
+      {:ok, rows} when is_list(rows) ->
+        {:ok, rows |> Enum.flat_map(&List.wrap(&1["tool_id"])) |> Enum.uniq()}
+
+      {:ok, _body} ->
+        {:error, :invalid_response}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp enabled_tool_slugs(_config, []), do: {:ok, %{}}
+
+  defp enabled_tool_slugs(config, tool_ids) do
+    query = %{
+      "id" => "in.(#{Enum.join(tool_ids, ",")})",
+      "enabled" => "eq.true",
+      "select" => "id,slug"
+    }
+
+    case PostgRESTClient.get(tool_grant_client(config), tool_table(config), query,
+           log_metadata: tool_grant_log_metadata("tool_registry.resolve_for_agent.tools", tool_table(config), tool_count: length(tool_ids))
+         ) do
+      {:ok, rows} when is_list(rows) ->
+        {:ok, Map.new(rows, fn row -> {row["id"], row["slug"]} end)}
+
+      {:ok, _body} ->
+        {:error, :invalid_response}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp tool_table(config), do: Map.get(config, :tool_table, "tool")
 
   @doc "Codex coding dynamic tool specs."
   @spec coding_tool_specs() :: [map()]
@@ -514,21 +546,9 @@ defmodule SymphonyElixir.ToolRegistry do
         {:ok, config}
 
       table ->
-        {:error,
-         {:invalid_tool_registry_config,
-          "tool_registry_db grant_table must be a non-empty string, got: #{inspect(table)}"}}
+        {:error, {:invalid_tool_registry_config, "tool_registry_db grant_table must be a non-empty string, got: #{inspect(table)}"}}
     end
   end
-
-  defp granted_tool_name(%{"tool" => %{"slug" => slug, "enabled" => true}})
-       when is_binary(slug) do
-    case get(slug) do
-      {:ok, _module} -> [slug]
-      :error -> []
-    end
-  end
-
-  defp granted_tool_name(_row), do: []
 
   defp tool_grant_log_metadata(caller, table, extra) do
     extra
@@ -542,8 +562,7 @@ defmodule SymphonyElixir.ToolRegistry do
   end
 
   defp execution_context(context) when is_map(context) do
-    {Map.drop(context, [:allowed_tools, "allowed_tools"]),
-     Map.get(context, :allowed_tools) || Map.get(context, "allowed_tools")}
+    {Map.drop(context, [:allowed_tools, "allowed_tools"]), Map.get(context, :allowed_tools) || Map.get(context, "allowed_tools")}
   end
 
   defp normalize_arguments(arguments) when is_map(arguments), do: arguments
@@ -582,8 +601,7 @@ defmodule SymphonyElixir.ToolRegistry do
   defp tool_error_payload("linear_graphql", :invalid_arguments) do
     %{
       "error" => %{
-        "message" =>
-          "`linear_graphql` expects either a GraphQL query string or an object with `query` and optional `variables`."
+        "message" => "`linear_graphql` expects either a GraphQL query string or an object with `query` and optional `variables`."
       }
     }
   end
@@ -597,8 +615,7 @@ defmodule SymphonyElixir.ToolRegistry do
   defp tool_error_payload("linear_graphql", :missing_linear_api_token) do
     %{
       "error" => %{
-        "message" =>
-          "Symphony is missing Linear auth. Set `linear.api_key` in `WORKFLOW.md` or export `LINEAR_API_KEY`."
+        "message" => "Symphony is missing Linear auth. Set `linear.api_key` in `WORKFLOW.md` or export `LINEAR_API_KEY`."
       }
     }
   end

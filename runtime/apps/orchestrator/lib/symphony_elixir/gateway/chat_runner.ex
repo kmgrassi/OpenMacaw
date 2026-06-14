@@ -459,14 +459,21 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   # ToolCallingLoop.ToolExecutionDispatcher); everything else stays runtime-side.
   @local_helper_cli_tools ["git.run"]
 
+  # Workspace-local tools that cannot execute in the local-relay path yet:
+  # runtime-side execution requires the user's `workspace_root` (which lives on
+  # the laptop, not the cloud orchestrator — `ShellExec`/`ApplyPatch` return
+  # `:invalid_local_model_coding_context` without it), and the helper executor
+  # only runs git.run today. Omit them from the model's tool surface so it is
+  # not offered tools that fail. Follow-up: add helper execution for these
+  # (with sandbox parity for shell.exec) and then include them.
+  @local_relay_unsupported_tools ["shell.exec", "apply_patch"]
+
   defp local_relay_config(profile, scope, on_message) do
     # The helper owns the model turn; the runtime owns the tool-calling loop
     # (tool_calling_mode "cloud_managed" -> Runner.ToolCallingLoop). Most tools
     # still execute runtime-side, but CLI tools are marked execution_kind
     # "helper" so a local model runs git/gh on the user's machine with local
-    # auth. The universal bundle is the default chat tool surface until
-    # agent-grant-driven tool filtering lands (same follow-up as
-    # local_model_coding_config/2 above).
+    # auth.
     %{
       "workspace_id" => profile.workspace_id,
       "agent_id" => profile.agent_id,
@@ -479,24 +486,51 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       # falls back to Runner.LocalRelay's "openai_compatible" default.
       "target_runner_kind" => ExecutionProfile.local_relay_target_runner_kind(Map.get(profile, :provider)),
       "credential_ref" => Map.get(profile, :credential_ref),
-      "tool_definitions" => local_relay_tool_definitions(),
+      "tool_definitions" => local_relay_tool_definitions(profile),
       "tool_calling_mode" => "cloud_managed",
       "trace_id" => Process.get(:symphony_trace_id),
       "on_message" => on_message
     }
   end
 
-  # The universal chat tools (runtime-executed) plus the CLI tools the local
-  # helper executes on the user's machine, marked execution_kind "helper".
-  defp local_relay_tool_definitions do
-    universal = ToolRegistry.definitions(ToolRegistry.bundle(:universal))
+  # The tools the local model is offered, with CLI tools marked execution_kind
+  # "helper" so they run on the user's machine. Primary source is the agent's
+  # granted tools (`agent_tool_grant`), so a local-model agent gets exactly the
+  # tools it was granted (repo.*, shell.exec, scheduled_task.*, git.run, ...).
+  # Falls back to the universal bundle + git.run for agents with no grants, to
+  # preserve prior behavior.
+  defp local_relay_tool_definitions(profile) do
+    profile
+    |> agent_granted_definitions()
+    |> Enum.reject(&(is_map(&1) and tool_definition_name(&1) in @local_relay_unsupported_tools))
+    |> mark_local_helper_tools()
+  end
 
-    helper_cli =
-      @local_helper_cli_tools
-      |> ToolRegistry.definitions()
-      |> Enum.map(&Map.put(&1, "execution_kind", "helper"))
+  defp agent_granted_definitions(profile) do
+    with agent_id when is_binary(agent_id) and agent_id != "" <- Map.get(profile, :agent_id),
+         {:ok, %{tool_definitions: definitions}} when is_list(definitions) and definitions != [] <-
+           ToolRegistry.resolve_for_agent(agent_id) do
+      definitions
+    else
+      _ ->
+        ToolRegistry.definitions(ToolRegistry.bundle(:universal)) ++
+          ToolRegistry.definitions(@local_helper_cli_tools)
+    end
+  end
 
-    universal ++ helper_cli
+  defp mark_local_helper_tools(definitions) do
+    Enum.map(definitions, fn definition ->
+      if is_map(definition) and tool_definition_name(definition) in @local_helper_cli_tools do
+        Map.put(definition, "execution_kind", "helper")
+      else
+        definition
+      end
+    end)
+  end
+
+  defp tool_definition_name(definition) do
+    Map.get(definition, "name") || Map.get(definition, :name) ||
+      Map.get(definition, "slug") || Map.get(definition, :slug)
   end
 
   defp local_chat_base_url do
