@@ -459,6 +459,15 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   # ToolCallingLoop.ToolExecutionDispatcher); everything else stays runtime-side.
   @local_helper_cli_tools ["git.run"]
 
+  # Workspace-local tools that cannot execute in the local-relay path yet:
+  # runtime-side execution requires the user's `workspace_root` (which lives on
+  # the laptop, not the cloud orchestrator — `ShellExec`/`ApplyPatch` return
+  # `:invalid_local_model_coding_context` without it), and the helper executor
+  # only runs git.run today. Omit them from the model's tool surface so it is
+  # not offered tools that fail. Follow-up: add helper execution for these
+  # (with sandbox parity for shell.exec) and then include them.
+  @local_relay_unsupported_tools ["shell.exec", "apply_patch"]
+
   defp local_relay_config(profile, scope, on_message) do
     # The helper owns the model turn; the runtime owns the tool-calling loop
     # (tool_calling_mode "cloud_managed" -> Runner.ToolCallingLoop). Most tools
@@ -493,6 +502,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   defp local_relay_tool_definitions(profile) do
     profile
     |> agent_granted_definitions()
+    |> Enum.reject(&(is_map(&1) and tool_definition_name(&1) in @local_relay_unsupported_tools))
     |> mark_local_helper_tools()
   end
 

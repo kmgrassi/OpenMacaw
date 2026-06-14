@@ -25,6 +25,14 @@ lands."*
    the user's machine. Falls back to the universal bundle + `git.run` for
    agents with no grants (prior behavior preserved).
 
+   Workspace-local tools that cannot execute in this path are **omitted**:
+   `shell.exec` and `apply_patch` hard-require the user's `workspace_root`
+   (which lives on the laptop, not the cloud orchestrator) and have no
+   no-workspace fallback (unlike `repo.*`), and the helper executor only runs
+   `git.run` today. Offering them would set the model up to call tools that
+   fail with `:invalid_local_model_coding_context`. Follow-up: add helper
+   execution for these (with sandbox parity for `shell.exec`) and include them.
+
 2. **`tool_registry.ex`** — `resolve_for_agent/1` no longer uses a PostgREST
    embedded join (`tool!inner(slug,enabled)`). That embed requires the
    `agent_tool_grant -> tool` foreign key in PostgREST's schema cache, which is
