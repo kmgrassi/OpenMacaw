@@ -67,6 +67,9 @@ export async function listStoredAgentCredentials(req: Request, res: Response) {
   try {
     const workspaceId = requireWorkspaceIdFromRequest(req);
     const agentId = requireRouteParam(req, "id");
+    const accessToken = requestAccessToken(req);
+    if (!accessToken) throw new ApiRouteError(401, "auth_required", "Supabase access token is required");
+    await requireStoredAgent({ accessToken, agentId, workspaceId });
     const credentials = await listSavedCredentialsForAgentFromSupabase(agentId, workspaceId);
     return res.status(200).json(
       SavedCredentialListResponseSchema.parse({
