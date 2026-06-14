@@ -139,25 +139,27 @@ defmodule SymphonyElixir.ToolRegistryTest do
     test "reads included enabled grants from agent_tool_grant" do
       Req.Test.stub(ToolRegistry, fn conn ->
         assert conn.method == "GET"
-        assert conn.request_path == "/rest/v1/agent_tool_grant"
-
         params = URI.decode_query(conn.query_string)
-        assert params["agent_id"] == "eq.agent-1"
-        assert params["mode"] == "eq.include"
-        assert params["tool.enabled"] == "eq.true"
-        assert params["select"] == "tool!inner(slug,enabled)"
-        assert params["order"] == "created_at.asc.nullslast"
-        refute conn.query_string =~ "tool_policy_template"
+
+        rows =
+          case conn.request_path do
+            "/rest/v1/agent_tool_grant" ->
+              assert params["agent_id"] == "eq.agent-1"
+              assert params["mode"] == "eq.include"
+              assert params["select"] == "tool_id"
+              assert params["order"] == "created_at.asc.nullslast"
+              refute conn.query_string =~ "tool_policy_template"
+              [%{"tool_id" => "tool-echo"}, %{"tool_id" => "tool-repo"}]
+
+            "/rest/v1/tool" ->
+              assert params["enabled"] == "eq.true"
+              assert params["select"] == "id,slug"
+              [%{"id" => "tool-echo", "slug" => "echo"}, %{"id" => "tool-repo", "slug" => "repo.read_file"}]
+          end
 
         conn
         |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(
-          200,
-          Jason.encode!([
-            %{"tool" => %{"slug" => "echo", "enabled" => true}},
-            %{"tool" => %{"slug" => "repo.read_file", "enabled" => true}}
-          ])
-        )
+        |> Plug.Conn.send_resp(200, Jason.encode!(rows))
       end)
 
       assert {:ok, resolved} = ToolRegistry.resolve_for_agent("agent-1")
@@ -169,16 +171,20 @@ defmodule SymphonyElixir.ToolRegistryTest do
 
     test "drops disabled and unknown tools from returned rows" do
       Req.Test.stub(ToolRegistry, fn conn ->
+        rows =
+          case conn.request_path do
+            "/rest/v1/agent_tool_grant" ->
+              [%{"tool_id" => "tool-echo"}, %{"tool_id" => "tool-apply"}, %{"tool_id" => "tool-unknown"}]
+
+            # The catalog query filters enabled=true server-side, so the disabled
+            # apply_patch tool is simply absent from the response.
+            "/rest/v1/tool" ->
+              [%{"id" => "tool-echo", "slug" => "echo"}, %{"id" => "tool-unknown", "slug" => "unknown.runtime_tool"}]
+          end
+
         conn
         |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(
-          200,
-          Jason.encode!([
-            %{"tool" => %{"slug" => "echo", "enabled" => true}},
-            %{"tool" => %{"slug" => "apply_patch", "enabled" => false}},
-            %{"tool" => %{"slug" => "unknown.runtime_tool", "enabled" => true}}
-          ])
-        )
+        |> Plug.Conn.send_resp(200, Jason.encode!(rows))
       end)
 
       assert {:ok, resolved} = ToolRegistry.resolve_for_agent("agent-1")
