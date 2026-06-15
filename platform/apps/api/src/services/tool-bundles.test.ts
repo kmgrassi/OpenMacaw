@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AGENT_TOOL_GRANT_TOOL_SLUGS,
   GIT_COMMAND_TOOL_SLUG,
   SCHEDULED_TASK_TOOL_SLUGS,
   toolProfileForAgentType,
@@ -30,6 +31,7 @@ describe("tool bundles", () => {
       "plan.delete",
       "task.read",
       ...SCHEDULED_TASK_TOOL_SLUGS,
+      ...AGENT_TOOL_GRANT_TOOL_SLUGS,
     ]);
   });
 

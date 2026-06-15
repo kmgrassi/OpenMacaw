@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 
-import { DEFAULT_PLANNING_TOOL_SLUGS, SCHEDULED_TASK_TOOL_SLUGS } from "./services/tool-bundles.js";
+import {
+  AGENT_TOOL_GRANT_TOOL_SLUGS,
+  DEFAULT_PLANNING_TOOL_SLUGS,
+  SCHEDULED_TASK_TOOL_SLUGS,
+} from "./services/tool-bundles.js";
 import {
   type AgentRow,
   type SetupAgentPayload,
@@ -165,7 +169,7 @@ describe("PL-3 setup flow", () => {
     expect(planning.agent.toolPolicy).toMatchObject({
       planning: {
         destination: "database",
-        tools: [...DEFAULT_PLANNING_TOOL_SLUGS, ...SCHEDULED_TASK_TOOL_SLUGS],
+        tools: [...DEFAULT_PLANNING_TOOL_SLUGS, ...SCHEDULED_TASK_TOOL_SLUGS, ...AGENT_TOOL_GRANT_TOOL_SLUGS],
       },
     });
 
