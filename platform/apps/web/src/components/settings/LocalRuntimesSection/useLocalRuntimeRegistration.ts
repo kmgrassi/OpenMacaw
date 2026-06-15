@@ -15,6 +15,7 @@ type Args = {
 
 const DEFAULT_OPENAI_COMPATIBLE_ENDPOINT = "http://localhost:11434/v1";
 const DEFAULT_OPENCLAW_ENDPOINT = "http://localhost:7100";
+const DRAFT_PROBE_AVAILABLE = import.meta.env.DEV;
 
 export function useLocalRuntimeRegistration({
   workspaceId,
@@ -66,6 +67,7 @@ export function useLocalRuntimeRegistration({
   };
 
   const handleProbeDraft = async () => {
+    if (!DRAFT_PROBE_AVAILABLE) return;
     if (!modelEnabled) return;
     if (!modelEndpoint.trim() || !modelName.trim()) return;
     setRegisterError(null);
@@ -161,6 +163,7 @@ export function useLocalRuntimeRegistration({
     registering: mutations.register.isPending,
     registerError,
     pickingRepositoryPath,
+    draftProbeAvailable: DRAFT_PROBE_AVAILABLE,
     probingDraft: mutations.probeDraft.isPending,
     draftProbe,
     canSubmit,
