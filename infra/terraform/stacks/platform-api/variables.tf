@@ -95,6 +95,24 @@ variable "supabase_service_role_key_ssm_arn" {
   default     = ""
 }
 
+variable "openai_api_key_ssm_arn" {
+  description = "SSM parameter ARN containing OPENAI_API_KEY for platform-side learning distillation jobs"
+  type        = string
+  default     = ""
+}
+
+variable "learning_distillation_model" {
+  description = "OpenAI model used by the platform-side learning distiller"
+  type        = string
+  default     = ""
+}
+
+variable "learning_embedding_model" {
+  description = "Embedding model used for learning reflection memory embeddings. Keep stable after production launch so vector similarity remains comparable."
+  type        = string
+  default     = "text-embedding-3-small"
+}
+
 # ── Networking (shared platform or explicit) ────────────────
 variable "vpc_id" {
   description = "VPC ID (fallback if shared state unavailable)"

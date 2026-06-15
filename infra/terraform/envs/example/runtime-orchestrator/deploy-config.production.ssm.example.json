@@ -31,7 +31,11 @@
     "workspace_mount_path": "/tmp/openmacaw_workspaces",
     "supabase_url": "https://YOUR_SUPABASE_PROJECT.supabase.co",
     "supabase_service_role_key_ssm_arn": "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/openmacaw/prod/supabase/service-role-key",
+    "container_environment": {
+      "PLATFORM_LEARNING_HANDLER_ENDPOINT": "https://api.example.com"
+    },
     "container_secrets": {
+      "PLATFORM_LEARNING_HANDLER_API_KEY": "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/openmacaw/prod/supabase/service-role-key",
       "SUPABASE_ANON_KEY": "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/openmacaw/prod/supabase/anon-key",
       "SUPABASE_JWT_SECRET": "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/openmacaw/prod/supabase/jwt-secret",
       "LINEAR_API_KEY": "arn:aws:ssm:us-east-1:YOUR_ACCOUNT_ID:parameter/openmacaw/prod/linear/api-key",

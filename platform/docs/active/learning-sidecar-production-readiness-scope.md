@@ -219,6 +219,12 @@ These live in the **private infra repo**, not here, but are part of "working in
 production." The runtime fails loud at job time if the endpoint is unset
 (`:missing_platform_learning_endpoint`), so these must be set before enabling:
 
+The public application repo still owns the reusable deploy contract: the
+platform-api Terraform stack must expose the required task env/secret inputs,
+the production SSM examples must show the sanitized shape, and the reusable
+deploy workflows should fail fast when the private repo omits required P4
+settings.
+
 - `PLATFORM_LEARNING_HANDLER_ENDPOINT` → the platform API base URL reachable
   from the orchestrator (e.g. internal service URL, **not** localhost).
 - `PLATFORM_LEARNING_HANDLER_API_KEY` → **must equal the platform API's
