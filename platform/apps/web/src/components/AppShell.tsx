@@ -9,6 +9,7 @@ import { useUiStore } from "../stores/ui";
 import { AgentSwitcher } from "./AppShell/AgentSwitcher";
 import { NavItem } from "./AppShell/NavItem";
 import { NavSection } from "./AppShell/NavSection";
+import { OpenMacawLogo } from "./OpenMacawLogo";
 import { WorkspaceAgentHealthBanner } from "./dashboard/WorkspaceAgentHealthBanner";
 import { SETTINGS_GROUPS } from "./AppShell/settings-sections";
 import { Button } from "./ui/Button";
@@ -64,12 +65,15 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
               navigate(chatTarget);
               closeMobile();
             }}
-            className="min-w-0 text-left"
+            className="flex min-w-0 items-center gap-2.5 text-left"
           >
-            <div className="truncate text-[0.9375rem] font-semibold text-slate-100">
-              Harper Parallel Agent
+            <OpenMacawLogo className="size-9" />
+            <div className="min-w-0">
+              <div className="truncate text-[0.9375rem] font-semibold text-slate-100">
+                OpenMacaw
+              </div>
+              <div className="truncate text-xs text-slate-400">Workspace</div>
             </div>
-            <div className="truncate text-xs text-slate-400">Workspace</div>
           </button>
         ) : (
           <IconButton
@@ -79,10 +83,10 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
             }}
             variant="secondary"
             size="lg"
-            className="font-semibold"
+            className="overflow-hidden p-0"
             aria-label="Go to chat"
           >
-            H
+            <OpenMacawLogo className="size-full border-0" />
           </IconButton>
         )}
         <IconButton
@@ -240,8 +244,9 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
           >
             Menu
           </Button>
-          <div className="text-sm font-semibold text-slate-100">
-            Harper Parallel Agent
+          <div className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-100">
+            <OpenMacawLogo className="size-7" />
+            <span className="truncate">OpenMacaw</span>
           </div>
         </div>
         <main className="min-h-0 flex-1 overflow-y-auto">

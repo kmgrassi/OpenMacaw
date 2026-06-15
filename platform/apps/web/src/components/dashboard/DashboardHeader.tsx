@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Button } from "../ui/Button";
 import { Dialog } from "../ui/Dialog";
+import { OpenMacawLogo } from "../OpenMacawLogo";
 import { PageHeader } from "../ui/PageHeader";
 
 type DashboardHeaderProps = {
@@ -33,7 +34,14 @@ export function DashboardHeader({
   return (
     <PageHeader
       eyebrow="Runtime dashboard"
-      title={agentName ?? "Agent dashboard"}
+      title={
+        <span className="flex min-w-0 items-center gap-3">
+          <OpenMacawLogo className="size-10" />
+          <span className="min-w-0 truncate">
+            {agentName ?? "Agent dashboard"}
+          </span>
+        </span>
+      }
       variant="dashboard"
       metadata={
         codeAccess ? (
