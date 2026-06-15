@@ -74,18 +74,22 @@ defmodule SymphonyElixir.Tools.GitRun do
           "description" => """
           Single command line, must start with `git` or `gh`. Quoting
           follows POSIX shell rules (e.g. `--body "LGTM, merging"`).
+          Commands run inside the workspace's checked-out repository, so omit
+          `--repo` to act on the current repo (`gh` infers it from the local
+          `origin` remote); pass `--repo owner/repo` only to target a
+          different repository. Never guess an owner/repo slug.
           Read examples:
-            gh pr list --repo owner/repo --state open --json number,title,reviewDecision
-            gh pr view 123 --repo owner/repo --comments
-            gh pr checks 123 --repo owner/repo
+            gh pr list --state open --json number,title,reviewDecision
+            gh pr view 123 --comments
+            gh pr checks 123
             git log --oneline -n 20
             git status --short
           Write examples (allowed, full access):
-            gh pr comment 123 --repo owner/repo --body "@codex review"
-            gh pr review 123 --repo owner/repo --approve --body "LGTM"
-            gh pr merge 123 --repo owner/repo --squash --delete-branch
-            gh issue create --repo owner/repo --title "..." --body "..."
-            gh run rerun 9876543210 --repo owner/repo
+            gh pr comment 123 --body "@codex review"
+            gh pr review 123 --approve --body "LGTM"
+            gh pr merge 123 --squash --delete-branch
+            gh issue create --title "..." --body "..."
+            gh run rerun 9876543210
             git push origin feat/x
             git checkout -b feat/y
           Denied (will return blocked=true):

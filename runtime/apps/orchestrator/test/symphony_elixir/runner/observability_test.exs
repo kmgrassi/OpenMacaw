@@ -341,6 +341,44 @@ defmodule SymphonyElixir.Runner.ObservabilityTest do
              Observability.classify_tool_result(result, %{tool_name: "snooze"}, 3)
   end
 
+  test "classifies an empty-args git.run helper failure as invalid args, not unknown" do
+    result = %{
+      "success" => false,
+      "error" => "helper_tool_failed",
+      "output" => Jason.encode!(%{"error" => "invalid_arguments", "message" => "missing command"})
+    }
+
+    assert %{"error_code" => "tool_invalid_args"} =
+             Observability.classify_tool_result(result, %{tool_name: "git.run"}, 5)
+  end
+
+  test "classifies a relay-level helper failure by its reason and keeps it retryable" do
+    result = %{
+      "success" => false,
+      "error" => "tool_execution_timeout",
+      "output" =>
+        Jason.encode!(%{
+          "error" => "helper_tool_failed",
+          "tool" => "git.run",
+          "reason" => ":tool_execution_timeout"
+        })
+    }
+
+    assert %{"error_code" => "tool_timeout", "retryable" => true} =
+             Observability.classify_tool_result(result, %{tool_name: "git.run"}, 5)
+  end
+
+  test "classifies an unsupported local tool as tool_unknown" do
+    result = %{
+      "success" => false,
+      "error" => "helper_tool_failed",
+      "output" => Jason.encode!(%{"error" => "unsupported_local_tool", "name" => "bogus.tool"})
+    }
+
+    assert %{"error_code" => "tool_unknown"} =
+             Observability.classify_tool_result(result, %{tool_name: "bogus.tool"}, 5)
+  end
+
   defp restore_env(name, nil), do: System.delete_env(name)
   defp restore_env(name, value), do: System.put_env(name, value)
 
