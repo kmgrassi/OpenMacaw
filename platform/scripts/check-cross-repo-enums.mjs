@@ -21,7 +21,7 @@
  * raw.githubusercontent.com).
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve as resolvePath } from "node:path";
 
@@ -39,6 +39,8 @@ const RUNTIME_EXECUTION_PROFILE =
 const RUNTIME_TRACKER = "apps/orchestrator/lib/symphony_elixir/tracker.ex";
 const RUNTIME_AGENT_PROBE =
   "apps/orchestrator/lib/symphony_elixir/diagnostic/agent_probe.ex";
+const RUNTIME_SCHEDULED_TASK_DELIVERY =
+  "apps/orchestrator/lib/symphony_elixir/scheduled_task/delivery.ex";
 const RUNTIME_NORMALIZED_RUNNER_KIND_ALIASES = {
   llm_tool_runner: ["manager", "planner"],
 };
@@ -117,6 +119,14 @@ function readPlatformContract(file) {
   return readFileSync(resolvePath(repoRoot, file), "utf-8");
 }
 
+function readLocalRuntimeSource(file) {
+  const path = resolvePath(repoRoot, "..", "runtime", file);
+  if (!existsSync(path)) {
+    return null;
+  }
+  return readFileSync(path, "utf-8");
+}
+
 /**
  * Extract a TS readonly tuple of string literals from a contracts file.
  * Looks for `export const NAME = [` ... `] as const`. Returns the values
@@ -161,6 +171,50 @@ function extractModelTierRegistryProviders(source) {
       ),
     ),
   ].sort();
+}
+
+function extractTsZodDiscriminatedUnionKinds(source, name) {
+  const re = new RegExp(
+    `export const ${name}\\s*=\\s*z\\.discriminatedUnion\\("kind",\\s*\\[([\\s\\S]*?)\\]\\);`,
+    "m",
+  );
+  const match = source.match(re);
+  if (!match) throw new Error(`Could not find ${name} discriminated union`);
+  return [...match[1].matchAll(/kind:\s*z\.literal\("([^"]+)"\)/g)].map(
+    (valueMatch) => valueMatch[1],
+  );
+}
+
+function extractRuntimeLearningDeliveryKinds(source) {
+  const stringAttrs = new Map(
+    [...source.matchAll(/@([a-z_]+)\s+"([^"]+)"/g)].map((match) => [
+      match[1],
+      match[2],
+    ]),
+  );
+  const kindsMatch = source.match(/@learning_kinds\s+\[([^\]]+)\]/m);
+  if (!kindsMatch) {
+    throw new Error(
+      `Could not find @learning_kinds in ${RUNTIME_SCHEDULED_TASK_DELIVERY}`,
+    );
+  }
+  return kindsMatch[1]
+    .split(",")
+    .map((entry) => entry.trim())
+    .map((entry) => {
+      if (entry.startsWith("@")) {
+        const attrName = entry.slice(1);
+        const value = stringAttrs.get(attrName);
+        if (!value) {
+          throw new Error(
+            `Could not resolve @${attrName} in ${RUNTIME_SCHEDULED_TASK_DELIVERY}`,
+          );
+        }
+        return value;
+      }
+      return entry.replace(/^["']/, "").replace(/["']$/, "");
+    })
+    .filter((entry) => entry.length > 0);
 }
 
 /**
@@ -294,6 +348,28 @@ function assertSuperset({ name, allowed, required }) {
   return false;
 }
 
+function assertSameSet({ name, left, right }) {
+  const missingFromRight = left.filter((value) => !right.includes(value));
+  const missingFromLeft = right.filter((value) => !left.includes(value));
+  if (missingFromRight.length === 0 && missingFromLeft.length === 0) {
+    console.log(`  ✓ ${name}: [${left.join(", ")}]`);
+    return true;
+  }
+  if (missingFromRight.length > 0) {
+    console.log(
+      `  ✗ ${name}: right side missing [${missingFromRight.join(", ")}]`,
+    );
+  }
+  if (missingFromLeft.length > 0) {
+    console.log(
+      `  ✗ ${name}: left side missing [${missingFromLeft.join(", ")}]`,
+    );
+  }
+  console.log(`    left = [${left.join(", ")}]`);
+  console.log(`    right = [${right.join(", ")}]`);
+  return false;
+}
+
 function assertRuntimeRunnerKindCoverage({ allowed, required }) {
   const missing = required.filter((value) => {
     if (allowed.includes(value)) return false;
@@ -405,6 +481,11 @@ async function main() {
     agentHealth,
     "DiagnosticErrorCodes",
   );
+  const scheduledTasks = readPlatformContract("contracts/scheduled-tasks.ts");
+  const platformLearningDeliveryKinds = extractTsZodDiscriminatedUnionKinds(
+    scheduledTasks,
+    "ScheduledTaskDeliverySchema",
+  ).filter((kind) => kind.startsWith("learning_"));
 
   console.log(
     `  platform KNOWN_EXECUTION_PROVIDER_IDS: ${platformExecutionProviders.length}`,
@@ -427,13 +508,32 @@ async function main() {
   console.log(
     `  platform MODEL_TIER_REGISTRY providers: ${modelTierRegistryProviders.length}`,
   );
+  console.log(
+    `  platform learning delivery kinds:       ${platformLearningDeliveryKinds.length}`,
+  );
+
+  const localRuntimeDelivery = readLocalRuntimeSource(
+    RUNTIME_SCHEDULED_TASK_DELIVERY,
+  );
+  const localLearningDeliveryOk = localRuntimeDelivery
+    ? assertSameSet({
+        name: "local runtime @learning_kinds = platform learning delivery kinds",
+        left: platformLearningDeliveryKinds,
+        right: extractRuntimeLearningDeliveryKinds(localRuntimeDelivery),
+      })
+    : true;
+  if (!localRuntimeDelivery) {
+    console.warn(
+      `  warning: local ${RUNTIME_SCHEDULED_TASK_DELIVERY} not found; remote runtime check will run when CROSS_REPO_GITHUB_TOKEN is set`,
+    );
+  }
 
   const localModelTierOk = assertSuperset({
     name: "PROVIDER_REGISTRY keys ⊇ MODEL_TIER_REGISTRY providers",
     allowed: platformRegisteredProviders,
     required: modelTierRegistryProviders,
   });
-  if (!localModelTierOk) {
+  if (!localModelTierOk || !localLearningDeliveryOk) {
     process.exit(1);
   }
 
@@ -531,6 +631,9 @@ async function main() {
   const runtimeAgentProbe = await fetchText(
     `${RUNTIME_RAW}/${RUNTIME_AGENT_PROBE}`,
   );
+  const runtimeScheduledTaskDelivery = await fetchText(
+    `${RUNTIME_RAW}/${RUNTIME_SCHEDULED_TASK_DELIVERY}`,
+  );
   const runtimeRunnerKinds = extractElixirAttrList(
     runtimeProfile,
     "supported_runner_kinds",
@@ -546,6 +649,9 @@ async function main() {
   const runtimeDiagnosticErrorCodes = extractElixirAtomUnionType(
     runtimeAgentProbe,
     "reason",
+  );
+  const runtimeLearningDeliveryKinds = extractRuntimeLearningDeliveryKinds(
+    runtimeScheduledTaskDelivery,
   );
 
   console.log("\nRuntime allowlist coverage of platform writes:");
@@ -577,6 +683,11 @@ async function main() {
       name: "platform DiagnosticErrorCodes ⊇ runtime agent_probe reason",
       platform: platformDiagnosticErrorCodes,
       runtime: runtimeDiagnosticErrorCodes,
+    }),
+    assertSameSet({
+      name: "runtime scheduled_task delivery @learning_kinds = platform learning delivery kinds",
+      left: platformLearningDeliveryKinds,
+      right: runtimeLearningDeliveryKinds,
     }),
   ].every(Boolean);
 

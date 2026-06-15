@@ -60,7 +60,7 @@ export function registerStoredAgentCredentialRoutes(app: Express, launcherClient
     StoredAgentRouteTemplates.credentials,
     apiRoute({
       requireAuth: true,
-      handler: ({ req, res }) => listStoredAgentCredentials(req, res),
+      handler: (context) => listStoredAgentCredentials(context),
       onError: (res, error) =>
         handleApiRouteError(res, error, {
           status: 502,
@@ -74,7 +74,7 @@ export function registerStoredAgentCredentialRoutes(app: Express, launcherClient
     StoredAgentRouteTemplates.credentialReference,
     apiRoute({
       requireAuth: true,
-      handler: ({ req, res }) => getStoredAgentCredentialReference(req, res),
+      handler: (context) => getStoredAgentCredentialReference(context),
       onError: (res, error) =>
         handleApiRouteError(res, error, {
           status: 502,
@@ -90,7 +90,7 @@ export function registerStoredAgentCredentialRoutes(app: Express, launcherClient
       requireAuth: true,
       bodySchema: UpsertAgentCredentialReferenceRequestSchema,
       invalidBodyMessage: "Credential reference request is invalid",
-      handler: ({ req, res }) => saveStoredAgentCredentialReference(req, res),
+      handler: (context) => saveStoredAgentCredentialReference(context),
       onError: (res, error) =>
         handleApiRouteError(res, error, {
           status: error instanceof ApiRouteError ? error.status : 502,
@@ -106,7 +106,7 @@ export function registerStoredAgentCredentialRoutes(app: Express, launcherClient
       requireAuth: true,
       bodySchema: SaveCredentialRequestSchema,
       invalidBodyMessage: "workspaceId, provider, and apiKey are required",
-      handler: ({ req, res }) => saveStoredAgentCredential(req, res),
+      handler: (context) => saveStoredAgentCredential(context),
       onError: (res, error) =>
         handleApiRouteError(res, error, {
           status: 502,
@@ -122,7 +122,7 @@ export function registerStoredAgentCredentialRoutes(app: Express, launcherClient
       requireAuth: true,
       bodySchema: StoredCredentialLaunchRequestSchema,
       invalidBodyMessage: "workspaceId and cwd are required",
-      handler: ({ req, res }) => launchStoredCredential(req, res, launcherClient),
+      handler: (context) => launchStoredCredential(context, launcherClient),
       onError: (res, error) => {
         if (isLauncherError(error)) {
           return handleLauncherError(res, error);
@@ -142,7 +142,7 @@ export function registerStoredAgentCredentialRoutes(app: Express, launcherClient
       requireAuth: true,
       bodySchema: StoredAgentActivationRequestSchema,
       invalidBodyMessage: "workspaceId is required",
-      handler: ({ req, res }) => activateStoredAgent(req, res, launcherClient),
+      handler: (context) => activateStoredAgent(context, launcherClient),
       onError: (res, error) => {
         if (isLauncherError(error)) {
           return handleLauncherError(res, error);

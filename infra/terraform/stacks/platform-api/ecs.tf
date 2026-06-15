@@ -44,16 +44,24 @@ resource "aws_ecs_task_definition" "app" {
         { name = "APP_ENV", value = var.environment },
         { name = "SERVICE_NAME", value = "${local.name_prefix}-platform-api" },
         { name = "DEPLOY_RUN_ID", value = var.deploy_run_id },
+        { name = "LEARNING_EMBEDDING_MODEL", value = var.learning_embedding_model },
         ], var.local_relay_ws_url != "" ? [
         { name = "LOCAL_RELAY_WS_URL", value = var.local_relay_ws_url }
+        ] : [], var.learning_distillation_model != "" ? [
+        { name = "LEARNING_DISTILLATION_MODEL", value = var.learning_distillation_model }
       ] : [])
 
-      secrets = var.supabase_service_role_key_ssm_arn != "" ? [
+      secrets = concat(var.supabase_service_role_key_ssm_arn != "" ? [
         {
           name      = "SUPABASE_SERVICE_ROLE_KEY"
           valueFrom = var.supabase_service_role_key_ssm_arn
         }
-      ] : []
+        ] : [], var.openai_api_key_ssm_arn != "" ? [
+        {
+          name      = "OPENAI_API_KEY"
+          valueFrom = var.openai_api_key_ssm_arn
+        }
+      ] : [])
 
       logConfiguration = {
         logDriver = "awslogs"

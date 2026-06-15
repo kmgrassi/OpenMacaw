@@ -1,16 +1,10 @@
 import type { Json, TablesUpdate } from "@kmgrassi/supabase-schema";
 
-import { ApiRouteError } from "../http.js";
-import { getServiceRoleSupabase, normalizeSupabaseError } from "../supabase-client.js";
+import { ApiRouteError } from "../../http.js";
+import { getServiceRoleSupabase, normalizeSupabaseError } from "../../supabase-client.js";
+import type { ToolExecutionContext } from "../tool-execution-client.js";
 
-import type { ToolExecutionContext } from "./tool-execution-client.js";
-import {
-  exampleArgs,
-  jsonOutput,
-  toolIdArg,
-  toolSlugArg,
-  type DatabaseToolResult,
-} from "./database-tool-executor-shared.js";
+import { toolIdArg, toolSlugArg, jsonOutput } from "./shared.js";
 
 type ToolExamplesRow = {
   id: string;
@@ -19,6 +13,12 @@ type ToolExamplesRow = {
   name: string | null;
   examples: Json | null;
 };
+
+function exampleArgs(args: Record<string, unknown>): unknown[] {
+  if (Array.isArray(args.examples) && args.examples.length > 0) return args.examples;
+  if (args.example !== undefined) return [args.example];
+  return [];
+}
 
 async function visibleToolById(toolId: string, workspaceId: string): Promise<ToolExamplesRow | null> {
   const supabase = getServiceRoleSupabase();
@@ -73,11 +73,11 @@ async function assertToolAssignedToAgent(agentId: string, workspaceId: string, t
   }
 }
 
-export async function handleToolExamplesAppend(
+export async function appendToolExamples(
   args: Record<string, unknown>,
   workspaceId: string,
   context?: ToolExecutionContext,
-): Promise<DatabaseToolResult> {
+) {
   const agentId = context?.agentId?.trim() || "";
   if (!agentId) throw new ApiRouteError(400, "runtime_context_required", "agent_id is required in runtime context");
 

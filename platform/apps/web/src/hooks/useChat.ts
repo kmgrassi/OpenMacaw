@@ -45,6 +45,7 @@ export function useChat(
   const [runtimeEvents, setRuntimeEvents] = useState<RuntimeTimelineEvent[]>(
     [],
   );
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
   const runIdRef = useRef<string | null>(null);
   const messagesQuery = useMessagesQuery(agentId, sessionKey, {
     enabled: connected || options.historyOnly,
@@ -100,18 +101,21 @@ export function useChat(
 
       if (normalized.final) {
         setStreamText(null);
+        setActiveRunId(null);
         runIdRef.current = null;
         void invalidateRuntimeQueries(queryClient, agentId, sessionKey);
       }
 
       if (normalized.aborted) {
         setStreamText(null);
+        setActiveRunId(null);
         runIdRef.current = null;
         void invalidateRuntimeQueries(queryClient, agentId, sessionKey);
       }
 
       if (normalized.error) {
         setStreamText(null);
+        setActiveRunId(null);
         runIdRef.current = null;
         setError(normalized.error.message);
         setErrorCode(normalized.error.code);
@@ -159,6 +163,7 @@ export function useChat(
 
       const idempotencyKey = crypto.randomUUID();
       runIdRef.current = idempotencyKey;
+      setActiveRunId(idempotencyKey);
 
       try {
         console.debug("[useChat] sending chat message", {
@@ -170,9 +175,15 @@ export function useChat(
           message: msg,
           idempotencyKey,
         });
-        runIdRef.current = result?.runId ?? idempotencyKey;
+        if (runIdRef.current) {
+          const runId = result?.runId ?? idempotencyKey;
+          runIdRef.current = runId;
+          setActiveRunId(runId);
+        }
       } catch (err) {
+        if (!runIdRef.current) return;
         setStreamText(null);
+        setActiveRunId(null);
         runIdRef.current = null;
         const errMsg = (err as Error).message;
         setError(errMsg);
@@ -234,7 +245,7 @@ export function useChat(
     messages: messagesQuery.data?.messages ?? [],
     streamText,
     runtimeEvents,
-    sending: sendMutation.isPending,
+    sending: streamText !== null || activeRunId !== null,
     loading: messagesQuery.isLoading || messagesQuery.isFetching,
     loadingOlderMessages,
     hasMoreOlderMessages: messagesQuery.data?.pageInfo.hasMore ?? false,

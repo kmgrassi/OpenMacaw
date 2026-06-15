@@ -116,6 +116,24 @@ jobs:
 
           echo "$CONFIG_JSON" | jq -e '.terraform_backend and .terraform_vars' >/dev/null
 
+          if [[ "$DEPLOY_ENVIRONMENT" == "production" ]]; then
+            jq -e '
+              (.terraform_vars.container_environment.PLATFORM_LEARNING_HANDLER_ENDPOINT // "" | length) > 0 and
+              (.terraform_vars.container_secrets.PLATFORM_LEARNING_HANDLER_API_KEY // "" | length) > 0 and
+              (.terraform_vars.supabase_service_role_key_ssm_arn // "" | length) > 0 and
+              (.terraform_vars.container_secrets.PLATFORM_LEARNING_HANDLER_API_KEY // "") == (.terraform_vars.supabase_service_role_key_ssm_arn // "")
+            ' <<<"$CONFIG_JSON" >/dev/null || {
+              printf '%s\n' \
+                "Production runtime-orchestrator deploy config is missing learning sidecar handler settings." \
+                "Required terraform_vars:" \
+                "  - container_environment.PLATFORM_LEARNING_HANDLER_ENDPOINT" \
+                "  - container_secrets.PLATFORM_LEARNING_HANDLER_API_KEY" \
+                "PLATFORM_LEARNING_HANDLER_API_KEY must use the same SSM parameter ARN as" \
+                "supabase_service_role_key_ssm_arn so platform requireServiceRoleBearer accepts it." >&2
+              exit 1
+            }
+          fi
+
           jq -r '.terraform_backend | to_entries[] |
             if (.value | type) == "boolean" or (.value | type) == "number" then
               "\(.key) = \(.value)"

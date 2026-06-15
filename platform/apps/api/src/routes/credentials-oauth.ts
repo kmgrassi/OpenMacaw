@@ -55,17 +55,15 @@ export function registerCredentialOAuthRoutes(app: Express) {
   ensureSessionGc();
 
   async function syncOAuthCredential(input: {
-    req: Request;
+    accessToken: string;
+    userId: string;
     agentId: string;
     workspaceId: string;
     credential: ResolvedSavedCredential;
   }) {
-    const accessToken = requestAccessToken(input.req);
-    if (!accessToken) {
-      throw new Error("Supabase access token is required");
-    }
     const agent = await requireStoredAgent({
-      accessToken,
+      accessToken: input.accessToken,
+      userId: input.userId,
       agentId: input.agentId,
       workspaceId: input.workspaceId,
     });
@@ -80,7 +78,7 @@ export function registerCredentialOAuthRoutes(app: Express) {
         },
         credentialId: input.credential.credentialRowId,
         provider: "openai_codex",
-        userId: input.req.userId,
+        userId: input.userId,
       });
     }
   }
@@ -97,6 +95,7 @@ export function registerCredentialOAuthRoutes(app: Express) {
       }
       await requireStoredAgent({
         accessToken,
+        userId: req.userId,
         agentId: parsed.data.agentId,
         workspaceId: parsed.data.workspaceId,
       });
@@ -160,6 +159,7 @@ export function registerCredentialOAuthRoutes(app: Express) {
       }
       await requireStoredAgent({
         accessToken,
+        userId: req.userId,
         agentId: session.agentId,
         workspaceId: session.workspaceId,
       });
@@ -199,7 +199,8 @@ export function registerCredentialOAuthRoutes(app: Express) {
       // doesn't see ChatGPT take effect until they manually edit the
       // runtime profile.
       await syncOAuthCredential({
-        req,
+        accessToken,
+        userId: req.userId,
         agentId: session.agentId,
         workspaceId: session.workspaceId,
         credential,
@@ -250,6 +251,7 @@ export function registerCredentialOAuthRoutes(app: Express) {
       }
       await requireStoredAgent({
         accessToken,
+        userId: req.userId ?? "",
         agentId: parsed.data.agentId,
         workspaceId: parsed.data.workspaceId,
       });
@@ -261,7 +263,8 @@ export function registerCredentialOAuthRoutes(app: Express) {
         identity,
       });
       await syncOAuthCredential({
-        req,
+        accessToken,
+        userId: req.userId ?? "",
         agentId: parsed.data.agentId,
         workspaceId: parsed.data.workspaceId,
         credential,

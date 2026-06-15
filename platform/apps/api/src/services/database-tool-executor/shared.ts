@@ -1,8 +1,19 @@
-import type { ToolDefinition } from "./tool-spec-translator.js";
+import type { ToolDefinition } from "../tool-spec-translator.js";
 
 export type DatabaseToolResult = {
   status?: number;
   output: string;
+};
+
+export type CredentialRefArg = {
+  type: "credential_id" | "alias";
+  value: string;
+};
+
+export type FallbackArg = {
+  provider: string;
+  model: string;
+  credentialRef: CredentialRefArg | null;
 };
 
 export function asRecord(value: unknown): Record<string, unknown> {
@@ -47,20 +58,10 @@ export function toolSlugArg(args: Record<string, unknown>): string {
   return stringArg(args, "toolSlug") || stringArg(args, "tool_slug") || stringArg(args, "slug");
 }
 
-export function routingRuleIdArg(args: Record<string, unknown>): string {
-  return stringArg(args, "routingRuleId") || stringArg(args, "routing_rule_id") || stringArg(args, "id");
-}
-
 export function toolKey(tool: ToolDefinition): string {
   return tool.slug || tool.functionName || tool.name;
 }
 
 export function jsonOutput(value: unknown): string {
   return JSON.stringify(value, null, 2);
-}
-
-export function exampleArgs(args: Record<string, unknown>): unknown[] {
-  if (Array.isArray(args.examples) && args.examples.length > 0) return args.examples;
-  if (args.example !== undefined) return [args.example];
-  return [];
 }

@@ -9,6 +9,51 @@ import (
 	"github.com/kmgrassi/local-runtime-helper/internal/runner"
 )
 
+func TestShellExecRunsArgvInWorkspaceRoot(t *testing.T) {
+	root := t.TempDir()
+	executor, err := NewExecutor(root)
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+
+	result := executor.Execute(context.Background(), runner.ToolCallRequest{
+		ToolCallID: "call-shell",
+		Name:       "shell.exec",
+		Arguments: map[string]any{
+			"argv": []any{"printf", "openmacaw-tool-eval"},
+		},
+	})
+	if !result.Success {
+		t.Fatalf("result.Success = false, output = %#v", result.Output)
+	}
+	output := result.Output.(map[string]any)
+	if output["stdout"] != "openmacaw-tool-eval" {
+		t.Fatalf("stdout = %#v, want %q", output["stdout"], "openmacaw-tool-eval")
+	}
+	if output["exit_code"] != 0 {
+		t.Fatalf("exit_code = %#v, want 0", output["exit_code"])
+	}
+}
+
+func TestShellExecConfinesCWDToWorkspaceRoot(t *testing.T) {
+	executor, err := NewExecutor(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+
+	result := executor.Execute(context.Background(), runner.ToolCallRequest{
+		ToolCallID: "call-escape",
+		Name:       "shell.exec",
+		Arguments: map[string]any{
+			"argv": []any{"echo", "hi"},
+			"cwd":  "../../../etc",
+		},
+	})
+	if result.Success {
+		t.Fatalf("result.Success = true, want false for a cwd outside the workspace root")
+	}
+}
+
 func TestGitRunExecutesInsideWorkspaceRoot(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git is not installed")

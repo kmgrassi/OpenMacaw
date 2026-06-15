@@ -454,19 +454,27 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   end
 
   # CLI tools whose execution + auth must follow the local model onto the
-  # user's machine: the helper shells out to git/gh with the laptop's own CLI
-  # session. The cloud loop delegates these by execution_kind (see
-  # ToolCallingLoop.ToolExecutionDispatcher); everything else stays runtime-side.
-  @local_helper_cli_tools ["git.run"]
+  # user's machine: when present in the agent's granted tools, the helper shells
+  # out (git/gh, arbitrary shell commands) with the laptop's own session in the
+  # configured workspace_root. The cloud loop delegates these by execution_kind
+  # (see ToolCallingLoop.ToolExecutionDispatcher); everything else stays
+  # runtime-side. This is only a *marking* list — a tool is offered only if the
+  # agent is actually granted it (or it is in the no-grants fallback below).
+  @local_helper_cli_tools ["git.run", "shell.exec"]
 
-  # Workspace-local tools that cannot execute in the local-relay path yet:
-  # runtime-side execution requires the user's `workspace_root` (which lives on
-  # the laptop, not the cloud orchestrator — `ShellExec`/`ApplyPatch` return
-  # `:invalid_local_model_coding_context` without it), and the helper executor
-  # only runs git.run today. Omit them from the model's tool surface so it is
-  # not offered tools that fail. Follow-up: add helper execution for these
-  # (with sandbox parity for shell.exec) and then include them.
-  @local_relay_unsupported_tools ["shell.exec", "apply_patch"]
+  # CLI tools added to the no-grants fallback surface. Kept to git.run only:
+  # shell.exec (arbitrary execution on the user's machine) must require an
+  # explicit `agent_tool_grant`, never appear just because an agent has no
+  # persisted grants.
+  @fallback_helper_cli_tools ["git.run"]
+
+  # Workspace-local tools the helper executor cannot run yet: runtime-side
+  # execution requires the user's `workspace_root` (which lives on the laptop,
+  # not the cloud orchestrator — `ApplyPatch` returns
+  # `:invalid_local_model_coding_context` without it). Omit it so the model is
+  # not offered a tool that fails. Follow-up: add helper execution for
+  # apply_patch (its structured patch format) and then include it.
+  @local_relay_unsupported_tools ["apply_patch"]
 
   defp local_relay_config(profile, scope, on_message) do
     # The helper owns the model turn; the runtime owns the tool-calling loop
@@ -514,7 +522,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     else
       _ ->
         ToolRegistry.definitions(ToolRegistry.bundle(:universal)) ++
-          ToolRegistry.definitions(@local_helper_cli_tools)
+          ToolRegistry.definitions(@fallback_helper_cli_tools)
     end
   end
 
