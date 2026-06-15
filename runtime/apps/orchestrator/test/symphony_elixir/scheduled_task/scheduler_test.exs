@@ -21,7 +21,7 @@ defmodule SymphonyElixir.ScheduledTask.SchedulerTest do
         :ok ->
           {:ok,
            %{
-             "id" => "run-1",
+             "id" => "11111111-1111-4111-8111-111111111111",
              "scheduled_task_id" => task["id"],
              "scheduled_for" => DateTime.to_iso8601(scheduled_for)
            }}
@@ -47,7 +47,7 @@ defmodule SymphonyElixir.ScheduledTask.SchedulerTest do
     def deliver(task, run, opts) do
       test_pid = Application.fetch_env!(:symphony_elixir, :scheduled_task_test_pid)
       send(test_pid, {:deliver, task, run, opts})
-      Application.get_env(:symphony_elixir, :scheduled_task_delivery_result, {:ok, "scheduled_run_1"})
+      Application.get_env(:symphony_elixir, :scheduled_task_delivery_result, {:ok, run["id"]})
     end
   end
 
@@ -81,15 +81,16 @@ defmodule SymphonyElixir.ScheduledTask.SchedulerTest do
 
     assert_receive {:due_tasks, ~U[2026-05-14 12:00:05Z], 25}
     assert_receive {:claim_run, "scheduled-task-1", ~U[2026-05-14 12:00:00Z], ~U[2026-05-14 12:00:05Z]}
-    assert_receive {:deliver, %{"id" => "scheduled-task-1"}, %{"id" => "run-1"}, opts}
+    assert_receive {:deliver, %{"id" => "scheduled-task-1"}, %{"id" => run_id}, opts}
+    assert run_id == "11111111-1111-4111-8111-111111111111"
     assert Keyword.fetch!(opts, :repository) == TestRepository
     assert Keyword.fetch!(opts, :trace_id)
 
-    assert_receive {:finish_run, "run-1",
+    assert_receive {:finish_run, ^run_id,
                     %{
                       "status" => "delivered",
                       "finished_at" => "2026-05-14T12:00:05Z",
-                      "run_id" => "scheduled_run_1"
+                      "run_id" => ^run_id
                     }}
 
     assert_receive {:update_task, "scheduled-task-1",
@@ -132,7 +133,7 @@ defmodule SymphonyElixir.ScheduledTask.SchedulerTest do
 
     assert %{total: 1, delivered: 0, failed: 1, skipped: 0} = Scheduler.tick(pid)
 
-    assert_receive {:finish_run, "run-1",
+    assert_receive {:finish_run, "11111111-1111-4111-8111-111111111111",
                     %{
                       "status" => "failed",
                       "finished_at" => "2026-05-14T12:00:05Z",

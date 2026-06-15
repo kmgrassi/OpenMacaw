@@ -35,9 +35,10 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
       "created_by_user_id" => "user-1"
     }
 
-    run = %{"id" => "run-1", "scheduled_for" => "2026-05-14T12:00:00Z"}
+    scheduled_run_id = "11111111-1111-4111-8111-111111111111"
+    run = %{"id" => scheduled_run_id, "scheduled_for" => "2026-05-14T12:00:00Z"}
 
-    assert {:ok, "scheduled_run-1"} =
+    assert {:ok, ^scheduled_run_id} =
              Delivery.deliver(task, run,
                repository: TestRepository,
                chat_gateway: TestChatGateway,
@@ -54,7 +55,7 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
              history_window: 0
            }
 
-    assert Keyword.fetch!(opts, :run_id) == "scheduled_run-1"
+    assert Keyword.fetch!(opts, :run_id) == scheduled_run_id
     assert Keyword.fetch!(opts, :await?) == true
     refute Keyword.has_key?(opts, :agent)
 
@@ -62,7 +63,7 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
              "source" => "scheduled_task",
              "kind" => "scheduled_agent_message",
              "scheduled_task_id" => "scheduled-task-1",
-             "scheduled_task_run_id" => "run-1",
+             "scheduled_task_run_id" => scheduled_run_id,
              "scheduled_for" => "2026-05-14T12:00:00Z",
              "source_work_item_id" => "work-item-1"
            }
@@ -79,9 +80,10 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
       created_by_user_id: "user-atom"
     }
 
-    run = %{id: "run-atom", scheduled_for: "2026-05-14T12:00:00Z"}
+    scheduled_run_id = "22222222-2222-4222-8222-222222222222"
+    run = %{id: scheduled_run_id, scheduled_for: "2026-05-14T12:00:00Z"}
 
-    assert {:ok, "scheduled_run-atom"} =
+    assert {:ok, ^scheduled_run_id} =
              Delivery.deliver(task, run,
                repository: TestRepository,
                chat_gateway: TestChatGateway,
@@ -102,7 +104,7 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
              "source" => "scheduled_task",
              "kind" => "scheduled_agent_message",
              "scheduled_task_id" => "scheduled-task-atom",
-             "scheduled_task_run_id" => "run-atom",
+             "scheduled_task_run_id" => scheduled_run_id,
              "scheduled_for" => "2026-05-14T12:00:00Z",
              "source_work_item_id" => "work-item-atom"
            }
@@ -150,9 +152,10 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
       }
     }
 
-    run = %{"id" => "run-2", "scheduled_for" => "2026-05-18T12:00:01Z"}
+    scheduled_run_id = "33333333-3333-4333-8333-333333333333"
+    run = %{"id" => scheduled_run_id, "scheduled_for" => "2026-05-18T12:00:01Z"}
 
-    assert {:ok, "scheduled_run-2"} =
+    assert {:ok, ^scheduled_run_id} =
              Delivery.deliver(task, run,
                repository: TestRepository,
                chat_gateway: TestChatGateway,
@@ -169,8 +172,8 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
     assert payload["workspace_id"] == "workspace-1"
     assert payload["agent_id"] == "agent-1"
     assert payload["scheduled_task_id"] == "scheduled-task-2"
-    assert payload["scheduled_task_run_id"] == "run-2"
-    assert payload["scheduled_run_id"] == "scheduled_run-2"
+    assert payload["scheduled_task_run_id"] == scheduled_run_id
+    assert payload["scheduled_run_id"] == scheduled_run_id
     assert payload["source_work_item_id"] == "work-item-7"
     assert payload["scheduled_for"] == "2026-05-18T12:00:01Z"
     assert payload["trace_id"] == "trace-reflect-1"
@@ -191,9 +194,10 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
       "delivery" => %{"kind" => "learning_distillation", "windowDays" => 7}
     }
 
-    run = %{"id" => "run-3"}
+    scheduled_run_id = "44444444-4444-4444-8444-444444444444"
+    run = %{"id" => scheduled_run_id}
 
-    assert {:ok, "scheduled_run-3"} =
+    assert {:ok, ^scheduled_run_id} =
              Delivery.deliver(task, run,
                repository: TestRepository,
                chat_gateway: TestChatGateway,
