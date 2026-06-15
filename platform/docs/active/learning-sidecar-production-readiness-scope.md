@@ -170,7 +170,10 @@ URL, only verification.
   that validates the envelope above and the nested `delivery` discriminated
   union.
 - Auth: `requireServiceRoleBearer` (unchanged; the runtime sends
-  `PLATFORM_LEARNING_HANDLER_API_KEY` as the bearer).
+  `PLATFORM_LEARNING_HANDLER_API_KEY` as the bearer). Note this helper does an
+  **exact** string compare against the platform's `SUPABASE_SERVICE_ROLE_KEY`
+  ([`services/service-role-auth.ts`](../../apps/api/src/services/service-role-auth.ts)) —
+  the two values must be identical, not merely both valid service tokens (see P4).
 - Validate that the `:kind` path segment equals `body.kind` equals
   `body.delivery.kind`; 400 on mismatch.
 - **Reuse the existing dispatcher.** Refactor `dispatchScheduledTaskDelivery`
@@ -210,12 +213,29 @@ production." The runtime fails loud at job time if the endpoint is unset
 
 - `PLATFORM_LEARNING_HANDLER_ENDPOINT` → the platform API base URL reachable
   from the orchestrator (e.g. internal service URL, **not** localhost).
-- `PLATFORM_LEARNING_HANDLER_API_KEY` → the service-role bearer the platform
-  validates (`SUPABASE_SERVICE_ROLE_KEY` or an equivalent service token).
-- Platform-side LLM config for the jobs to do real work:
-  `OPENAI_API_KEY`, `LEARNING_REFLECTION_MODEL`, `LEARNING_EMBEDDING_MODEL`,
-  `LEARNING_DISTILLATION_MODEL`. Confirm each is set in the platform-api task
-  definition; the reflector/distiller throw if their model env is missing.
+- `PLATFORM_LEARNING_HANDLER_API_KEY` → **must equal the platform API's
+  `SUPABASE_SERVICE_ROLE_KEY` exactly.** `requireServiceRoleBearer` compares the
+  incoming bearer to `process.env.SUPABASE_SERVICE_ROLE_KEY` with `!==`, so a
+  *different* but otherwise-valid service token is rejected with 403. Provision
+  the same value on both sides (or change the auth code first — out of scope here).
+
+The two jobs source their LLM credentials **differently** — do not assume one
+env list covers both:
+
+- **Reflection** does *not* read `OPENAI_API_KEY` from env. It loads the
+  provider key from the workspace `credential` table
+  ([`services/learning/reflector.ts:409`](../../apps/api/src/services/learning/reflector.ts)),
+  failing with `reflection_credential_missing` (and a 4xx) when the workspace
+  has no stored provider credential. `LEARNING_REFLECTION_MODEL` is an
+  *optional* override and `LEARNING_EMBEDDING_MODEL` *defaults*, so setting env
+  alone will **not** make reflection work — the target workspace must have a
+  provider credential stored. Document this as a prerequisite separate from the
+  distillation envs.
+- **Distillation** *does* require env: `OPENAI_API_KEY` and
+  `LEARNING_DISTILLATION_MODEL` are both mandatory and the distiller throws a
+  4xx if either is unset
+  ([`services/learning/distiller.ts:105`](../../apps/api/src/services/learning/distiller.ts)).
+  Confirm both are set in the platform-api task definition.
 - Decide the embedding model and **freeze it** — changing embedding providers
   later silently breaks cosine similarity across existing rows (there is already
   a `learning-provider-warning` surface; wire it to the deployed value).
@@ -227,9 +247,11 @@ production." The runtime fails loud at job time if the endpoint is unset
   default is `true`. Confirm which workspaces have rows vs. rely on the default
   before deploy — a `true` default means *every* workspace is on unless we set
   rows. **Open question O1.**
-- Verify reflection: complete an agent run in the test workspace → confirm a
-  `learning_reflection` scheduled-task row is enqueued → confirm a platform 202
-  in logs → confirm new `memory_items` rows with `source_run_id` set.
+- Verify reflection: ensure the test workspace has a stored provider credential
+  (reflection fails `reflection_credential_missing` without one — see P4) →
+  complete an agent run → confirm a `learning_reflection` scheduled-task row is
+  enqueued → confirm a platform 202 in logs → confirm new `memory_items` rows
+  with `source_run_id` set.
 - Verify distillation: manually trigger the nightly row via
   `POST /api/internal/scheduled-tasks/:id/dispatch` (and separately let the
   runtime path fire) → confirm skill-candidate memories written.
