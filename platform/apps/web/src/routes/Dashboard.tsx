@@ -18,10 +18,7 @@ import { EngineInstanceCard } from "../components/dashboard/EngineInstanceCard";
 import { RuntimeChatPanel } from "../components/dashboard/RuntimeChatPanel";
 import { RuntimeDebugCard } from "../components/dashboard/RuntimeDebugCard";
 import { OnboardingNudgeBanner } from "../components/dashboard/OnboardingNudgeBanner";
-import {
-  WorkspaceAgentDiagnosticsPanel,
-  WorkspaceAgentHealthWidget,
-} from "../components/dashboard/WorkspaceAgentHealthWidget";
+import { WorkspaceAgentDiagnosticsPanel } from "../components/dashboard/WorkspaceAgentHealthWidget";
 import type { DashboardSetup } from "../components/dashboard/dashboardTypes";
 import { Alert } from "../components/ui/Alert";
 import {
@@ -318,8 +315,6 @@ export function Dashboard() {
       />
 
       <OnboardingNudgeBanner onboarding={defaultAgentOnboarding} />
-
-      <WorkspaceAgentHealthWidget workspaceId={setup?.agent.workspaceId} />
 
       {error && <Alert tone="error">{error}</Alert>}
 

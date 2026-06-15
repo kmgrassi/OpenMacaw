@@ -2,16 +2,11 @@ import type { WorkspaceAgentDiagnosticResponse } from "../../../../../contracts/
 import { useWorkspaceAgentDiagnosticsQuery } from "../../api/queries/runtime-diagnostics";
 import { Badge } from "../ui/Badge";
 import { LoadingState } from "../ui/LoadingState";
-import { StatusBanner } from "../ui/StatusBanner";
 
 type WorkspaceAgentDiagnostic = Extract<
   WorkspaceAgentDiagnosticResponse,
   { ok: true }
 >["agents"][number];
-
-type WorkspaceAgentHealthWidgetProps = {
-  workspaceId: string | null | undefined;
-};
 
 type WorkspaceAgentDiagnosticsPanelProps = {
   workspaceId: string | null | undefined;
@@ -56,63 +51,6 @@ function statusLabel(status: WorkspaceAgentDiagnostic["status"]) {
   if (status === "ok") return "Healthy";
   if (status === "error") return "Needs attention";
   return "Pending";
-}
-
-export function WorkspaceAgentHealthWidget({
-  workspaceId,
-}: WorkspaceAgentHealthWidgetProps) {
-  const diagnosticsQuery = useWorkspaceAgentDiagnosticsQuery({ workspaceId });
-
-  if (!workspaceId) return null;
-
-  const diagnostics = diagnosticsQuery.data;
-
-  if (diagnostics?.ok === false) {
-    return (
-      <StatusBanner
-        tone="warning"
-        title="Orchestrator unreachable"
-        actions={<Badge variant="warning">{diagnostics.reason}</Badge>}
-      >
-        <p className="mt-1 max-w-3xl text-amber-100/75">
-          {diagnostics.details}
-        </p>
-      </StatusBanner>
-    );
-  }
-
-  if (diagnosticsQuery.isLoading && !diagnostics) return null;
-
-  if (diagnosticsQuery.error && !diagnostics) {
-    return (
-      <StatusBanner tone="error" title="Agent health unavailable">
-        <p className="mt-1 max-w-3xl text-red-200/85">
-          {(diagnosticsQuery.error as Error).message}
-        </p>
-      </StatusBanner>
-    );
-  }
-
-  if (!diagnostics?.ok) return null;
-
-  const problemCount = diagnostics.agents.filter(
-    (agent) => agent.status === "error",
-  ).length;
-
-  if (problemCount === 0) return null;
-
-  return (
-    <StatusBanner
-      tone="error"
-      title={`${problemCount} workspace agent${problemCount === 1 ? "" : "s"} need attention`}
-      actions={<Badge variant="error">attention</Badge>}
-    >
-      <p className="mt-1 max-w-3xl text-red-200/85">
-        View dashboard details for per-agent diagnostics and runtime error
-        codes.
-      </p>
-    </StatusBanner>
-  );
 }
 
 export function WorkspaceAgentDiagnosticsPanel({
