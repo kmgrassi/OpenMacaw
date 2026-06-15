@@ -1,0 +1,273 @@
+# Learning Sidecar — Production Readiness Scope
+
+Status: **active**. Owns the work to get the self-improving / learning
+loop actually running in production. Companion to the design docs it does
+**not** replace:
+
+- [`learning-sidecar-scope.md`](./learning-sidecar-scope.md) — canonical design
+- [`learning-sidecar-pr-plan.md`](./learning-sidecar-pr-plan.md) — original build sequence
+- [`../../../runtime/docs/learning-sidecar-runtime-scope.md`](../../../runtime/docs/learning-sidecar-runtime-scope.md) — runtime hooks
+- [`agent-persistent-context-scope.md`](./agent-persistent-context-scope.md) — agent self-update channel
+- [`fleet-sampling-observer-scope.md`](./fleet-sampling-observer-scope.md) — always-on advisory loop
+- [`../../../docs/openmacaw-vs-openclaw-hermes.md`](../../../docs/openmacaw-vs-openclaw-hermes.md) — positioning vs. Hermes
+
+## TL;DR
+
+The "learning agent" we decided on is **not a new agent type**. It is a
+**workspace-scoped learning sidecar** — post-run *reflection* that distills
+transcripts into `memory_items`, plus nightly *distillation* that clusters
+memories into skill-candidate PRs. The design is sound and ~85% built. It is
+**not running in production** because of one concrete, verified break: the
+runtime POSTs learning jobs to a platform HTTP endpoint **that does not exist
+in the shape the runtime expects**. Reflection 404s on a path mismatch;
+distillation has no route at all. Everything downstream of that edge (LLM
+reflection, embeddings, clustering, memory writes) is implemented and unit
+tested. This scope fixes the edge and the production config around it.
+
+## What was actually decided (clearing up "learning agent")
+
+There is no `learning` agent type and the design never called for one. Agent
+types are fixed at `coding | planning | manager | router | custom`
+([`platform/contracts/agents.ts:8`](../../contracts/agents.ts)). Learning is a
+**capability of the workspace**, gated by a single flag and executed as
+out-of-band jobs:
+
+- **Gate:** `workspace_settings.learning_enabled`, default **true** / opt-out
+  ([`platform/contracts/workspace-settings.ts`](../../contracts/workspace-settings.ts),
+  `DEFAULT_WORKSPACE_SETTINGS_VALUES.learningEnabled = true`).
+- **Transport:** `scheduled_task` rows carrying a discriminated delivery union
+  ([`platform/contracts/scheduled-tasks.ts:50`](../../contracts/scheduled-tasks.ts)):
+  `scheduled_agent_message | learning_reflection | learning_distillation`.
+- **Why distillation seeds onto the oldest manager agent:** scheduled-task rows
+  require an `agent_id` FK, so the nightly distillation job is attached to the
+  workspace's oldest manager agent purely as a row owner — not because a manager
+  "does" the learning
+  ([`platform/supabase/migrations/20260609123000_seed_distillation_scheduled_task.sql`](../../supabase/migrations/20260609123000_seed_distillation_scheduled_task.sql)).
+
+So: **learning is enabled by a workspace setting; reflection and distillation
+run as platform-side jobs on the existing scheduled-task machinery.** That is
+the decision. This doc is about making that decision operational.
+
+## Current state — verified against `main`
+
+### Working end-to-end (LLM + data layer)
+
+| Piece | Location | Notes |
+|---|---|---|
+| `memory_items` table + `memory_hybrid_search()` + workspace RLS | supabase migrations | Pre-existing, complete |
+| Reflection service | `apps/api/src/services/learning/reflector.ts` (`reflectRunToMemories`) | Reads transcript → LLM → ≤5 memory candidates → embeddings → `memory_items`. Unit tested. |
+| Distillation service | `apps/api/src/services/learning/distiller.ts` (`distillWorkspaceSkills`) | Clusters recent memories → LLM per cluster → skill candidates. Unit tested. |
+| Retrieval | `apps/api/src/services/learning/memory-retriever.ts`, `pinned-memory.ts`, `memory.search` tool | `memory.search` tool + pinned-facts prompt block |
+| Budget / cost | `apps/api/src/services/learning/memory-budget.ts`, `learning-cost.ts` | Per-workspace caps + telemetry |
+| Shared dispatcher | `apps/api/src/services/scheduled-tasks.ts:515` (`dispatchScheduledTaskDelivery`) | **Already handles all three kinds correctly** |
+
+### Working on the runtime side (job production + transport)
+
+| Piece | Location | Notes |
+|---|---|---|
+| Reflection enqueue (post-run hook) | `runtime/.../learning/reflection_dispatcher.ex` | Best-effort; fails open; reads `workspace_settings.learning_enabled` |
+| Delivery routing by kind | `runtime/.../scheduled_task/delivery.ex:102` (`deliver_learning_job`) | Builds payload, calls the HTTP client |
+| HTTP client | `runtime/.../platform_learning_client.ex` | POSTs `{endpoint}/api/learning/jobs/<kind>` with the job payload as JSON body |
+| Distillation seed | migration `20260609123000_...` | One nightly row per learning-enabled workspace |
+
+### The break (production blocker)
+
+The runtime client constructs the URL as
+`endpoint <> "/api/learning/jobs/" <> kind` where `kind` is the literal
+`learning_reflection` or `learning_distillation`
+([`platform_learning_client.ex:112`](../../../runtime/apps/orchestrator/lib/symphony_elixir/platform_learning_client.ex)).
+So in production it POSTs:
+
+- `POST /api/learning/jobs/learning_reflection`
+- `POST /api/learning/jobs/learning_distillation`
+
+…with the full job payload in the body (snake_case envelope, nested
+`delivery` union — see [Payload contract](#payload-contract-runtime--platform)).
+
+The platform registers exactly one learning-job route
+([`apps/api/src/routes/learning.ts:14`](../../apps/api/src/routes/learning.ts)):
+
+```ts
+app.post("/api/learning/jobs/:sourceRunId/reflection", …)
+// body schema only accepts { sourceTaskId? }; sourceRunId comes from the PATH
+```
+
+Consequences, both confirmed:
+
+1. **Reflection 404s.** Express matches `/api/learning/jobs/:sourceRunId/reflection`
+   against the runtime's `/api/learning/jobs/learning_reflection` — no trailing
+   `/reflection` segment, no match. Even if it matched, the handler reads
+   `sourceRunId` from the path, but the runtime carries it inside the body's
+   `delivery.sourceRunId`.
+2. **Distillation has no route at all.** Nothing matches
+   `/api/learning/jobs/learning_distillation`, so the nightly seeded job fails
+   on every run with a 404 → `{:platform_learning_handler_failed, …}` and the
+   scheduled-task run is marked failed.
+
+The correct execution logic already exists in `dispatchScheduledTaskDelivery`
+but is only reachable via the **internal, test-only** route
+`POST /api/internal/scheduled-tasks/:scheduledTaskId/dispatch`
+([`routes/scheduled-tasks.ts:174`](../../apps/api/src/routes/scheduled-tasks.ts)),
+which looks the task up by id in the DB — not the path the runtime uses.
+
+This exactly matches the observed symptom: *runtime produces learning jobs;
+platform handler wiring is missing/mismatched.*
+
+## Goal
+
+A single, coherent HTTP contract between runtime and platform for learning
+jobs, with the platform reusing its existing dispatch logic, plus the
+production configuration and observability needed to turn the loop on for a
+real workspace and confirm it works.
+
+Per repo convention (**no backwards-compat shims; refactor over quick fixes**),
+we converge runtime and platform on **one** endpoint shape rather than teaching
+the platform to also accept the old reflection-only path.
+
+## Payload contract (runtime → platform)
+
+The runtime already sends this body (snake_case envelope; `delivery` is the
+persisted union with camelCase keys), from
+[`delivery.ex:114`](../../../runtime/apps/orchestrator/lib/symphony_elixir/scheduled_task/delivery.ex):
+
+```jsonc
+{
+  "kind": "learning_reflection" | "learning_distillation",
+  "scheduled_task_id": "uuid",
+  "scheduled_task_run_id": "uuid",
+  "scheduled_run_id": "scheduled_<run>",
+  "workspace_id": "uuid",
+  "agent_id": "uuid",                 // optional (present for reflection)
+  "source_work_item_id": "uuid",      // optional
+  "scheduled_for": "iso8601",         // optional
+  "delivery": {                       // the ScheduledTaskDeliverySchema member
+    "kind": "learning_reflection",
+    "sourceRunId": "…", "sourceTaskId": "…"   // OR for distillation: "windowDays": 7
+  },
+  "trace_id": "…"                     // optional
+}
+```
+
+This is the source of truth for the new endpoint's request schema. The handler
+takes `workspace_id` + the nested `delivery` union and routes exactly as
+`dispatchScheduledTaskDelivery` already does.
+
+## Work plan
+
+Ordered; each item is one reviewable PR unless noted. Platform and runtime
+changes can land in parallel because we keep the URL shape the runtime already
+uses (`/api/learning/jobs/<kind>`) — the runtime side needs no change to the
+URL, only verification.
+
+### P1 — Platform: real learning-job handler (the core fix)
+
+- Replace the reflection-only route in
+  [`routes/learning.ts`](../../apps/api/src/routes/learning.ts) with a single
+  kind-dispatched endpoint matching the runtime:
+  `POST /api/learning/jobs/:kind`.
+- Add a `LearningJobRequestSchema` (a `Row`-style snake_case schema, since the
+  runtime is an upstream we don't control — see platform case-convention rules)
+  that validates the envelope above and the nested `delivery` discriminated
+  union.
+- Auth: `requireServiceRoleBearer` (unchanged; the runtime sends
+  `PLATFORM_LEARNING_HANDLER_API_KEY` as the bearer).
+- Validate that the `:kind` path segment equals `body.kind` equals
+  `body.delivery.kind`; 400 on mismatch.
+- **Reuse the existing dispatcher.** Refactor `dispatchScheduledTaskDelivery`
+  so the per-kind execution (reflect / distill) is callable from a payload, not
+  only from a looked-up `ScheduledTaskProjection`. Both the new runtime route
+  and the internal-by-id route funnel through the same function. No duplicated
+  reflect/distill call sites.
+- Delete the old `/api/learning/jobs/:sourceRunId/reflection` route — no dual
+  support.
+- Return `202` with the `ReflectRunResult` / `LearningDistillationResult`.
+
+### P2 — Platform: tests for the edge that was missing
+
+- Route-level test: `POST /api/learning/jobs/learning_reflection` and
+  `/api/learning/jobs/learning_distillation` with the **real runtime payload
+  shape**, asserting 202 and that the dispatcher is invoked with the right
+  args. This is the test gap that let the mismatch ship — unit tests mocked the
+  HTTP layer and never exercised the URL/shape contract.
+- Negative tests: missing service-role bearer → 401; kind mismatch → 400;
+  unknown kind → 400.
+
+### P3 — Runtime: contract verification (likely no code change)
+
+- Add/confirm a `platform_learning_client` test asserting the constructed URL
+  is `/api/learning/jobs/learning_reflection` and `/api/learning/jobs/learning_distillation`
+  and that the payload matches P1's schema. The runtime already does this shape;
+  this pins it so the two repos can't drift again.
+- Confirm the cross-repo enum/contract drift check covers the delivery union
+  (extend `scripts/check-cross-repo-enums.mjs` if it doesn't already cover
+  learning kinds).
+
+### P4 — Production configuration (private infra repo)
+
+These live in the **private infra repo**, not here, but are part of "working in
+production." The runtime fails loud at job time if the endpoint is unset
+(`:missing_platform_learning_endpoint`), so these must be set before enabling:
+
+- `PLATFORM_LEARNING_HANDLER_ENDPOINT` → the platform API base URL reachable
+  from the orchestrator (e.g. internal service URL, **not** localhost).
+- `PLATFORM_LEARNING_HANDLER_API_KEY` → the service-role bearer the platform
+  validates (`SUPABASE_SERVICE_ROLE_KEY` or an equivalent service token).
+- Platform-side LLM config for the jobs to do real work:
+  `OPENAI_API_KEY`, `LEARNING_REFLECTION_MODEL`, `LEARNING_EMBEDDING_MODEL`,
+  `LEARNING_DISTILLATION_MODEL`. Confirm each is set in the platform-api task
+  definition; the reflector/distiller throw if their model env is missing.
+- Decide the embedding model and **freeze it** — changing embedding providers
+  later silently breaks cosine similarity across existing rows (there is already
+  a `learning-provider-warning` surface; wire it to the deployed value).
+
+### P5 — Rollout + verification
+
+- Keep `learning_enabled` **false** for all but the internal `kmgrassi`
+  workspace initially (the design's dark-launch stance), even though the column
+  default is `true`. Confirm which workspaces have rows vs. rely on the default
+  before deploy — a `true` default means *every* workspace is on unless we set
+  rows. **Open question O1.**
+- Verify reflection: complete an agent run in the test workspace → confirm a
+  `learning_reflection` scheduled-task row is enqueued → confirm a platform 202
+  in logs → confirm new `memory_items` rows with `source_run_id` set.
+- Verify distillation: manually trigger the nightly row via
+  `POST /api/internal/scheduled-tasks/:id/dispatch` (and separately let the
+  runtime path fire) → confirm skill-candidate memories written.
+- Add a dashboard / log query for learning-job HTTP status so a future 404 is
+  visible immediately, not silent.
+
+## Out of scope (tracked elsewhere)
+
+- **Skill → PR bot** (Track D in the original PR plan): turning distilled skill
+  candidates into actual `.md` PRs depends on the agent-skills scope and the
+  `skill` table, which don't exist yet. Distillation currently writes candidate
+  *memories*; promoting them to reviewed PRs is a follow-on.
+- **Fleet sampling observer** — separate always-on advisory loop, its own scope.
+- **Agent persistent-context self-updates** — separate channel, its own scope.
+
+## Open questions
+
+- **O1 — default-on vs. dark-launch tension.** `learning_enabled` defaults to
+  `true`, but the rollout plan wants internal-workspace-first. Resolve by either
+  (a) flipping the column default to `false` and explicitly enabling the
+  internal workspace, or (b) accepting default-on and confirming P4 config is
+  safe for all workspaces before deploy. Recommend (a) for a controlled launch.
+- **O2 — distillation seed coverage.** The seed migration only created rows for
+  workspaces that existed and were learning-enabled at migration time. New
+  workspaces get no distillation row. Need a hook in workspace/agent setup
+  (`default-agents.ts` path) to seed the nightly distillation task on creation.
+- **O3 — failure visibility.** Today a handler failure marks the scheduled-task
+  run failed and logs a warning. Decide whether learning-job failures should
+  raise an attention-queue item or stay log-only (recommend log-only + a metric;
+  learning is best-effort and must never block runs).
+
+## Definition of done
+
+1. Runtime POSTs to `/api/learning/jobs/learning_reflection` and
+   `/api/learning/jobs/learning_distillation` both return 202 in production.
+2. A real agent run produces `memory_items` rows via reflection.
+3. The nightly distillation job runs without 404 and writes skill candidates.
+4. Route-level tests exercise the real payload shape in both repos; the
+   cross-repo drift check guards the contract.
+5. Learning is enabled for the internal workspace with the documented config,
+   and there is a log/metric surface for learning-job HTTP status.

@@ -117,6 +117,12 @@ In-flight work. Each entry should map to one or more open PRs.
   — PR-by-PR sequence for the learning sidecar across harper-server,
   parallel-agent-platform, and parallel-agent-runtime, including the
   small migration footprint.
+- [active/learning-sidecar-production-readiness-scope.md](active/learning-sidecar-production-readiness-scope.md)
+  — Get the learning loop actually running in prod. Fixes the verified
+  runtime↔platform break: the runtime POSTs `/api/learning/jobs/<kind>` but
+  the platform only registers a reflection-only path, so reflection 404s and
+  distillation has no route. Converges both repos on one endpoint that reuses
+  the existing dispatcher, plus prod config + rollout + verification.
 - [active/local-chat-deprecation-scope.md](active/local-chat-deprecation-scope.md)
   — Phase out `/local-chat` and route coding-agent local-model traffic
   through the Runtime relay path.
