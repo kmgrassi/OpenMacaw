@@ -14,8 +14,8 @@ loop actually running in production. Companion to the design docs it does
 ## TL;DR
 
 The "learning agent" we decided on is **not a new agent type**. It is a
-**workspace-scoped learning sidecar** — post-run *reflection* that distills
-transcripts into `memory_items`, plus nightly *distillation* that clusters
+**workspace-scoped learning sidecar** — post-run _reflection_ that distills
+transcripts into `memory_items`, plus nightly _distillation_ that clusters
 memories into skill-candidate PRs. The design is sound and ~85% built. It is
 **not running in production** because of one concrete, verified break: the
 runtime POSTs learning jobs to a platform HTTP endpoint **that does not exist
@@ -40,9 +40,9 @@ types are fixed at `coding | planning | manager | router | custom`
 **capability of the workspace**, gated by a single flag and executed as
 out-of-band jobs:
 
-- **Gate:** `workspace_settings.learning_enabled`, default **true** / opt-out
+- **Gate:** `workspace_settings.learning_enabled`, default **false** / opt-in
   ([`platform/contracts/workspace-settings.ts`](../../contracts/workspace-settings.ts),
-  `DEFAULT_WORKSPACE_SETTINGS_VALUES.learningEnabled = true`).
+  `DEFAULT_WORKSPACE_SETTINGS_VALUES.learningEnabled = false`).
 - **Transport:** `scheduled_task` rows carrying a discriminated delivery union
   ([`platform/contracts/scheduled-tasks.ts:50`](../../contracts/scheduled-tasks.ts)):
   `scheduled_agent_message | learning_reflection | learning_distillation`.
@@ -60,23 +60,23 @@ the decision. This doc is about making that decision operational.
 
 ### Working end-to-end (LLM + data layer)
 
-| Piece | Location | Notes |
-|---|---|---|
-| `memory_items` table + `memory_hybrid_search()` + workspace RLS | supabase migrations | Pre-existing, complete |
-| Reflection service | `apps/api/src/services/learning/reflector.ts` (`reflectRunToMemories`) | Reads transcript → LLM → ≤5 memory candidates → embeddings → `memory_items`. Unit tested. |
-| Distillation service | `apps/api/src/services/learning/distiller.ts` (`distillWorkspaceSkills`) | Clusters recent memories → LLM per cluster → skill candidates. Unit tested. |
-| Retrieval | `apps/api/src/services/learning/memory-retriever.ts`, `pinned-memory.ts`, `memory.search` tool | `memory.search` tool + pinned-facts prompt block |
-| Budget / cost | `apps/api/src/services/learning/memory-budget.ts`, `learning-cost.ts` | Per-workspace caps + telemetry |
-| Shared dispatcher | `apps/api/src/services/scheduled-tasks.ts:515` (`dispatchScheduledTaskDelivery`) | **Already handles all three kinds correctly** |
+| Piece                                                           | Location                                                                                       | Notes                                                                                     |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `memory_items` table + `memory_hybrid_search()` + workspace RLS | supabase migrations                                                                            | Pre-existing, complete                                                                    |
+| Reflection service                                              | `apps/api/src/services/learning/reflector.ts` (`reflectRunToMemories`)                         | Reads transcript → LLM → ≤5 memory candidates → embeddings → `memory_items`. Unit tested. |
+| Distillation service                                            | `apps/api/src/services/learning/distiller.ts` (`distillWorkspaceSkills`)                       | Clusters recent memories → LLM per cluster → skill candidates. Unit tested.               |
+| Retrieval                                                       | `apps/api/src/services/learning/memory-retriever.ts`, `pinned-memory.ts`, `memory.search` tool | `memory.search` tool + pinned-facts prompt block                                          |
+| Budget / cost                                                   | `apps/api/src/services/learning/memory-budget.ts`, `learning-cost.ts`                          | Per-workspace caps + telemetry                                                            |
+| Shared dispatcher                                               | `apps/api/src/services/scheduled-tasks.ts:515` (`dispatchScheduledTaskDelivery`)               | **Already handles all three kinds correctly**                                             |
 
 ### Working on the runtime side (job production + transport)
 
-| Piece | Location | Notes |
-|---|---|---|
-| Reflection enqueue (post-run hook) | `runtime/.../learning/reflection_dispatcher.ex` | Best-effort; fails open; reads `workspace_settings.learning_enabled` |
-| Delivery routing by kind | `runtime/.../scheduled_task/delivery.ex:102` (`deliver_learning_job`) | Builds payload, calls the HTTP client |
-| HTTP client | `runtime/.../platform_learning_client.ex` | POSTs `{endpoint}/api/learning/jobs/<kind>` with the job payload as JSON body |
-| Distillation seed | migration `20260609123000_...` | One nightly row per learning-enabled workspace |
+| Piece                              | Location                                                              | Notes                                                                         |
+| ---------------------------------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Reflection enqueue (post-run hook) | `runtime/.../learning/reflection_dispatcher.ex`                       | Best-effort; fails open; reads `workspace_settings.learning_enabled`          |
+| Delivery routing by kind           | `runtime/.../scheduled_task/delivery.ex:102` (`deliver_learning_job`) | Builds payload, calls the HTTP client                                         |
+| HTTP client                        | `runtime/.../platform_learning_client.ex`                             | POSTs `{endpoint}/api/learning/jobs/<kind>` with the job payload as JSON body |
+| Distillation seed                  | migration `20260609123000_...`                                        | One nightly row per learning-enabled workspace                                |
 
 ### The break (production blocker)
 
@@ -118,8 +118,8 @@ but is only reachable via the **internal, test-only** route
 ([`routes/scheduled-tasks.ts:174`](../../apps/api/src/routes/scheduled-tasks.ts)),
 which looks the task up by id in the DB — not the path the runtime uses.
 
-This exactly matches the observed symptom: *runtime produces learning jobs;
-platform handler wiring is missing/mismatched.*
+This exactly matches the observed symptom: _runtime produces learning jobs;
+platform handler wiring is missing/mismatched._
 
 ## Goal
 
@@ -230,22 +230,22 @@ settings.
 - `PLATFORM_LEARNING_HANDLER_API_KEY` → **must equal the platform API's
   `SUPABASE_SERVICE_ROLE_KEY` exactly.** `requireServiceRoleBearer` compares the
   incoming bearer to `process.env.SUPABASE_SERVICE_ROLE_KEY` with `!==`, so a
-  *different* but otherwise-valid service token is rejected with 403. Provision
+  _different_ but otherwise-valid service token is rejected with 403. Provision
   the same value on both sides (or change the auth code first — out of scope here).
 
 The two jobs source their LLM credentials **differently** — do not assume one
 env list covers both:
 
-- **Reflection** does *not* read `OPENAI_API_KEY` from env. It loads the
+- **Reflection** does _not_ read `OPENAI_API_KEY` from env. It loads the
   provider key from the workspace `credential` table
   ([`services/learning/reflector.ts:409`](../../apps/api/src/services/learning/reflector.ts)),
   failing with `reflection_credential_missing` (and a 4xx) when the workspace
   has no stored provider credential. `LEARNING_REFLECTION_MODEL` is an
-  *optional* override and `LEARNING_EMBEDDING_MODEL` *defaults*, so setting env
+  _optional_ override and `LEARNING_EMBEDDING_MODEL` _defaults_, so setting env
   alone will **not** make reflection work — the target workspace must have a
   provider credential stored. Document this as a prerequisite separate from the
   distillation envs.
-- **Distillation** *does* require env: `OPENAI_API_KEY` and
+- **Distillation** _does_ require env: `OPENAI_API_KEY` and
   `LEARNING_DISTILLATION_MODEL` are both mandatory and the distiller throws a
   4xx if either is unset
   ([`services/learning/distiller.ts:105`](../../apps/api/src/services/learning/distiller.ts)).
@@ -257,10 +257,10 @@ env list covers both:
 ### P5 — Rollout + verification
 
 - Keep `learning_enabled` **false** for all but the internal `kmgrassi`
-  workspace initially (the design's dark-launch stance), even though the column
-  default is `true`. Confirm which workspaces have rows vs. rely on the default
-  before deploy — a `true` default means *every* workspace is on unless we set
-  rows. **Open question O1.**
+  workspace initially (the design's dark-launch stance). This is now enforced by
+  migration `20260615120000_learning_sidecar_dark_launch.sql` and the platform
+  contract default; use the rollout runbook to confirm rows before deploy:
+  [`../reference/learning-sidecar-production-rollout.md`](../reference/learning-sidecar-production-rollout.md).
 - Verify reflection: ensure the test workspace has a stored provider credential
   (reflection fails `reflection_credential_missing` without one — see P4) →
   complete an agent run → confirm a `learning_reflection` scheduled-task row is
@@ -270,7 +270,8 @@ env list covers both:
   `POST /api/internal/scheduled-tasks/:id/dispatch` (and separately let the
   runtime path fire) → confirm skill-candidate memories written.
 - Add a dashboard / log query for learning-job HTTP status so a future 404 is
-  visible immediately, not silent.
+  visible immediately, not silent. The production query lives in
+  [`../reference/learning-sidecar-production-rollout.md`](../reference/learning-sidecar-production-rollout.md#5-learning-job-status-query).
 
 ### P6 — Feed tool-call events into reflection (operability learning) — **priority**
 
@@ -294,13 +295,13 @@ already exists; we just need to read it and prompt for it.
   non-existent `due_at` column" survives.
 - **Revise the reflection prompt**
   ([`reflection-prompt.md`](../../apps/api/src/services/learning/reflection-prompt.md)).
-  Today it tells the model to *exclude* "transient status / process commentary,"
+  Today it tells the model to _exclude_ "transient status / process commentary,"
   which actively suppresses tool-failure lessons. Add an explicit category for
   **tool & configuration failures** (missing-tool, wrong-argument/column,
   repeated DB rejection, denied-grant) and instruct the model to record them as
   actionable memories. Tag these distinctly (e.g.
   `tags: { kind: "operability", failure: "tool_call", tool_slug }`) so the
-  router/manager agents that *can* fix them (grant a tool, correct arg shape)
+  router/manager agents that _can_ fix them (grant a tool, correct arg shape)
   can retrieve them, and so they're separable from durable workspace facts.
 - **Don't let the ≤5-memory cap crowd them out.** Either give operability
   memories a separate small budget within the run, or run tool-failure
@@ -319,8 +320,8 @@ right after the core wiring fix.
 
 ### P7 — Close the loop: operability finding → planning agent → coding agent → PR
 
-The strategic payoff, and the largest track here. P1–P6 give *detection*
-(operability memories). P7 turns detection into *autonomous remediation* by
+The strategic payoff, and the largest track here. P1–P6 give _detection_
+(operability memories). P7 turns detection into _autonomous remediation_ by
 routing recurring findings to the planning agent, which already owns
 plans/work-items and drives the coding agent against the repo. The design intent
 already exists — the [fleet-sampling-observer scope](./fleet-sampling-observer-scope.md)
@@ -345,7 +346,7 @@ never merges.** What happens to the PR after that is entirely the human's
 existing repo infrastructure — branch protection, required reviews, CI gates,
 CODEOWNERS, GitHub auto-merge. If the owner configures "auto-merge once approved
 + green," reviewed PRs merge with no human keystroke; if they require manual
-review, they review. Either way the *learning system* holds no merge button and
+review, they review. Either way the _learning system_ holds no merge button and
 bypasses none of the repo's configured controls. This keeps full autonomy up to
 PR while delegating merge policy to where it belongs, and sidesteps the
 "agent poisons its own instructions" risk: the agent proposes a diff; the repo's
@@ -355,13 +356,13 @@ This also means **we don't need a merge webhook to close the loop** — see step
 
 #### Stages (green = exists, amber = new)
 
-1. **Detect** *(P6)* — tool-call failures → operability-tagged `memory_items`.
-2. **Recurrence pre-filter** *(new, read-time — no stored state)* — at hand-off,
+1. **Detect** _(P6)_ — tool-call failures → operability-tagged `memory_items`.
+2. **Recurrence pre-filter** _(new, read-time — no stored state)_ — at hand-off,
    a cheap `GROUP BY` over operability memories counts occurrences per signature
    `(tool_slug, error_code, agent_type)` and surfaces only those seen **≥N times
    across the window**. This is the one piece of determinism worth keeping — it
    stops the loop acting on one-off blips — and it's a query, not a table.
-3. **Hand off to planning** *(new — the piece this is really about)* — reuse the
+3. **Hand off to planning** _(new — the piece this is really about)_ — reuse the
    existing `scheduled_agent_message` primitive: `ChatGateway.post_message`
    delivers free-text `instructions` to a target `agent_id`
    ([`delivery.ex` `deliver_agent_message`](../../../runtime/apps/orchestrator/lib/symphony_elixir/scheduled_task/delivery.ex)).
@@ -369,21 +370,21 @@ This also means **we don't need a merge webhook to close the loop** — see step
    **raw signal** — the recurring signatures plus their actual
    `agent_tool_call_event` context (status incl. `denied`/`error`,
    `approval_state`, `error_code`/`error_message`, argument shape) and an example
-   transcript. The instruction: *"For each recurring issue, first decide whether
+   transcript. The instruction: _"For each recurring issue, first decide whether
    it's a genuine defect worth fixing or expected/intended behavior (e.g. a
    deliberate policy `denied`) — if intended, drop it. If it's real, check for an
    existing open remediation work-item for its signature; if none, route it
-   (grant / code / escalate) and act."* The planner does the reasoning; **we hand
+   (grant / code / escalate) and act."_ The planner does the reasoning; **we hand
    it the logs, not a remediation, and let it judge what's a real error.**
-4. **Plan → work items** *(exists)* — planner creates plan + work-items and
+4. **Plan → work items** _(exists)_ — planner creates plan + work-items and
    **tags each with the issue signature** in work-item metadata (this tag is the
    entire dedup mechanism — no new table).
-5. **Code → PR** *(exists)* — the coding agent picks up work-items, edits the
+5. **Code → PR** _(exists)_ — the coding agent picks up work-items, edits the
    repo, and opens a PR. The PR is linked from the work-item (existing
    completion metadata).
-6. **Endpoint** *(decided, above)* — the PR sits in the human's merge
+6. **Endpoint** _(decided, above)_ — the PR sits in the human's merge
    infrastructure. The loop is done.
-7. **Close — by signal decay, nothing to resolve** *(emergent)* — there's no
+7. **Close — by signal decay, nothing to resolve** _(emergent)_ — there's no
    candidate row to mark resolved. When the fix lands, the signature stops
    recurring, so step 2 stops surfacing it and the planner stops seeing it —
    the loop quiesces on its own. Conversely, if a signature **keeps recurring
@@ -394,7 +395,7 @@ This also means **we don't need a merge webhook to close the loop** — see step
 #### Two fix routes: grant (data, autonomous) vs code (PR)
 
 When the planner classifies a finding (step 3), it picks a route. "Allowlist"
-is not a separate thing — tool availability *is* the grant rows — so there are
+is not a separate thing — tool availability _is_ the grant rows — so there are
 exactly two routes plus an escape hatch:
 
 1. **Grant fix — a data mutation, fully autonomous (decided).** The dominant
@@ -404,7 +405,7 @@ exactly two routes plus an escape hatch:
    `setAgentToolGrant` (today `PUT /api/agents/:agentId/tool-grants/:toolId`).
    Expose this to the planner as an agent-callable tool
    (`agent_tool_grant.create` / `.update`, per the resource-CRUD conventions).
-   **Decision: the planner may grant any *existing catalog* tool to any agent in
+   **Decision: the planner may grant any _existing catalog_ tool to any agent in
    the workspace to clear a failure** — no PR, immediate effect. Every loop-driven
    grant is written with `source = "system"` and `reason = <operability finding>`
    and lands in the existing tool-change audit
@@ -412,19 +413,19 @@ exactly two routes plus an escape hatch:
    attributable and trivially reversible. (New tools that don't exist in the
    catalog still require a PR — that's route 2.)
 2. **Code fix — the PR loop.** Tool implementation maps to a non-existent column,
-   wrong argument handling, a missing catalog tool, or a wrong *default template*
+   wrong argument handling, a missing catalog tool, or a wrong _default template_
    (a seed/migration) → work-item → coding agent → PR → your merge infra. This is
    the main P7 path.
 3. **Escape hatch — escalate.** Unclassifiable, or a signature that keeps failing
    after both a grant and a PR attempt → write to the `escalation` table.
-   **Caveat:** the escalation *resolution* surface (attention-queue dashboard,
+   **Caveat:** the escalation _resolution_ surface (attention-queue dashboard,
    claim/resolve) is scoped but **not shipped** — see
    [`attention-queue-scope.md`](./attention-queue-scope.md). Until it ships, an
    escalation is a write-only signal a human must poll for. P7 should treat the
    attention queue as a soft dependency, not assume a working resolution UI.
 
 **Residual risk of full-autonomy grants — primary mitigation is agent judgment.**
-A missing-tool failure is *sometimes the system working as intended* — a
+A missing-tool failure is _sometimes the system working as intended_ — a
 deliberate restriction stopping an agent from doing something it shouldn't. We do
 **not** try to encode "is this restriction deliberate?" in deterministic rules.
 Instead we **hand the planner the raw logs and let it judge** whether the failure
@@ -434,7 +435,7 @@ missing-tool or bad-column message is a real defect). If it reads as intended, t
 planner takes no action. This is the same "agent decides from the signal"
 principle the whole loop runs on. Secondary containment, none of which costs
 autonomy: every grant is `source="system"` + audited + reversible; a **per-run
-cap** on grants; **back-off** — if the *same* `(agent, tool)` was already
+cap** on grants; **back-off** — if the _same_ `(agent, tool)` was already
 auto-granted and the signature still recurs, the grant didn't fix it, so stop and
 escalate; and an optional per-workspace **kill-switch** as cheap insurance.
 
@@ -452,26 +453,26 @@ Provenance is preserved end-to-end without a candidate table: PR → work-item
 
 #### PR breakdown
 
-- **P7.1 — recurrence query + hand-off seed** *(platform)*: the read-time
+- **P7.1 — recurrence query + hand-off seed** _(platform)_: the read-time
   signature aggregation over operability memories, and a seeded planning-agent
   `scheduled_agent_message` carrying the recurring issues. Add a workspace
   creation-time hook so new workspaces get this and the distillation row
   (closes O2). No migration; no new delivery kind required (it's a
   `scheduled_agent_message`).
-- **P7.2 — grant tool** *(platform)*: expose `agent_tool_grant.create` /
+- **P7.2 — grant tool** _(platform)_: expose `agent_tool_grant.create` /
   `.update` as planner-callable tools wrapping the existing `setAgentToolGrant`
   service, writing `source="system"` + `reason`. Wire the resource-CRUD surfaces
   (catalog, grants, runtime registry, restricted-allowlist updates, tests) and a
   per-run grant cap + the `(agent, tool)` back-off. No migration — the table and
   audit already exist.
-- **P7.3 — planner behavior** *(prompt + classification)*: the instruction
+- **P7.3 — planner behavior** _(prompt + classification)_: the instruction
   template; the grant-vs-code-vs-escalate routing (O5); signature-tagging of
   work-items; the "open work-item already exists?" dedup check; a per-run cap on
   new remediation work-items.
-- **P7.4 — work-item ↔ issue linkage** *(platform, light)*: a convention/helper
+- **P7.4 — work-item ↔ issue linkage** _(platform, light)_: a convention/helper
   for the signature tag and source-memory ids on work-item metadata, plus the
   query the planner uses to find an existing open work-item for a signature.
-- **P7.5 — tests + observability** *(platform)*: end-to-end — failed tool call →
+- **P7.5 — tests + observability** _(platform)_: end-to-end — failed tool call →
   operability memory → recurs past threshold → planner either auto-grants the
   tool (audited `source="system"` row) or creates a signature-tagged plan +
   work-item → PR opened and linked → on re-run the dedup/back-off prevents a
@@ -506,17 +507,16 @@ Sequencing: P7 depends on P6 (something to route) and P1 (jobs must run).
 - **Skill → PR bot** (Track D in the original PR plan): turning distilled skill
   candidates into actual `.md` PRs depends on the agent-skills scope and the
   `skill` table, which don't exist yet. Distillation currently writes candidate
-  *memories*; promoting them to reviewed PRs is a follow-on.
+  _memories_; promoting them to reviewed PRs is a follow-on.
 - **Fleet sampling observer** — separate always-on advisory loop, its own scope.
 - **Agent persistent-context self-updates** — separate channel, its own scope.
 
 ## Open questions
 
-- **O1 — default-on vs. dark-launch tension.** `learning_enabled` defaults to
-  `true`, but the rollout plan wants internal-workspace-first. Resolve by either
-  (a) flipping the column default to `false` and explicitly enabling the
-  internal workspace, or (b) accepting default-on and confirming P4 config is
-  safe for all workspaces before deploy. Recommend (a) for a controlled launch.
+- **O1 — default-on vs. dark-launch tension. RESOLVED:** P5 chooses the
+  controlled launch. `learning_enabled` defaults to `false` in the contract and
+  migration `20260615120000_learning_sidecar_dark_launch.sql`; the internal
+  workspace is enabled explicitly with the rollout runbook.
 - **O2 — distillation seed coverage.** The seed migration only created rows for
   workspaces that existed and were learning-enabled at migration time. New
   workspaces get no distillation row. Need a hook in workspace/agent setup
@@ -532,7 +532,7 @@ Sequencing: P7 depends on P6 (something to route) and P1 (jobs must run).
   auto-merge-on-approval; the learning system itself holds no merge button. No
   in-system human step is required to keep the loop autonomous up to PR.
 - **O5 — fix routing (P7). DECIDED:** there are two routes plus an escape hatch.
-  (1) **Grant fix — full autonomy:** the planner may grant any *existing catalog*
+  (1) **Grant fix — full autonomy:** the planner may grant any _existing catalog_
   tool to any agent via `agent_tool_grant` (`source="system"` + `reason`, audited
   in the tool-change audit, runtime-mutable, no PR). Grants are runtime DB rows,
   so this needs no migration. (2) **Code fix:** implementation bug, missing
@@ -551,7 +551,8 @@ Sequencing: P7 depends on P6 (something to route) and P1 (jobs must run).
 4. Route-level tests exercise the real payload shape in both repos; the
    cross-repo drift check guards the contract.
 5. Learning is enabled for the internal workspace with the documented config,
-   and there is a log/metric surface for learning-job HTTP status.
+   and there is a log/metric surface for learning-job HTTP status
+   ([rollout runbook](../reference/learning-sidecar-production-rollout.md)).
 6. Reflection ingests `agent_tool_call_event` and produces operability-tagged
    memories for tool/config failures (missing tool, wrong column/argument, DB
    rejection) — verified by a run with a real failed tool call yielding such a

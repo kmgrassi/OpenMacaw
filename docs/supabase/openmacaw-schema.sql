@@ -811,12 +811,27 @@ create table if not exists public.workspace_resource_location (
 
 create table if not exists public.workspace_settings (
   learning_enabled boolean default false,
+  max_concurrent_agents integer default 10 not null,
+  tracker_credential_id uuid,
+  tracker_kind text default 'database' not null,
   updated_at timestamptz default now(),
   updated_by_user_id uuid,
   workspace_id uuid not null,
-  primary key (workspace_id)
+  primary key (workspace_id),
+  constraint workspace_settings_max_concurrent_agents_check
+    check (max_concurrent_agents between 1 and 50),
+  constraint workspace_settings_tracker_kind_check
+    check (tracker_kind in ('linear', 'memory', 'database', 'github', 'api'))
 );
 comment on table public.workspace_settings is 'OpenMacaw runtime bridge table.';
+comment on column public.workspace_settings.learning_enabled is
+  'Whether workspace learning/reflection is enabled. Defaults off for controlled rollout; enable explicitly per workspace.';
+comment on column public.workspace_settings.tracker_kind is
+  'Workspace-scoped tracker adapter: linear, memory, database, github, or api.';
+comment on column public.workspace_settings.tracker_credential_id is
+  'Optional workspace credential reference used by tracker adapters that require external credentials.';
+comment on column public.workspace_settings.max_concurrent_agents is
+  'Workspace-level cap for concurrently running agents.';
 
 create table if not exists public.workspaces (
   created_at timestamptz default now(),

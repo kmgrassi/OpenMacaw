@@ -11,10 +11,10 @@ import { TrackerKindSchema } from "./tracker-kinds.js";
  *   - trackerKind / trackerCredentialId: controls the workspace-scoped
  *     work tracker adapter used by the runtime.
  *
- * ## Default-on, opt-out semantics
+ * ## Dark-launch, opt-in semantics
  *
  * The DB defines column defaults (e.g. `learning_enabled boolean
- * default true`). The platform service reads the row when present
+ * default false`). The platform service reads the row when present
  * and falls back to defaults defined here when the row is absent —
  * which is the common case for new workspaces (rows are created
  * lazily on first user write).
@@ -37,13 +37,13 @@ export const WorkspaceSettingsSchema = z.object({
 export type WorkspaceSettings = z.infer<typeof WorkspaceSettingsSchema>;
 
 /**
- * Default-on baselines that match the DB column defaults. The service
+ * Opt-in baselines that match the DB column defaults. The service
  * uses this when no row exists for a workspace; we surface the same
  * defaults to the client so the UI shows the right "current" state
  * before any write has happened.
  */
 export const DEFAULT_WORKSPACE_SETTINGS_VALUES = {
-  learningEnabled: true,
+  learningEnabled: false,
   trackerKind: "database",
   trackerCredentialId: null,
 } as const;
