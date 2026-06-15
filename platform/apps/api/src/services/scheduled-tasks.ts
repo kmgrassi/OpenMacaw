@@ -5,6 +5,7 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import type {
   ScheduledTaskCancelResponse,
   ScheduledTaskCreateRequest,
+  ScheduledTaskDelivery,
   ScheduledTaskListResponse,
   ScheduledTaskProjection,
   ScheduledTaskResponse,
@@ -512,6 +513,22 @@ export type ScheduledTaskDeliveryDispatchResult =
   | { kind: "learning_reflection"; status: "completed"; result: ReflectRunResult }
   | ({ kind: "learning_distillation"; status: "completed" } & LearningDistillationResult);
 
+export async function dispatchLearningScheduledTaskDelivery(params: {
+  workspaceId: string;
+  delivery: Extract<ScheduledTaskDelivery, { kind: "learning_reflection" | "learning_distillation" }>;
+}): Promise<Exclude<ScheduledTaskDeliveryDispatchResult, { kind: "scheduled_agent_message" }>> {
+  if (params.delivery.kind === "learning_reflection") {
+    const result = await reflectRunToMemories({
+      sourceRunId: params.delivery.sourceRunId,
+      sourceTaskId: params.delivery.sourceTaskId ?? null,
+    });
+    return { kind: "learning_reflection", status: "completed", result };
+  }
+
+  const result = await distillWorkspaceSkills(params.workspaceId, params.delivery.windowDays);
+  return { kind: "learning_distillation", status: "completed", ...result };
+}
+
 export async function dispatchScheduledTaskDelivery(
   scheduledTask: ScheduledTaskProjection,
 ): Promise<ScheduledTaskDeliveryDispatchResult> {
@@ -519,14 +536,8 @@ export async function dispatchScheduledTaskDelivery(
     return { kind: "scheduled_agent_message", status: "not_handled" };
   }
 
-  if (scheduledTask.delivery.kind === "learning_reflection") {
-    const result = await reflectRunToMemories({
-      sourceRunId: scheduledTask.delivery.sourceRunId,
-      sourceTaskId: scheduledTask.delivery.sourceTaskId ?? null,
-    });
-    return { kind: "learning_reflection", status: "completed", result };
-  }
-
-  const result = await distillWorkspaceSkills(scheduledTask.workspaceId, scheduledTask.delivery.windowDays);
-  return { kind: "learning_distillation", status: "completed", ...result };
+  return dispatchLearningScheduledTaskDelivery({
+    workspaceId: scheduledTask.workspaceId,
+    delivery: scheduledTask.delivery,
+  });
 }
