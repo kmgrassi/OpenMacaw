@@ -27,7 +27,7 @@ const actionStyles: Record<PageHeaderStackAt, string> = {
   md: "md:self-auto",
 };
 
-type PageHeaderProps = HTMLAttributes<HTMLDivElement> & {
+type PageHeaderProps = Omit<HTMLAttributes<HTMLDivElement>, "title"> & {
   title: ReactNode;
   actions?: ReactNode;
   description?: ReactNode;
