@@ -9,6 +9,7 @@ import { memoryResultTokenCount, retrieveRelevantMemories } from "./learning/mem
 import { isLearningEnabledForAgent } from "./learning/settings.js";
 import { appendToolExamples } from "./database-tool-executor/tool-examples.js";
 import { assertAgentInWorkspace, workspaceAgentIds } from "./database-tool-executor/agent-helpers.js";
+import { executeSchemaAwareRows } from "./database-tool-executor/schema-aware-query.js";
 import {
   createScheduledTask,
   deleteScheduledTask,
@@ -139,48 +140,54 @@ export async function executeDatabaseTool(
       return updateRoutingRule(args, workspaceId, context);
 
     case "local_model.list": {
-      const machines = await queryFrom<Record<string, unknown>>("local_runtime_machine")
-        .select(
-          "id,workspace_id,display_name,helper_version,runner_kinds,advertised_runner_kinds,last_seen_at,revoked_at,updated_at",
-        )
-        .eq("workspace_id", workspaceId)
-        .is("revoked_at", null)
-        .order("updated_at", { ascending: false });
-      if (machines.error) throw normalizeSupabaseError("local_runtime_machine query", machines.error);
-
-      const machineRows = Array.isArray(machines.data) ? machines.data : [];
+      const machineRows = await executeSchemaAwareRows<Record<string, unknown>>(
+        "local_runtime_machine query",
+        queryFrom("local_runtime_machine")
+          .select(
+            "id,workspace_id,display_name,helper_version,runner_kinds,advertised_runner_kinds,last_seen_at,revoked_at,updated_at",
+          )
+          .eq("workspace_id", workspaceId)
+          .is("revoked_at", null)
+          .order("updated_at", { ascending: false }),
+      );
       const machineIds = machineRows.map((machine) => String(machine.id ?? "")).filter(Boolean);
       const modelRows =
         machineIds.length > 0
-          ? await queryFrom<Record<string, unknown>>("local_runtime_model")
-              .select("id,machine_id,runner_kind,model,metadata,created_at,updated_at")
-              .in("machine_id", machineIds)
-              .order("updated_at", { ascending: false })
-          : null;
-      if (modelRows?.error) throw normalizeSupabaseError("local_runtime_model query", modelRows.error);
-      return { status: 200, output: jsonOutput({ machines: machineRows, models: modelRows?.data ?? [] }) };
+          ? await executeSchemaAwareRows<Record<string, unknown>>(
+              "local_runtime_model query",
+              queryFrom("local_runtime_model")
+                .select("id,machine_id,runner_kind,model,metadata,created_at,updated_at")
+                .in("machine_id", machineIds)
+                .order("updated_at", { ascending: false }),
+            )
+          : [];
+      return { status: 200, output: jsonOutput({ machines: machineRows, models: modelRows }) };
     }
 
     case "provider_cutover.list": {
       const limit = optionalPositiveInteger(args, "limit", 25, 100);
-      const { data, error } = await queryFrom<Record<string, unknown>>("provider_cutover")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .order("triggered_at", { ascending: false })
-        .limit(limit);
-      if (error) throw normalizeSupabaseError("provider_cutover query", error);
-      return { status: 200, output: jsonOutput({ providerCutovers: data ?? [] }) };
+      const providerCutovers = await executeSchemaAwareRows<Record<string, unknown>>(
+        "provider_cutover query",
+        queryFrom("provider_cutover")
+          .select("*")
+          .eq("workspace_id", workspaceId)
+          .order("triggered_at", { ascending: false })
+          .limit(limit),
+      );
+      return { status: 200, output: jsonOutput({ providerCutovers }) };
     }
 
     case "provider_failure.list": {
       const limit = optionalPositiveInteger(args, "limit", 25, 100);
-      const { data, error } = await queryFrom<Record<string, unknown>>("provider_failure")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .order("created_at", { ascending: false })
-        .limit(limit);
-      if (error) throw normalizeSupabaseError("provider_failure query", error);
-      return { status: 200, output: jsonOutput({ providerFailures: data ?? [] }) };
+      const providerFailures = await executeSchemaAwareRows<Record<string, unknown>>(
+        "provider_failure query",
+        queryFrom("provider_failure")
+          .select("*")
+          .eq("workspace_id", workspaceId)
+          .order("created_at", { ascending: false })
+          .limit(limit),
+      );
+      return { status: 200, output: jsonOutput({ providerFailures }) };
     }
 
     case "memory.search": {

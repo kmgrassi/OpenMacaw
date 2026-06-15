@@ -1,7 +1,7 @@
 import { ApiRouteError } from "../../http.js";
 import { narrowSupabase, type NarrowSupabaseQuery } from "../../lib/narrow-supabase.js";
 import { ROUTING_RULE_PROVIDER_ALLOWED } from "../../repositories/routing-rules.js";
-import { getServiceRoleSupabase, normalizeSupabaseError } from "../../supabase-client.js";
+import { getServiceRoleSupabase } from "../../supabase-client.js";
 import type { ToolExecutionContext } from "../tool-execution-client.js";
 
 import {
@@ -12,6 +12,7 @@ import {
   optionalPositiveInteger,
   stringArg,
 } from "./shared.js";
+import { executeSchemaAwareRows } from "./schema-aware-query.js";
 
 const ROUTING_RULE_SELECT =
   "id,workspace_id,name,priority,runner_kind,provider,model,credential_id,credential_alias,enabled,model_tier_floor,updated_at" as const;
@@ -50,43 +51,6 @@ type RoutingRuleFallbackRow = {
 
 function queryFrom<Row = Record<string, unknown>>(table: string): NarrowSupabaseQuery<Row> {
   return narrowSupabase(getServiceRoleSupabase()).from<Row>(table);
-}
-
-function missingSchema(error: unknown): boolean {
-  const code = (error as { code?: unknown }).code;
-  const message = error instanceof Error ? error.message : String(error);
-  return (
-    code === "PGRST204" ||
-    code === "PGRST205" ||
-    code === "42703" ||
-    message.includes("PGRST204") ||
-    message.includes("PGRST205") ||
-    message.includes("42703") ||
-    message.includes("Could not find") ||
-    message.includes("schema cache")
-  );
-}
-
-async function executeRouterRows<Row>(
-  context: string,
-  query: PromiseLike<{ data: unknown; error: unknown | null }>,
-): Promise<Row[]> {
-  try {
-    const { data, error } = await query;
-    if (error) throw normalizeSupabaseError(context, error as never);
-    if (!data) return [];
-    return (Array.isArray(data) ? data : [data]) as Row[];
-  } catch (error) {
-    if (missingSchema(error)) {
-      throw new ApiRouteError(
-        503,
-        "routing_tool_schema_unavailable",
-        "Routing tools require the intelligent cutover routing schema migrations before they can be used",
-        { context },
-      );
-    }
-    throw error;
-  }
 }
 
 function credentialRefArg(value: unknown): CredentialRefArg | null {
@@ -159,7 +123,7 @@ function publicRoutingRule(rule: RoutingRuleToolRow, fallbacks: RoutingRuleFallb
 
 async function listRoutingRuleFallbacks(ruleIds: string[], workspaceId: string): Promise<RoutingRuleFallbackRow[]> {
   if (ruleIds.length === 0) return [];
-  return executeRouterRows<RoutingRuleFallbackRow>(
+  return executeSchemaAwareRows<RoutingRuleFallbackRow>(
     "routing_rule_fallback query",
     queryFrom("routing_rule_fallback")
       .select(ROUTING_RULE_FALLBACK_SELECT)
@@ -170,7 +134,7 @@ async function listRoutingRuleFallbacks(ruleIds: string[], workspaceId: string):
 }
 
 async function readRoutingRule(routingRuleId: string, workspaceId: string): Promise<RoutingRuleToolRow> {
-  const rows = await executeRouterRows<RoutingRuleToolRow>(
+  const rows = await executeSchemaAwareRows<RoutingRuleToolRow>(
     "routing_rule query",
     queryFrom("routing_rule")
       .select(ROUTING_RULE_SELECT)
@@ -184,7 +148,7 @@ async function readRoutingRule(routingRuleId: string, workspaceId: string): Prom
 }
 
 async function isActorRule(routingRuleId: string, workspaceId: string, agentId: string): Promise<boolean> {
-  const matches = await executeRouterRows<{ kind: string | null; key: string | null; value: string | null }>(
+  const matches = await executeSchemaAwareRows<{ kind: string | null; key: string | null; value: string | null }>(
     "routing_rule_match query",
     queryFrom("routing_rule_match")
       .select("kind,key,value")
@@ -210,7 +174,7 @@ async function insertRoutingRuleChange(input: {
   newModel?: string | null;
   reason: string;
 }) {
-  await executeRouterRows(
+  await executeSchemaAwareRows(
     "routing_rule_change insert",
     queryFrom("routing_rule_change")
       .insert({
@@ -233,7 +197,7 @@ async function replaceRoutingRuleFallbacks(input: {
   routingRuleId: string;
   fallbacks: FallbackArg[];
 }) {
-  await executeRouterRows(
+  await executeSchemaAwareRows(
     "routing_rule_fallback delete",
     queryFrom("routing_rule_fallback")
       .delete()
@@ -241,7 +205,7 @@ async function replaceRoutingRuleFallbacks(input: {
       .eq("routing_rule_id", input.routingRuleId),
   );
   if (input.fallbacks.length === 0) return;
-  await executeRouterRows(
+  await executeSchemaAwareRows(
     "routing_rule_fallback insert",
     queryFrom("routing_rule_fallback")
       .insert(
@@ -261,7 +225,7 @@ async function replaceRoutingRuleFallbacks(input: {
 
 export async function listRoutingRules(args: Record<string, unknown>, workspaceId: string) {
   const limit = optionalPositiveInteger(args, "limit", 50, 200);
-  const rules = await executeRouterRows<RoutingRuleToolRow>(
+  const rules = await executeSchemaAwareRows<RoutingRuleToolRow>(
     "routing_rule query",
     queryFrom("routing_rule")
       .select(ROUTING_RULE_SELECT)
@@ -356,7 +320,7 @@ export async function updateRoutingRule(
 
   const updatedRows =
     Object.keys(update).length > 1
-      ? await executeRouterRows<RoutingRuleToolRow>(
+      ? await executeSchemaAwareRows<RoutingRuleToolRow>(
           "routing_rule update",
           queryFrom("routing_rule")
             .update(update)
