@@ -317,6 +317,30 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     });
   });
 
+  it("returns schema-unavailable errors for local model list tools before migrations exist", async () => {
+    const query = {
+      select: vi.fn(() => query),
+      eq: vi.fn(() => query),
+      is: vi.fn(() => query),
+      order: vi.fn(() => query),
+      then: vi.fn((onfulfilled?: (value: unknown) => unknown, onrejected?: (reason: unknown) => unknown) =>
+        Promise.resolve({
+          data: null,
+          error: { code: "PGRST205", message: "Could not find the table local_runtime_machine" },
+        }).then(onfulfilled, onrejected),
+      ),
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue({ from: vi.fn(() => query) } as never);
+
+    await expect(
+      executeDatabaseTool(scheduledTaskTool("local_model.list"), {}, { workspaceId, agentId }),
+    ).rejects.toMatchObject({
+      status: 503,
+      code: "routing_tool_schema_unavailable",
+      details: { context: "local_runtime_machine query" },
+    });
+  });
+
   it("rejects routing floor changes through the agent tool", async () => {
     await expect(
       executeDatabaseTool(

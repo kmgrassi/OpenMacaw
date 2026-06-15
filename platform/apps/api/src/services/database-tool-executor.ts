@@ -1,5 +1,4 @@
 import { ApiRouteError } from "../http.js";
-import { narrowSupabase, type NarrowSupabaseQuery } from "../lib/narrow-supabase.js";
 import { getServiceRoleSupabase, normalizeSupabaseError } from "../supabase-client.js";
 import { deletePlanForWorkspace } from "./workspace-plans.js";
 
@@ -9,7 +8,6 @@ import { memoryResultTokenCount, retrieveRelevantMemories } from "./learning/mem
 import { isLearningEnabledForAgent } from "./learning/settings.js";
 import { appendToolExamples } from "./database-tool-executor/tool-examples.js";
 import { assertAgentInWorkspace, workspaceAgentIds } from "./database-tool-executor/agent-helpers.js";
-import { executeSchemaAwareRows } from "./database-tool-executor/schema-aware-query.js";
 import {
   createScheduledTask,
   deleteScheduledTask,
@@ -18,6 +16,7 @@ import {
   updateScheduledTask,
 } from "./database-tool-executor/scheduled-tasks.js";
 import { listRoutingRules, readRoutingRuleTool, updateRoutingRule } from "./database-tool-executor/routing-rules.js";
+import { executeSchemaAwareRows, queryFrom } from "./database-tool-executor/schema-aware-query.js";
 import {
   asRecord,
   jsonOutput,
@@ -30,10 +29,6 @@ import {
 
 export function isDatabaseTool(tool: ToolDefinition): boolean {
   return tool.executionKind === "database";
-}
-
-function queryFrom<Row = Record<string, unknown>>(table: string): NarrowSupabaseQuery<Row> {
-  return narrowSupabase(getServiceRoleSupabase()).from<Row>(table);
 }
 
 export async function executeDatabaseTool(

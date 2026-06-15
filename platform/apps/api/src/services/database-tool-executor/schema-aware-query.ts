@@ -1,5 +1,10 @@
 import { ApiRouteError } from "../../http.js";
-import { normalizeSupabaseError } from "../../supabase-client.js";
+import { narrowSupabase, type NarrowSupabaseQuery } from "../../lib/narrow-supabase.js";
+import { getServiceRoleSupabase, normalizeSupabaseError } from "../../supabase-client.js";
+
+export function queryFrom<Row = Record<string, unknown>>(table: string): NarrowSupabaseQuery<Row> {
+  return narrowSupabase(getServiceRoleSupabase()).from<Row>(table);
+}
 
 function missingSchema(error: unknown): boolean {
   const code = (error as { code?: unknown }).code;

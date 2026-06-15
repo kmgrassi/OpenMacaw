@@ -1,9 +1,8 @@
 import { ApiRouteError } from "../../http.js";
-import { narrowSupabase, type NarrowSupabaseQuery } from "../../lib/narrow-supabase.js";
 import { ROUTING_RULE_PROVIDER_ALLOWED } from "../../repositories/routing-rules.js";
-import { getServiceRoleSupabase } from "../../supabase-client.js";
 import type { ToolExecutionContext } from "../tool-execution-client.js";
 
+import { executeSchemaAwareRows, queryFrom } from "./schema-aware-query.js";
 import {
   booleanArg,
   type CredentialRefArg,
@@ -12,7 +11,6 @@ import {
   optionalPositiveInteger,
   stringArg,
 } from "./shared.js";
-import { executeSchemaAwareRows } from "./schema-aware-query.js";
 
 const ROUTING_RULE_SELECT =
   "id,workspace_id,name,priority,runner_kind,provider,model,credential_id,credential_alias,enabled,model_tier_floor,updated_at" as const;
@@ -48,10 +46,6 @@ type RoutingRuleFallbackRow = {
   created_at: string;
   updated_at: string;
 };
-
-function queryFrom<Row = Record<string, unknown>>(table: string): NarrowSupabaseQuery<Row> {
-  return narrowSupabase(getServiceRoleSupabase()).from<Row>(table);
-}
 
 function credentialRefArg(value: unknown): CredentialRefArg | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
