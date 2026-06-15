@@ -8,6 +8,8 @@ defmodule SymphonyElixir.WorkerBridge.Client do
   instead of calling the server GenServer directly.
   """
 
+  alias SymphonyElixir.Supabase
+
   @default_base_url "http://127.0.0.1:4100"
 
   @spec start_session(map()) :: {:ok, map()} | {:error, term()}
@@ -28,7 +30,7 @@ defmodule SymphonyElixir.WorkerBridge.Client do
   defp request(method, path, opts) do
     success_statuses = Keyword.fetch!(opts, :success)
 
-    Req.new(url: base_url() <> path, headers: [{"content-type", "application/json"}])
+    Req.new(url: base_url() <> path, headers: headers())
     |> Req.merge(req_options())
     |> maybe_put_json(Keyword.get(opts, :json))
     |> Req.request(method: method)
@@ -79,6 +81,13 @@ defmodule SymphonyElixir.WorkerBridge.Client do
 
   defp req_options do
     Application.get_env(:symphony_elixir, :worker_bridge_client_req_options, [])
+  end
+
+  defp headers do
+    [
+      {"authorization", "Bearer #{Supabase.service_role_key!()}"},
+      {"content-type", "application/json"}
+    ]
   end
 
   defp maybe_put_json(req, nil), do: req

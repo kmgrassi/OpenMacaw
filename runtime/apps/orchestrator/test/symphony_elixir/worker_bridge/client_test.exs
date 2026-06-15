@@ -5,6 +5,7 @@ defmodule SymphonyElixir.WorkerBridge.ClientTest do
 
   setup do
     put_system_env("LAUNCHER_BASE_URL", "http://launcher.test")
+    put_system_env("SUPABASE_SERVICE_ROLE_KEY", "service-role-test-key")
     put_app_env(:symphony_elixir, :worker_bridge_client_req_options, plug: {Req.Test, __MODULE__})
     :ok
   end
@@ -17,6 +18,8 @@ defmodule SymphonyElixir.WorkerBridge.ClientTest do
 
       assert conn.method == "POST"
       assert conn.request_path == "/worker-bridge/sessions"
+      assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer service-role-test-key"]
+      assert Plug.Conn.get_req_header(conn, "content-type") == ["application/json"]
 
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       assert Jason.decode!(body)["kind"] == "codex"
@@ -37,6 +40,7 @@ defmodule SymphonyElixir.WorkerBridge.ClientTest do
 
     Req.Test.stub(__MODULE__, fn conn ->
       send(test_pid, {:request, conn.method, conn.request_path})
+      assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer service-role-test-key"]
 
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
