@@ -19,7 +19,6 @@ vi.mock("../services/plan-drafts.js", async () => {
   };
 });
 
-let insertedTaskIds: string[] = [];
 let queryTable = "";
 let selectRowsForTable: (table: string) => unknown[] | Promise<unknown[]> = () => [];
 
@@ -34,12 +33,7 @@ const queryBuilder = {
     return queryBuilder;
   }),
   select: vi.fn(() => queryBuilder),
-  insert: vi.fn((body: unknown) => {
-    if (Array.isArray(body)) {
-      insertedTaskIds = body.map((row) => String((row as { id: string }).id));
-    }
-    return queryBuilder;
-  }),
+  insert: vi.fn(() => queryBuilder),
   update: vi.fn(() => queryBuilder),
   delete: vi.fn(() => queryBuilder),
   eq: vi.fn(() => queryBuilder),
@@ -77,6 +71,9 @@ const config: ApiConfig = {
 const userId = "11111111-1111-4111-8111-111111111111";
 const workspaceId = "22222222-2222-4222-8222-222222222222";
 const planId = "33333333-3333-4333-8333-333333333333";
+// Work item primary keys are assigned by the database; the test stands in for that.
+const workItemApiId = "44444444-4444-4444-8444-444444444401";
+const workItemWebId = "44444444-4444-4444-8444-444444444402";
 
 const validPlan = {
   workspaceId,
@@ -212,23 +209,24 @@ describe("plan routes", () => {
   const launcherRequest = vi.fn();
 
   beforeEach(async () => {
-    insertedTaskIds = [];
     selectRowsForTable = () => [];
     vi.mocked(createPlanDraftFromPrompt).mockResolvedValue({ draft });
     vi.mocked(executeSupabaseRows).mockImplementation(async (context) => {
       if (context === "workspace_members query") return [{ workspace_id: workspaceId }];
       if (context === "plan insert") return [planRow()];
       if (context === "work_items insert") {
+        // The database assigns ids and depends_on defaults to empty; dependency
+        // references are resolved by the second-pass update keyed on author_task_id.
         return [
-          workItemRow({ id: insertedTaskIds[0], task_id: null }),
+          workItemRow({ id: workItemApiId, task_id: null }),
           workItemRow({
-            id: insertedTaskIds[1],
+            id: workItemWebId,
             task_id: null,
             title: "Clean up web imports",
             description: "Remove unused imports under apps/web after API cleanup.",
             labels: ["area:web"],
             metadata: { author_task_id: "t-02" },
-            depends_on: [insertedTaskIds[0]],
+            depends_on: [],
             completion_gates: ["lint"],
           }),
         ];
@@ -503,7 +501,11 @@ describe("plan routes", () => {
     expect(body.workItems).toHaveLength(2);
     expect(queryBuilder.from).toHaveBeenCalledWith("plan");
     expect(queryBuilder.from).toHaveBeenCalledWith("work_items");
-    expect(queryBuilder.insert.mock.calls[1]?.[0]).toEqual(
+
+    const workItemInsertBody = (queryBuilder.insert.mock.calls[1] as unknown[] | undefined)?.[0] as Array<
+      Record<string, unknown>
+    >;
+    expect(workItemInsertBody).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           plan_id: planId,
@@ -513,17 +515,30 @@ describe("plan routes", () => {
           labels: ["area:api"],
           metadata: expect.objectContaining({ author_task_id: "t-01" }),
           instructions: "Remove unused imports under apps/api.",
-          depends_on: [],
           completion_gates: ["lint", "tests"],
         }),
         expect.objectContaining({
           title: "Clean up web imports",
           instructions: "Remove unused imports under apps/web after API cleanup.",
-          depends_on: [expect.any(String)],
+          metadata: expect.objectContaining({ author_task_id: "t-02" }),
           completion_gates: ["lint"],
         }),
       ]),
     );
+
+    // The database owns id generation: the app must not supply a primary key, nor
+    // pre-resolve depends_on (which would require knowing the ids before insert).
+    for (const row of workItemInsertBody) {
+      expect(row).not.toHaveProperty("id");
+      expect(row).not.toHaveProperty("depends_on");
+    }
+
+    // Dependencies are resolved to the DB-assigned ids in a second-pass update.
+    expect(queryBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ depends_on: [workItemApiId] }));
+    const webItem = (body.workItems as Array<{ title: string; dependsOn: string[] }>).find(
+      (item) => item.title === "Clean up web imports",
+    );
+    expect(webItem?.dependsOn).toEqual([workItemApiId]);
   });
 
   it("returns 400 with schema errors for an invalid plan", async () => {
