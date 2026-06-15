@@ -19,9 +19,9 @@ import {
 /**
  * Read the effective settings for a workspace. When no row exists in
  * `workspace_settings`, returns the defaults from the contract
- * (matching the DB column defaults). New workspaces don't need a row
- * to be treated as "learning enabled" — the absence of a row IS the
- * default state.
+ * (matching the DB column defaults). Learning is dark-launched: new
+ * workspaces are treated as disabled until an explicit settings row
+ * enables it.
  *
  * `updatedAt` and `updatedByUserId` are `null` when no row exists
  * (nothing has ever been written). Once a user toggles, both get

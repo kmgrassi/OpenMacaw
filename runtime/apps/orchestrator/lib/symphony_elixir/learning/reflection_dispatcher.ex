@@ -48,20 +48,19 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcher do
   Gated solely on `workspace_settings.learning_enabled` for the
   workspace. The platform exposes the toggle in Settings → Workspace.
 
-  Default-on, opt-out: when no `workspace_settings` row exists for a
-  workspace, the repository falls back to `true` (matching the DB
+  Default-off, opt-in: when no `workspace_settings` row exists for a
+  workspace, the repository falls back to `false` (matching the DB
   column default and the platform service's `projectSettings`
-  fallback). Memory persistence is enabled out of the box; users have
-  to explicitly toggle it off.
+  fallback). Memory persistence is dark-launched and must be enabled
+  explicitly per workspace.
 
   Fail-open on transient errors: when the repository returns
   `{:error, _}` (Supabase unreachable, schema not yet ready, etc.),
   the dispatcher logs a warning and proceeds with the enqueue. The
   scheduled-task scheduler picks the row up on the next tick; if the
   workspace had actually opted out, the platform-side handler will
-  re-check the flag and discard. Fail-open matches the "memory enabled
-  by default" UX — a brief Supabase blip shouldn't silently disable
-  memory.
+  re-check the flag and discard. Fail-open prevents a brief Supabase
+  blip from silently disabling memory for already-enabled workspaces.
 
   No `LEARNING_REFLECTION_ENABLED` env flag any more — single
   source-of-truth gate in the DB. To roll back globally in an
@@ -131,7 +130,7 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcher do
   end
 
   # Workspace gate. Returns true when:
-  #   - the row says `learning_enabled = true` (or no row exists — repo defaults to true)
+  #   - the row says `learning_enabled = true`
   #   - OR the read fails entirely (fail-open with a warning log)
   # Returns false only when the row explicitly says `learning_enabled = false`.
   defp workspace_learning_enabled?(workspace_id, scope, run_id, opts) do
@@ -216,7 +215,8 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcher do
            "workspace_id" => workspace_id,
            "agent_id" => agent_id,
            "title" => "Learning reflection",
-           "instructions" => "Reflect on the completed agent run and extract durable workspace memory.",
+           "instructions" =>
+             "Reflect on the completed agent run and extract durable workspace memory.",
            "enabled" => true,
            "schedule" => %{"kind" => "at", "runAt" => now_iso},
            "timezone" => "Etc/UTC",
