@@ -321,10 +321,16 @@ already exists — the [fleet-sampling-observer scope](./fleet-sampling-observer
 states "advisory by default… acting on it is the consuming agent's job." P7
 wires that consumer.
 
-> **Note:** unlike P1–P6, P7 introduces **one new table + migration**
-> (`remediation_candidate`) and new agent tools. It is genuinely bigger; it is
-> kept in this doc for a single scrolling source of truth, but could be split
-> into its own scope at build time.
+> **Design choice (decided): hand the issue to the planning agent; don't build a
+> remediation control plane.** An earlier draft added a `remediation_candidate`
+> table with a status state machine and a recurrence counter. That was
+> over-engineering — a deterministic layer reinventing what an intelligent
+> planning agent already does, and what the **existing plan/work-item records
+> already track**. We drop it. The planner consumes operability findings and
+> owns remediation. **Consequence: P7 needs no migration** (consistent with
+> P1–P6). The one piece of determinism we keep — a recurrence pre-filter — is a
+> read-time query, not a stored table (see Stages). Dedup becomes the planner's
+> job, anchored on a work-item signature tag (concrete query, not LLM memory).
 
 #### The endpoint is a PR, not a merge (decided)
 
@@ -344,89 +350,88 @@ This also means **we don't need a merge webhook to close the loop** — see step
 #### Stages (green = exists, amber = new)
 
 1. **Detect** *(P6)* — tool-call failures → operability-tagged `memory_items`.
-2. **Aggregate** *(new)* — a scheduled rollup groups operability memories by
-   signature `(tool_slug, error_code, agent_type)` and promotes one to a
-   *remediation candidate* only past a **recurrence threshold** (≥N occurrences
-   across M runs / D days). The single most important guardrail — it stops the
-   loop acting on one-off blips. Reuses the distiller's pattern.
+2. **Recurrence pre-filter** *(new, read-time — no stored state)* — at hand-off,
+   a cheap `GROUP BY` over operability memories counts occurrences per signature
+   `(tool_slug, error_code, agent_type)` and surfaces only those seen **≥N times
+   across the window**. This is the one piece of determinism worth keeping — it
+   stops the loop acting on one-off blips — and it's a query, not a table.
 3. **Hand off to planning** *(new — the piece this is really about)* — reuse the
    existing `scheduled_agent_message` primitive: `ChatGateway.post_message`
    delivers free-text `instructions` to a target `agent_id`
    ([`delivery.ex` `deliver_agent_message`](../../../runtime/apps/orchestrator/lib/symphony_elixir/scheduled_task/delivery.ex)).
-   Seed a scheduled task at the workspace's **planning agent**: *"List open
-   remediation candidates (`remediation_candidate.list`). For each not already
-   planned, classify code-vs-config, create a plan + work-items, and mark it
-   planned."*
+   Seed a scheduled task at the workspace's **planning agent**: *"Here are the
+   recurring operability issues this window (signature + count + example
+   transcript). For each, first check whether an open remediation work-item
+   already exists for its signature; if not, classify code-vs-config and create
+   a plan + work-items tagged with the signature."* The planner does the
+   reasoning; **we hand it the issue, not a remediation.**
 4. **Plan → work items** *(exists)* — planner creates plan + work-items and
-   links them to the candidate.
+   **tags each with the issue signature** in work-item metadata (this tag is the
+   entire dedup mechanism — no new table).
 5. **Code → PR** *(exists)* — the coding agent picks up work-items, edits the
-   repo, opens a PR; the PR URL is recorded back on the candidate
-   (status → `pr_open`).
-6. **Endpoint** *(decided, above)* — PR sits in the human's merge
+   repo, and opens a PR. The PR is linked from the work-item (existing
+   completion metadata).
+6. **Endpoint** *(decided, above)* — the PR sits in the human's merge
    infrastructure. The loop is done.
-7. **Close — by signal decay, not by watching merges** *(new, elegant)* — we
-   already recompute the recurrence signal each window (step 2). When a fixed
-   tool/config stops failing, the signature stops recurring; after K quiet
-   windows the candidate auto-resolves. No GitHub webhook needed. Conversely, if
-   a signature **keeps recurring while a candidate is `pr_open`** (the fix
-   didn't land, didn't work, or regressed), the loop must **not** open a second
-   PR — it flips the candidate to `needs_human` and raises an attention item.
-   **Natural quiescence is the success signal.**
+7. **Close — by signal decay, nothing to resolve** *(emergent)* — there's no
+   candidate row to mark resolved. When the fix lands, the signature stops
+   recurring, so step 2 stops surfacing it and the planner stops seeing it —
+   the loop quiesces on its own. Conversely, if a signature **keeps recurring
+   while an open work-item/PR exists for it** (step 4's tag check finds one), the
+   planner must **not** open a second PR — it escalates (attention item /
+   `needs_human`) instead. **Natural quiescence is the success signal.**
 
-#### New data model (the one migration)
+#### State lives in records that already exist
 
-A `remediation_candidate` table — structured state, normalized per repo
-conventions (not a JSONB blob), because the loop queries it, dedups on it, and
-audits through it:
+No new table. The "is this being worked / already fixed?" state is read from:
 
-- `id`, `workspace_id`
-- signature: `tool_slug`, `error_code`, `agent_type` (nullable)
-- `occurrence_count`, `first_seen_at`, `last_seen_at`
-- `status` enum: `open | planned | pr_open | resolved | needs_human | dismissed`
-- links for provenance + dedup: `plan_id`, `work_item_id`, `pr_url` (all nullable)
-- **unique constraint** on `(workspace_id, tool_slug, error_code, agent_type)`
-  where status is active — DB-enforces "one open remediation per signature"
-- source linkage to the `memory_items` (and thus `agent_tool_call_event`) that
-  produced it
+- **operability `memory_items`** — the recurrence signal (step 2).
+- **the plan + work-items the planner creates**, tagged with the issue signature
+  — dedup and "in progress" status (step 4). The work-item's existing completion
+  metadata carries the PR link.
+
+Provenance is preserved end-to-end without a candidate table: PR → work-item
+(signature tag + source memory ids) → `memory_items` → `agent_tool_call_event`.
 
 #### PR breakdown
 
-- **P7.1 — schema + contracts** *(platform)*: `remediation_candidate` migration
-  (+ enum, unique constraint), Zod contracts, repository, schema-sync.
-- **P7.2 — aggregation job** *(platform + runtime)*: add a `learning_remediation`
-  delivery kind to the discriminated union (same pattern P1 fixes; mirror in
-  Elixir), and an aggregator that scans operability memories → upserts
-  candidates, advances `occurrence_count`, and runs decay-based resolution.
-- **P7.3 — planner tools** *(platform)*: `remediation_candidate.list` and
-  `remediation_candidate.update` following the resource-CRUD conventions
-  (catalog, grants, runtime registry, restricted allowlists, tests).
-- **P7.4 — hand-off + setup hook** *(platform)*: seed the planning-agent
-  `scheduled_agent_message` per workspace; add a creation-time hook so new
-  workspaces get both this and the distillation row (closes O2).
-- **P7.5 — planner behavior** *(prompt + classification)*: the instruction
-  template, code-vs-config routing (O5), dedup (skip `planned`/`pr_open`).
-- **P7.6 — PR write-back + back-off** *(platform + runtime)*: capture the PR URL
-  onto the candidate from work-item completion; implement the `needs_human`
-  back-off when a `pr_open` signature recurs.
-- **P7.7 — tests + observability** *(platform)*: end-to-end — failed tool call →
-  operability memory → candidate crosses threshold → planner creates plan +
-  work-items → PR URL recorded → signal decays → `resolved`; plus a dashboard of
-  candidates by status.
+- **P7.1 — recurrence query + hand-off seed** *(platform)*: the read-time
+  signature aggregation over operability memories, and a seeded planning-agent
+  `scheduled_agent_message` carrying the recurring issues. Add a workspace
+  creation-time hook so new workspaces get this and the distillation row
+  (closes O2). No migration; no new delivery kind required (it's a
+  `scheduled_agent_message`).
+- **P7.2 — planner behavior** *(prompt + classification)*: the instruction
+  template; signature-tagging of work-items; the "open work-item already exists?"
+  dedup check; code-vs-config routing (O5); a per-run cap on new remediation
+  work-items.
+- **P7.3 — work-item ↔ issue linkage** *(platform, light)*: a convention/helper
+  for the signature tag and source-memory ids on work-item metadata, plus the
+  query the planner uses to find an existing open work-item for a signature.
+- **P7.4 — tests + observability** *(platform)*: end-to-end — failed tool call →
+  operability memory → recurs past threshold → planner creates a signature-tagged
+  plan + work-item → PR opened and linked → on re-run the dedup check prevents a
+  second PR; plus a simple view of recurring issues and their open work-items.
 
-#### Guardrails (non-negotiable)
+#### Guardrails
 
-- Recurrence threshold before acting; **DB-unique** one-open-per-signature.
-- Cap concurrent open remediations per workspace.
-- **Back-off to `needs_human`** if a `pr_open` signature keeps recurring — never
-  spawn a second PR for the same defect.
+- **Recurrence threshold** (step 2) before anything is surfaced.
+- **Dedup via signature tag** (soft, but anchored on a concrete work-item query —
+  not LLM memory) + a **per-run cap** on new remediation work-items.
+- **Escalate, don't re-PR**, when a signature recurs with an open work-item/PR.
 - **Config-fix routing (O5):** grants/allowlists are workspace state, not code —
   route to a planner grant-mutation tool, a seed/IaC PR, or the attention queue;
   don't assume every fix is a repo edit.
-- **Provenance:** candidate → memory → `agent_tool_call_event`, and candidate →
-  plan → work-item → PR, so every autonomous action is auditable.
 - The loop **never** edits agent instructions/context (that's the separate
   [persistent-context channel](./agent-persistent-context-scope.md)) and
   **never** merges — merge is the repo's configured infrastructure.
+
+> **Accepted tradeoff:** dedup is soft (a tag the planner must check) rather than
+> a DB-unique constraint. The failure mode is a duplicate PR, not data
+> corruption; the per-run cap and your merge infra are the backstop. If
+> duplicates show up in practice, promoting the signature tag to a small
+> uniqueness-enforcing table is a clean later step — but we don't pay for it up
+> front.
 
 Sequencing: P7 depends on P6 (something to route) and P1 (jobs must run).
 
@@ -480,8 +485,9 @@ Sequencing: P7 depends on P6 (something to route) and P1 (jobs must run).
    memories for tool/config failures (missing tool, wrong column/argument, DB
    rejection) — verified by a run with a real failed tool call yielding such a
    memory.
-7. (P7) A recurring operability signature crosses the threshold → becomes a
-   `remediation_candidate` → the planning agent creates a plan + work-items →
-   the coding agent opens a PR linked back to the candidate, with **no human
-   step inside the system**; the candidate auto-resolves when the signature
-   stops recurring. Merge remains the repo's own infrastructure.
+7. (P7) A recurring operability signature (read-time threshold) is handed to the
+   planning agent → it creates a signature-tagged plan + work-items → the coding
+   agent opens a PR, with **no human step inside the system** and **no new
+   table**; a re-run with an open work-item for the same signature does not open
+   a second PR. The loop quiesces when the signature stops recurring. Merge
+   remains the repo's own infrastructure.
