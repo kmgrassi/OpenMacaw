@@ -359,12 +359,16 @@ This also means **we don't need a merge webhook to close the loop** — see step
    existing `scheduled_agent_message` primitive: `ChatGateway.post_message`
    delivers free-text `instructions` to a target `agent_id`
    ([`delivery.ex` `deliver_agent_message`](../../../runtime/apps/orchestrator/lib/symphony_elixir/scheduled_task/delivery.ex)).
-   Seed a scheduled task at the workspace's **planning agent**: *"Here are the
-   recurring operability issues this window (signature + count + example
-   transcript). For each, first check whether an open remediation work-item
-   already exists for its signature; if not, classify code-vs-config and create
-   a plan + work-items tagged with the signature."* The planner does the
-   reasoning; **we hand it the issue, not a remediation.**
+   Seed a scheduled task at the workspace's **planning agent** and hand it the
+   **raw signal** — the recurring signatures plus their actual
+   `agent_tool_call_event` context (status incl. `denied`/`error`,
+   `approval_state`, `error_code`/`error_message`, argument shape) and an example
+   transcript. The instruction: *"For each recurring issue, first decide whether
+   it's a genuine defect worth fixing or expected/intended behavior (e.g. a
+   deliberate policy `denied`) — if intended, drop it. If it's real, check for an
+   existing open remediation work-item for its signature; if none, route it
+   (grant / code / escalate) and act."* The planner does the reasoning; **we hand
+   it the logs, not a remediation, and let it judge what's a real error.**
 4. **Plan → work items** *(exists)* — planner creates plan + work-items and
    **tags each with the issue signature** in work-item metadata (this tag is the
    entire dedup mechanism — no new table).
@@ -413,16 +417,20 @@ exactly two routes plus an escape hatch:
    escalation is a write-only signal a human must poll for. P7 should treat the
    attention queue as a soft dependency, not assume a working resolution UI.
 
-**Residual risk of full-autonomy grants (accepted, mitigated by monitoring).**
+**Residual risk of full-autonomy grants — primary mitigation is agent judgment.**
 A missing-tool failure is *sometimes the system working as intended* — a
-deliberate restriction stopping an agent from doing something it shouldn't.
-Full autonomy means the loop can override such a restriction. We accept this per
-the autonomy goal; the mitigations that do **not** cost autonomy are: every grant
-is `source="system"` + audited + reversible; a **per-run cap** on grants; and
-**back-off** — if the *same* `(agent, tool)` was already auto-granted and the
-signature still recurs, the grant didn't fix it, so stop granting and escalate.
-A per-workspace kill-switch for autonomous grants is the cheap insurance if this
-ever misbehaves.
+deliberate restriction stopping an agent from doing something it shouldn't. We do
+**not** try to encode "is this restriction deliberate?" in deterministic rules.
+Instead we **hand the planner the raw logs and let it judge** whether the failure
+is a real defect or expected behavior (the `agent_tool_call_event` carries the
+tell: a policy `denied` / `approval_state` is an intended stop; an `error` with a
+missing-tool or bad-column message is a real defect). If it reads as intended, the
+planner takes no action. This is the same "agent decides from the signal"
+principle the whole loop runs on. Secondary containment, none of which costs
+autonomy: every grant is `source="system"` + audited + reversible; a **per-run
+cap** on grants; **back-off** — if the *same* `(agent, tool)` was already
+auto-granted and the signature still recurs, the grant didn't fix it, so stop and
+escalate; and an optional per-workspace **kill-switch** as cheap insurance.
 
 #### State lives in records that already exist
 
