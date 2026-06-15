@@ -3,7 +3,7 @@ import type { Json, TablesInsert, TablesUpdate } from "@kmgrassi/supabase-schema
 import { ApiRouteError } from "../../http.js";
 import { getServiceRoleSupabase, normalizeSupabaseError } from "../../supabase-client.js";
 
-import { assertAgentInWorkspace } from "./agent-helpers.js";
+import { assertAgentInWorkspace, workspaceAgentIds } from "./agent-helpers.js";
 import { booleanArg, jsonOutput, scheduleArg, scheduledTaskIdArg, stringArg } from "./shared.js";
 
 export const SCHEDULED_TASK_SELECT =
@@ -65,6 +65,22 @@ export async function createScheduledTask(
   const { data, error } = await supabase.from("scheduled_task").insert(insert).select(SCHEDULED_TASK_SELECT).single();
   if (error) throw normalizeSupabaseError("scheduled_task insert", error);
   return { status: 201, output: jsonOutput({ scheduledTask: data }) };
+}
+
+export async function listScheduledTasks(args: Record<string, unknown>, workspaceId: string) {
+  const agentId = stringArg(args, "agentId") || stringArg(args, "agent_id");
+  const agentIds = agentId ? [agentId] : await workspaceAgentIds(workspaceId);
+  if (agentId) await assertAgentInWorkspace(agentId, workspaceId);
+  if (agentIds.length === 0) return { status: 200, output: jsonOutput({ scheduledTasks: [] }) };
+
+  const supabase = getServiceRoleSupabase();
+  const { data, error } = await supabase
+    .from("scheduled_task")
+    .select(SCHEDULED_TASK_SELECT)
+    .in("agent_id", agentIds)
+    .order("created_at", { ascending: false });
+  if (error) throw normalizeSupabaseError("scheduled_task query", error);
+  return { status: 200, output: jsonOutput({ scheduledTasks: data ?? [] }) };
 }
 
 export async function updateScheduledTask(args: Record<string, unknown>, workspaceId: string) {
