@@ -7,12 +7,11 @@ import type { ToolExecutionContext } from "./tool-execution-client.js";
 import { memoryResultTokenCount, retrieveRelevantMemories } from "./learning/memory-retriever.js";
 import { isLearningEnabledForAgent } from "./learning/settings.js";
 import { appendToolExamples } from "./database-tool-executor/tool-examples.js";
-import { assertAgentInWorkspace, workspaceAgentIds } from "./database-tool-executor/agent-helpers.js";
 import {
   createScheduledTask,
   deleteScheduledTask,
   getScheduledTaskForWorkspace,
-  SCHEDULED_TASK_SELECT,
+  listScheduledTasks,
   updateScheduledTask,
 } from "./database-tool-executor/scheduled-tasks.js";
 import { listRoutingRules, readRoutingRuleTool, updateRoutingRule } from "./database-tool-executor/routing-rules.js";
@@ -111,18 +110,7 @@ export async function executeDatabaseTool(
     }
 
     case "scheduled_task.list": {
-      const agentId = stringArg(args, "agentId") || stringArg(args, "agent_id");
-      const supabase = getServiceRoleSupabase();
-      const agentIds = agentId ? [agentId] : await workspaceAgentIds(workspaceId);
-      if (agentId) await assertAgentInWorkspace(agentId, workspaceId);
-      if (agentIds.length === 0) return { status: 200, output: jsonOutput({ scheduledTasks: [] }) };
-      const { data, error } = await supabase
-        .from("scheduled_task")
-        .select(SCHEDULED_TASK_SELECT)
-        .in("agent_id", agentIds)
-        .order("created_at", { ascending: false });
-      if (error) throw normalizeSupabaseError("scheduled_task query", error);
-      return { status: 200, output: jsonOutput({ scheduledTasks: data ?? [] }) };
+      return listScheduledTasks(args, workspaceId);
     }
 
     case "routing_rule.list":
