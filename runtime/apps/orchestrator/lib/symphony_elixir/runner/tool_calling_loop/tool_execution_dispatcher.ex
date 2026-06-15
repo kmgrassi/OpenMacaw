@@ -6,7 +6,7 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
   alias SymphonyElixir.LocalRelay.Registry
   alias SymphonyElixir.Runner.Contract
   alias SymphonyElixir.Runner.ToolCallingLoop.ToolCallNormalization
-  alias SymphonyElixir.{ToolAdapter, ToolRegistry}
+  alias SymphonyElixir.{ToolAdapter, ToolExecutionContext, ToolRegistry}
 
   @spec dispatch_cloud(session :: map(), config :: map(), state :: map(), raw_tool_calls :: [map()]) ::
           {:ok, map()} | {:error, term()}
@@ -91,15 +91,7 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
   def normalize_direct_tool_result(output), do: %{"success" => true, "output" => to_string(output)}
 
   @spec runtime_context(map()) :: map()
-  def runtime_context(session) do
-    %{
-      "agent_id" => session_context_value(session, :agent_id),
-      "workspace_id" => session_context_value(session, :workspace_id),
-      "user_id" => session_context_value(session, :user_id),
-      "session_id" => session_context_value(session, :session_id) || get_in(session, [:dispatch_frame, "session_id"])
-    }
-    |> reject_nil_values()
-  end
+  def runtime_context(session), do: ToolExecutionContext.from_session(session)
 
   @spec emit_event(map(), map()) :: term()
   def emit_event(%{on_message: on_message}, event) when is_function(on_message, 1) do
@@ -133,7 +125,7 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
         "correlation_id" => correlation_id,
         "tool_call_id" => call.id,
         "name" => call.name,
-        "arguments" => inject_runtime_context(call.arguments, tool, session),
+        "arguments" => ToolExecutionContext.inject_arguments(call.arguments, tool, runtime_context(session)),
         "execution_kind" => ToolCallNormalization.map_value(tool, :execution_kind),
         "execution_config" => ToolCallNormalization.map_value(tool, :execution_config) || %{},
         # Bound the helper command to the same window we will wait below, so a
@@ -291,41 +283,6 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
     |> Map.put_new("name", call.name)
   end
 
-  defp inject_runtime_context(arguments, tool, session) when is_map(arguments) do
-    declared_properties = tool |> parameter_properties() |> MapSet.new()
-    context = runtime_context(session)
-
-    arguments
-    |> put_declared_context(declared_properties, "agentId", Map.get(context, "agent_id"))
-    |> put_declared_context(declared_properties, "agent_id", Map.get(context, "agent_id"))
-    |> put_declared_context(declared_properties, "workspaceId", Map.get(context, "workspace_id"))
-    |> put_declared_context(declared_properties, "workspace_id", Map.get(context, "workspace_id"))
-    |> put_declared_context(declared_properties, "userId", Map.get(context, "user_id"))
-    |> put_declared_context(declared_properties, "user_id", Map.get(context, "user_id"))
-    |> put_declared_context(declared_properties, "sessionId", Map.get(context, "session_id"))
-    |> put_declared_context(declared_properties, "session_id", Map.get(context, "session_id"))
-  end
-
-  defp inject_runtime_context(arguments, _tool, _session), do: arguments
-
-  defp put_declared_context(arguments, declared_properties, key, value) do
-    cond do
-      is_nil(value) -> arguments
-      !MapSet.member?(declared_properties, key) -> arguments
-      Map.has_key?(arguments, key) -> arguments
-      true -> Map.put(arguments, key, value)
-    end
-  end
-
-  defp parameter_properties(tool) do
-    parameters = ToolCallNormalization.map_value(tool, :parameters_schema) || ToolCallNormalization.map_value(tool, :parameters) || %{}
-
-    case ToolCallNormalization.map_value(parameters, :properties) do
-      properties when is_map(properties) -> Map.keys(properties)
-      _ -> []
-    end
-  end
-
   defp invalid_tool_result(call, message), do: %{"type" => "tool_call_result", "tool_call_id" => call.id, "success" => false, "output" => message}
 
   defp failed_tool_result(call, reason) do
@@ -375,13 +332,6 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
 
   defp monotonic_ms, do: System.monotonic_time(:millisecond)
   defp stringify_keys(map) when is_map(map), do: Map.new(map, fn {key, value} -> {to_string(key), value} end)
-
-  defp session_context_value(session, key) do
-    metadata = Map.get(session, :metadata) || %{}
-    profile = Map.get(session, :execution_profile) || Map.get(session, "execution_profile") || %{}
-
-    map_value(session, key) || map_value(metadata, key) || map_value(profile, key)
-  end
 
   defp map_value(map, key) when is_map(map), do: Map.get(map, key) || Map.get(map, to_string(key))
   defp map_value(_map, _key), do: nil

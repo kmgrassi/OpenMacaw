@@ -5,7 +5,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
 
   @behaviour SymphonyElixir.Runner
 
-  alias SymphonyElixir.{AgentInventory, Attention, Cutover, MessageHistory, ToolRegistry, WorkItem}
+  alias SymphonyElixir.{AgentInventory, Attention, Cutover, MessageHistory, ToolExecutionContext, ToolRegistry, WorkItem}
   alias SymphonyElixir.LocalRelay.Registry, as: LocalRelayRegistry
   alias SymphonyElixir.AgentInventory.StoredCredential
   alias SymphonyElixir.Manager.Prompt, as: ManagerPrompt
@@ -288,7 +288,8 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
       "name" => tool,
       "arguments" => arguments,
       "execution_kind" => "helper",
-      "timeout_ms" => timeout_ms
+      "timeout_ms" => timeout_ms,
+      "context" => tool_execution_context(session)
     }
 
     case LocalRelayRegistry.send_tool_execution_request(correlation_id, frame) do
@@ -331,7 +332,12 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   defp encode_tool_output(output), do: to_string(output)
 
   defp execute_runtime_tool(tool, arguments, session) do
-    case ToolRegistry.execute(tool, arguments, %{session: session}, Map.get(session, :allowed_tools, [])) do
+    context =
+      session
+      |> tool_execution_context()
+      |> Map.put("session", session)
+
+    case ToolRegistry.execute(tool, arguments, context, Map.get(session, :allowed_tools, [])) do
       {:ok, %{output: output} = result} ->
         %{
           "success" => true,
@@ -353,6 +359,8 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
         }
     end
   end
+
+  defp tool_execution_context(session), do: ToolExecutionContext.from_session(session)
 
   defp error_code(:not_allowed), do: "not_allowed"
   defp error_code(:unknown_tool), do: "unknown_tool"

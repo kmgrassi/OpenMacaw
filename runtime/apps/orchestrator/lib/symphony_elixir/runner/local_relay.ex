@@ -13,6 +13,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   alias SymphonyElixir.LocalRelay.Handlers.HelperManaged
   alias SymphonyElixir.Runner.Observability
   alias SymphonyElixir.Runner.ToolCallingLoop
+  alias SymphonyElixir.ToolExecutionContext
   alias SymphonyElixir.ToolSpec
 
   @default_target_runner_kind "openai_compatible"
@@ -95,7 +96,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
             tool_loop_config(session)
           )
         else
-          run_helper_managed_session(session, frame, correlation_id)
+          run_helper_managed_session(session, frame, correlation_id, work_item)
         end
       else
         {:error, :local_runtime_offline} -> {:error, {:retryable, :local_runtime_offline}}
@@ -139,7 +140,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
     error in Map.values(@error_codes)
   end
 
-  defp run_helper_managed_session(session, frame, correlation_id) do
+  defp run_helper_managed_session(session, frame, correlation_id, work_item) do
     Session.run_turn(
       %{
         workspace_id: session.workspace_id,
@@ -148,7 +149,8 @@ defmodule SymphonyElixir.Runner.LocalRelay do
         correlation_id: correlation_id,
         timeout_ms: session.timeout_ms,
         on_message: session.on_message,
-        tool_definitions: session.metadata.tool_definitions
+        tool_definitions: session.metadata.tool_definitions,
+        tool_execution_context: runtime_context(session, work_item)
       },
       HelperManaged
     )
@@ -398,13 +400,12 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   end
 
   defp runtime_context(session, work_item) do
-    %{
-      "agent_id" => session.agent_id || work_item_agent_id(work_item),
-      "workspace_id" => session.workspace_id,
-      "user_id" => Map.get(session, :user_id),
-      "session_id" => Map.get(session, :session_id) || work_item_session_id(work_item)
-    }
-    |> reject_nil_values()
+    ToolExecutionContext.from_session(session, %{
+      agent_id: session.agent_id || work_item_agent_id(work_item),
+      workspace_id: session.workspace_id,
+      user_id: Map.get(session, :user_id),
+      session_id: Map.get(session, :session_id) || work_item_session_id(work_item)
+    })
   end
 
   defp normalize_tool_definitions(tools) when is_list(tools) do

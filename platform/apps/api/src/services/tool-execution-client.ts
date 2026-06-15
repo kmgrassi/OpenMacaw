@@ -27,8 +27,11 @@ export type ToolExecutionContext = {
   workspaceId?: string | null;
   userId?: string | null;
   sessionId?: string | null;
+  requestId?: string | null;
+  traceId?: string | null;
   executionTarget?: RuntimeExecutionTarget | null;
   workspaceRoot?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 function parseToolArguments(argumentsJson: string): unknown {
@@ -53,6 +56,34 @@ function putIfDeclared(
 ) {
   if (!value || !declaredProperties.has(key) || args[key] !== undefined) return;
   args[key] = value;
+}
+
+function nonEmpty(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+export function normalizeToolExecutionContext(context?: ToolExecutionContext | null): ToolExecutionContext {
+  const normalized: ToolExecutionContext = {};
+  const agentId = nonEmpty(context?.agentId);
+  const workspaceId = nonEmpty(context?.workspaceId);
+  const userId = nonEmpty(context?.userId);
+  const sessionId = nonEmpty(context?.sessionId);
+  const requestId = nonEmpty(context?.requestId);
+  const traceId = nonEmpty(context?.traceId);
+  const workspaceRoot = nonEmpty(context?.workspaceRoot);
+
+  if (agentId) normalized.agentId = agentId;
+  if (workspaceId) normalized.workspaceId = workspaceId;
+  if (userId) normalized.userId = userId;
+  if (sessionId) normalized.sessionId = sessionId;
+  if (requestId) normalized.requestId = requestId;
+  if (traceId) normalized.traceId = traceId;
+  if (context?.executionTarget) normalized.executionTarget = context.executionTarget;
+  if (workspaceRoot) normalized.workspaceRoot = workspaceRoot;
+  if (context?.metadata && typeof context.metadata === "object") normalized.metadata = context.metadata;
+
+  return normalized;
 }
 
 export function injectToolExecutionContext(
@@ -97,17 +128,18 @@ export async function executeToolCall(
   const startedAt = Date.now();
   const config = loadToolExecutionConfig();
   const timeoutMs = options.timeoutMs ?? config.toolExecutionTimeoutMs;
+  const context = normalizeToolExecutionContext(options.context);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const parsedArguments = parseToolArguments(toolCall.function.arguments);
-    const scopedArguments = injectToolExecutionContext(parsedArguments, tool, options.context);
+    const scopedArguments = injectToolExecutionContext(parsedArguments, tool, context);
     if (isLocalRepoToolSlug(tool.slug)) {
       const result = await executeLocalRepoTool({
         toolSlug: tool.slug,
         argumentsValue: scopedArguments,
-        workspaceRoot: options.context?.workspaceRoot,
+        workspaceRoot: context.workspaceRoot,
       });
       return {
         ok: true,
@@ -118,7 +150,7 @@ export async function executeToolCall(
     }
 
     if (isDatabaseTool(tool)) {
-      const result = await executeDatabaseTool(tool, scopedArguments, options.context);
+      const result = await executeDatabaseTool(tool, scopedArguments, context);
       return {
         ok: true,
         status: result.status,
@@ -154,8 +186,8 @@ export async function executeToolCall(
         arguments: scopedArguments,
         executionKind: tool.executionKind,
         runnerKind: tool.runnerKind,
-        context: options.context,
-        executionTarget: options.context?.executionTarget ?? null,
+        context,
+        executionTarget: context.executionTarget ?? null,
       }),
     });
 

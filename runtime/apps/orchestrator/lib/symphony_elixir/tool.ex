@@ -16,8 +16,8 @@ defmodule SymphonyElixir.Tool do
   @typedoc "Decoded JSON object supplied by the model."
   @type arguments :: map()
 
-  @typedoc "Runtime context supplied by the caller dispatching a tool."
-  @type context :: map()
+  @typedoc "Canonical runtime context supplied by the caller dispatching a tool."
+  @type context :: SymphonyElixir.ToolExecutionContext.t()
 
   @doc "Stable tool name used in model tool calls and allowlists."
   @callback name() :: String.t()

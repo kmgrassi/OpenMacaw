@@ -7,7 +7,7 @@ defmodule SymphonyElixir.ToolRegistry do
   `register/1` adds a VM-local overlay for tests and future additive tools.
   """
 
-  alias SymphonyElixir.{AgentInventory.Agent, PostgRESTClient, Supabase, ToolCall, ToolSpec}
+  alias SymphonyElixir.{AgentInventory.Agent, PostgRESTClient, Supabase, ToolCall, ToolExecutionContext, ToolSpec}
 
   @registered_modules_key {__MODULE__, :registered_modules}
   @register_lock {__MODULE__, :register}
@@ -164,7 +164,7 @@ defmodule SymphonyElixir.ToolRegistry do
 
       true ->
         case get(name) do
-          {:ok, module} -> dispatch(module, arguments, context)
+          {:ok, module} -> dispatch(module, arguments, ToolExecutionContext.normalize(context))
           :error -> {:error, :unknown_tool}
         end
     end
@@ -562,11 +562,14 @@ defmodule SymphonyElixir.ToolRegistry do
   end
 
   defp execution_context(opts) when is_list(opts) do
-    {Map.new(Keyword.drop(opts, [:allowed_tools])), Keyword.get(opts, :allowed_tools)}
+    {opts |> Keyword.drop([:allowed_tools]) |> Map.new() |> ToolExecutionContext.normalize(), Keyword.get(opts, :allowed_tools)}
   end
 
   defp execution_context(context) when is_map(context) do
-    {Map.drop(context, [:allowed_tools, "allowed_tools"]), Map.get(context, :allowed_tools) || Map.get(context, "allowed_tools")}
+    {
+      context |> Map.drop([:allowed_tools, "allowed_tools"]) |> ToolExecutionContext.normalize(),
+      Map.get(context, :allowed_tools) || Map.get(context, "allowed_tools")
+    }
   end
 
   defp normalize_arguments(arguments) when is_map(arguments), do: arguments
