@@ -40,7 +40,7 @@ func (r *Runner) dispatchWithTools(ctx context.Context, input runner.ChatComplet
 	}
 
 	messages := append([]runner.ChatMessage(nil), input.Messages...)
-	definitionsByName := toolDefinitionsByName(input.ToolDefinitions)
+	definitionsByName := toolDefinitionsByName(input.ToolDefinitions, input.ProviderToolSpecs)
 
 	usePromptFallback := false
 	for i := 0; i < maxIterations; i++ {
@@ -117,7 +117,7 @@ func (r *Runner) dispatchWithTools(ctx context.Context, input runner.ChatComplet
 			if input.ToolCallingMode != "helper_managed" || definition.ExecutionKind != "helper" {
 				runtimeToolCalls = append(runtimeToolCalls, runner.ToolCall{
 					ID:              call.ID,
-					Name:            call.Function.Name,
+					Name:            definition.Name,
 					Arguments:       args,
 					GrantProvenance: definition.GrantProvenance,
 				})
@@ -126,7 +126,7 @@ func (r *Runner) dispatchWithTools(ctx context.Context, input runner.ChatComplet
 			if err := emit(runner.ToolExecutionEvent{
 				Kind:            "tool.started",
 				ToolCallID:      call.ID,
-				Name:            call.Function.Name,
+				Name:            definition.Name,
 				Arguments:       args,
 				GrantProvenance: definition.GrantProvenance,
 			}); err != nil {
@@ -135,14 +135,14 @@ func (r *Runner) dispatchWithTools(ctx context.Context, input runner.ChatComplet
 
 			result := r.executeHelperTool(ctx, runner.ToolCallRequest{
 				ToolCallID: call.ID,
-				Name:       call.Function.Name,
+				Name:       definition.Name,
 				Arguments:  args,
 				Definition: &definition,
 			})
 			if err := emit(runner.ToolExecutionEvent{
 				Kind:            "tool.completed",
 				ToolCallID:      call.ID,
-				Name:            call.Function.Name,
+				Name:            definition.Name,
 				GrantProvenance: definition.GrantProvenance,
 				Result:          &result,
 			}); err != nil {
@@ -365,9 +365,18 @@ func parseJSONPromptToolCalls(content string) []runner.ProviderToolCall {
 }
 
 var (
-	taggedFunctionRE  = regexp.MustCompile(`(?s)<function=([A-Za-z0-9_.-]+)>\s*(.*?)\s*</function>`)
-	taggedParameterRE = regexp.MustCompile(`(?s)<parameter=([A-Za-z0-9_.-]+)>\s*(.*?)\s*</parameter>`)
+	providerToolNameUnsafeRE = regexp.MustCompile(`[^a-zA-Z0-9_-]`)
+	taggedFunctionRE         = regexp.MustCompile(`(?s)<function=([A-Za-z0-9_.-]+)>\s*(.*?)\s*</function>`)
+	taggedParameterRE        = regexp.MustCompile(`(?s)<parameter=([A-Za-z0-9_.-]+)>\s*(.*?)\s*</parameter>`)
 )
+
+func safeProviderToolName(toolName string) string {
+	name := providerToolNameUnsafeRE.ReplaceAllString(toolName, "_")
+	if len(name) > 64 {
+		return name[:64]
+	}
+	return name
+}
 
 func parseTaggedPromptToolCalls(content string) []runner.ProviderToolCall {
 	matches := taggedFunctionRE.FindAllStringSubmatch(strings.TrimSpace(content), -1)
@@ -426,18 +435,44 @@ func parseTaggedParameterValue(raw string) any {
 	}
 }
 
-func toolDefinitionsByName(definitions []runner.ToolDefinition) map[string]runner.ToolDefinition {
+func toolDefinitionsByName(definitions []runner.ToolDefinition, providerSpecs []runner.ToolSpec) map[string]runner.ToolDefinition {
 	definitionsByName := make(map[string]runner.ToolDefinition, len(definitions))
-	for _, definition := range definitions {
+	expectedProviderNames := providerToolNames(definitions)
+
+	for index, definition := range definitions {
 		definitionsByName[definition.Name] = definition
+		if index < len(providerSpecs) {
+			providerName := providerSpecs[index].Function.Name
+			if providerName != "" && index < len(expectedProviderNames) && providerName == expectedProviderNames[index] {
+				definitionsByName[providerName] = definition
+			}
+		}
 	}
 	return definitionsByName
+}
+
+func providerToolNames(definitions []runner.ToolDefinition) []string {
+	names := make([]string, 0, len(definitions))
+	seen := map[string]bool{}
+
+	for _, definition := range definitions {
+		baseName := safeProviderToolName(definition.Name)
+		providerName := baseName
+		for index := 0; seen[providerName]; index++ {
+			providerName = fmt.Sprintf("%s_%d", baseName, index+1)
+		}
+		seen[providerName] = true
+		names = append(names, providerName)
+	}
+
+	return names
 }
 
 func canonicalToolCalls(providerCalls []runner.ProviderToolCall, definitionsByName map[string]runner.ToolDefinition) ([]runner.ToolCall, error) {
 	calls := make([]runner.ToolCall, 0, len(providerCalls))
 	for _, providerCall := range providerCalls {
-		if _, ok := definitionsByName[providerCall.Function.Name]; !ok {
+		definition, ok := definitionsByName[providerCall.Function.Name]
+		if !ok {
 			return nil, &runner.Error{Kind: runner.ErrorKindInvalidInput, Message: fmt.Sprintf("tool %q is not defined", providerCall.Function.Name)}
 		}
 		args, err := decodeToolArguments(providerCall.Function.Arguments)
@@ -446,7 +481,7 @@ func canonicalToolCalls(providerCalls []runner.ProviderToolCall, definitionsByNa
 		}
 		calls = append(calls, runner.ToolCall{
 			ID:        providerCall.ID,
-			Name:      providerCall.Function.Name,
+			Name:      definition.Name,
 			Arguments: args,
 		})
 	}

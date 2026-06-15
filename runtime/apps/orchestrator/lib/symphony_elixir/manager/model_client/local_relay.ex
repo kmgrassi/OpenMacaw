@@ -11,6 +11,7 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
 
   alias SymphonyElixir.LocalRelay.{ProtocolExtensions, Registry, Session}
   alias SymphonyElixir.LocalRelay.Handlers.RuntimeManaged
+  alias SymphonyElixir.Planner.ToolNameMapping
   alias SymphonyElixir.Runner.Observability
   alias SymphonyElixir.{ToolRegistry, ToolSpec}
 
@@ -60,6 +61,7 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
     # local-relay managers in LlmToolRunner.start_session, so the helper sees
     # which tools to delegate and LlmToolRunner.execute_tool agrees.
     tool_definitions = Map.get(session, :tool_specs, ToolRegistry.specs(allowed_tools))
+    provider_tool_name_map = ToolNameMapping.runtime_to_provider(allowed_tools)
 
     %{
       "type" => "dispatch",
@@ -77,7 +79,11 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
       "work_item" => work_item_context(work_item),
       "capability_requirements" => capability_requirements(session),
       "tool_definitions" => tool_definitions,
-      "provider_tool_specs" => ToolSpec.to_provider_format(tool_definitions, :openai_compatible),
+      "provider_tool_specs" =>
+        tool_definitions
+        |> ToolSpec.to_provider_format(:openai_compatible)
+        |> Enum.map(&ToolNameMapping.put_provider_tool_name(&1, provider_tool_name_map)),
+      "provider_tool_name_map" => provider_tool_name_map,
       "tool_frame_types" => ProtocolExtensions.tool_frame_types(),
       "tool_calling_mode" => "runtime_managed",
       "metadata" => %{"runner" => "manager"}

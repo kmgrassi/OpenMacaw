@@ -86,7 +86,8 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
                        "tool_definitions" => tool_definitions
                      }}
 
-    assert Enum.map(provider_tool_specs, &get_in(&1, ["function", "name"])) == tool_names()
+    assert Enum.map(provider_tool_specs, &get_in(&1, ["function", "name"])) ==
+             Enum.map(tool_names(), &String.replace(&1, ".", "_"))
 
     # git.run is marked for helper-side execution so the relay helper runs
     # git/gh on the user's machine; other manager tools stay runtime-executed.
