@@ -244,6 +244,61 @@ func TestDispatchRuntimeManagedMapsProviderSafeToolNameToRuntimeName(t *testing.
 	}
 }
 
+func TestDispatchRuntimeManagedMapsCollisionSuffixedProviderToolName(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"call_task","type":"function","function":{"name":"task_create_1","arguments":"{\"name\":\"Follow up\"}"}}]},"finish_reason":"tool_calls"}]}`))
+	}))
+	defer server.Close()
+
+	r, err := New(Config{Endpoint: server.URL + "/v1", Model: "local-model"})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	var events []any
+	err = r.Dispatch(context.Background(), runner.ChatCompletionInput{
+		Messages:        []runner.ChatMessage{{Role: "user", Content: "create task"}},
+		ToolCallingMode: "runtime_managed",
+		ProviderToolSpecs: []runner.ToolSpec{{
+			Type:     "function",
+			Function: runner.ToolFunction{Name: "task_create"},
+		}, {
+			Type:     "function",
+			Function: runner.ToolFunction{Name: "task_create_1"},
+		}},
+		ToolDefinitions: []runner.ToolDefinition{{
+			Name:             "task.create",
+			ParametersSchema: map[string]any{"type": "object"},
+			ExecutionKind:    "runtime",
+		}, {
+			Name:             "task_create",
+			ParametersSchema: map[string]any{"type": "object"},
+			ExecutionKind:    "runtime",
+		}},
+	}, func(event any) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+
+	event, ok := events[0].(runner.ToolCallRequestEvent)
+	if !ok {
+		t.Fatalf("event = %T, want ToolCallRequestEvent", events[0])
+	}
+	if len(event.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %#v, want one", event.ToolCalls)
+	}
+	call := event.ToolCalls[0]
+	if call.Name != "task_create" {
+		t.Fatalf("tool call name = %q, want task_create", call.Name)
+	}
+	if call.Arguments["name"] != "Follow up" {
+		t.Fatalf("arguments = %#v", call.Arguments)
+	}
+}
+
 func TestDispatchRuntimeManagedReturnsAbsentToolAsResult(t *testing.T) {
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

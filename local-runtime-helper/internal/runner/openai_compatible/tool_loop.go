@@ -437,16 +437,35 @@ func parseTaggedParameterValue(raw string) any {
 
 func toolDefinitionsByName(definitions []runner.ToolDefinition, providerSpecs []runner.ToolSpec) map[string]runner.ToolDefinition {
 	definitionsByName := make(map[string]runner.ToolDefinition, len(definitions))
+	expectedProviderNames := providerToolNames(definitions)
+
 	for index, definition := range definitions {
 		definitionsByName[definition.Name] = definition
 		if index < len(providerSpecs) {
 			providerName := providerSpecs[index].Function.Name
-			if providerName != "" && providerName == safeProviderToolName(definition.Name) {
+			if providerName != "" && index < len(expectedProviderNames) && providerName == expectedProviderNames[index] {
 				definitionsByName[providerName] = definition
 			}
 		}
 	}
 	return definitionsByName
+}
+
+func providerToolNames(definitions []runner.ToolDefinition) []string {
+	names := make([]string, 0, len(definitions))
+	seen := map[string]bool{}
+
+	for _, definition := range definitions {
+		baseName := safeProviderToolName(definition.Name)
+		providerName := baseName
+		for index := 0; seen[providerName]; index++ {
+			providerName = fmt.Sprintf("%s_%d", baseName, index+1)
+		}
+		seen[providerName] = true
+		names = append(names, providerName)
+	}
+
+	return names
 }
 
 func canonicalToolCalls(providerCalls []runner.ProviderToolCall, definitionsByName map[string]runner.ToolDefinition) ([]runner.ToolCall, error) {
