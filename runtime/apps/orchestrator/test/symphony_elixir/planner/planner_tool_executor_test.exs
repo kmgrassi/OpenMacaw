@@ -17,6 +17,11 @@ defmodule SymphonyElixir.Planner.PlannerToolExecutorTest do
              "workspace_id" => "workspace-1"
            }
 
+    assert PlannerToolExecutor.maybe_put_workspace_id(%{"agentId" => "agent-2"}, "agent_tool_grant.create", session) == %{
+             "agentId" => "agent-2",
+             "workspace_id" => "workspace-1"
+           }
+
     assert PlannerToolExecutor.maybe_put_workspace_id(%{"query" => "hi"}, "repo.search", session) == %{
              "query" => "hi"
            }

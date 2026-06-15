@@ -9,20 +9,19 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
   request context (the reflection-enqueue path runs after every agent
   run completes, not on behalf of an authenticated user).
 
-  ## Default-on, opt-out
+  ## Default-off, opt-in
 
   The platform service treats an absent row as "use column defaults"
-  (`learning_enabled = true`). This module mirrors that behavior:
-  `learning_enabled?/2` returns `{:ok, true}` when no row exists.
+  (`learning_enabled = false`). This module mirrors that behavior:
+  `learning_enabled?/2` returns `{:ok, false}` when no row exists.
 
   ## Fail-open on transient errors
 
   When the read fails (Supabase unreachable, schema not ready, etc.),
   `learning_enabled?/2` returns `{:error, reason}`. Callers should
   decide whether to fall open or closed; the `ReflectionDispatcher`
-  fails open with a warning log, matching the "memory enabled by
-  default" UX — a transient Supabase blip shouldn't silently disable
-  memory for the duration of the outage.
+  still fails open with a warning log so a transient Supabase blip does
+  not silently disable memory for already-enabled workspaces.
   """
 
   alias SymphonyElixir.{PostgRESTClient, Supabase, SupabaseSchema, Time}
@@ -55,10 +54,7 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
           {:ok, value}
 
         {:ok, []} ->
-          # No row = use column default. Mirrors the platform service's
-          # `projectSettings` fallback. New workspaces are
-          # learning-enabled without needing an insert.
-          {:ok, true}
+          {:ok, false}
 
         {:ok, _rows} ->
           {:error, :invalid_workspace_settings_response}
@@ -74,7 +70,8 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
   @spec max_concurrent_agents(String.t(), keyword()) :: {:ok, pos_integer()} | {:error, term()}
   def max_concurrent_agents(workspace_id, opts \\ [])
 
-  def max_concurrent_agents(workspace_id, opts) when is_binary(workspace_id) and workspace_id != "" do
+  def max_concurrent_agents(workspace_id, opts)
+      when is_binary(workspace_id) and workspace_id != "" do
     query = %{
       "workspace_id" => "eq.#{workspace_id}",
       "select" => "max_concurrent_agents",
@@ -106,7 +103,8 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
   def read(workspace_id, opts) when is_binary(workspace_id) and workspace_id != "" do
     query = %{
       "workspace_id" => "eq.#{workspace_id}",
-      "select" => "workspace_id,learning_enabled,tracker_kind,tracker_credential_id,max_concurrent_agents,updated_at,updated_by_user_id",
+      "select" =>
+        "workspace_id,learning_enabled,tracker_kind,tracker_credential_id,max_concurrent_agents,updated_at,updated_by_user_id",
       "limit" => "1"
     }
 
@@ -228,7 +226,8 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
 
   def delete(_workspace_id, _opts), do: {:error, :missing_workspace_id}
 
-  @spec update_tracker_kind(String.t(), String.t(), String.t() | nil, keyword()) :: {:ok, row()} | {:error, term()}
+  @spec update_tracker_kind(String.t(), String.t(), String.t() | nil, keyword()) ::
+          {:ok, row()} | {:error, term()}
   def update_tracker_kind(workspace_id, tracker_kind, credential_id, opts \\ [])
 
   def update_tracker_kind(workspace_id, tracker_kind, credential_id, opts)
@@ -238,10 +237,12 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
     end
   end
 
-  def update_tracker_kind(_workspace_id, _tracker_kind, _credential_id, _opts), do: {:error, :missing_workspace_id}
+  def update_tracker_kind(_workspace_id, _tracker_kind, _credential_id, _opts),
+    do: {:error, :missing_workspace_id}
 
   @doc false
-  def req_options, do: Application.get_env(:symphony_elixir, :workspace_settings_repository_req_options, [])
+  def req_options,
+    do: Application.get_env(:symphony_elixir, :workspace_settings_repository_req_options, [])
 
   @doc false
   def default_max_concurrent_agents, do: @default_max_concurrent_agents
@@ -296,7 +297,7 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
   defp default_row(workspace_id) do
     %{
       "workspace_id" => workspace_id,
-      "learning_enabled" => true,
+      "learning_enabled" => false,
       "tracker_kind" => "database",
       "tracker_credential_id" => nil,
       "max_concurrent_agents" => @default_max_concurrent_agents,
@@ -307,7 +308,8 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
   end
 
   defp normalize_read_row(row) do
-    with {:ok, max_concurrent_agents} <- validate_max_concurrent_agents(Map.get(row, "max_concurrent_agents")) do
+    with {:ok, max_concurrent_agents} <-
+           validate_max_concurrent_agents(Map.get(row, "max_concurrent_agents")) do
       {:ok,
        row
        |> Map.put("max_concurrent_agents", max_concurrent_agents)
@@ -355,7 +357,11 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
         Map.put(errors, "learning_enabled", "must be a boolean")
 
       {"tracker_kind", value}, errors when value not in @supported_tracker_kinds ->
-        Map.put(errors, "tracker_kind", "must be one of #{Enum.join(@supported_tracker_kinds, ", ")}")
+        Map.put(
+          errors,
+          "tracker_kind",
+          "must be one of #{Enum.join(@supported_tracker_kinds, ", ")}"
+        )
 
       {"tracker_credential_id", value}, errors ->
         if is_nil(value) or uuid?(value) do
@@ -366,8 +372,11 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
 
       {"max_concurrent_agents", value}, errors ->
         case validate_max_concurrent_agents(value) do
-          {:ok, _value} -> errors
-          {:error, reason} -> Map.put(errors, "max_concurrent_agents", format_max_concurrent_agents_error(reason))
+          {:ok, _value} ->
+            errors
+
+          {:error, reason} ->
+            Map.put(errors, "max_concurrent_agents", format_max_concurrent_agents_error(reason))
         end
 
       _field, errors ->
@@ -405,19 +414,25 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
     {:error, {:invalid_max_concurrent_agents, value, :below_minimum, 1}}
   end
 
-  defp validate_max_concurrent_agents(value) when is_integer(value) and value > @max_concurrent_agents_hard_limit do
-    {:error, {:invalid_max_concurrent_agents, value, :above_maximum, @max_concurrent_agents_hard_limit}}
+  defp validate_max_concurrent_agents(value)
+       when is_integer(value) and value > @max_concurrent_agents_hard_limit do
+    {:error,
+     {:invalid_max_concurrent_agents, value, :above_maximum, @max_concurrent_agents_hard_limit}}
   end
 
   defp validate_max_concurrent_agents(value) do
     {:error, {:invalid_max_concurrent_agents, value, :not_integer}}
   end
 
-  defp format_max_concurrent_agents_error({:invalid_max_concurrent_agents, _value, :below_minimum, minimum}) do
+  defp format_max_concurrent_agents_error(
+         {:invalid_max_concurrent_agents, _value, :below_minimum, minimum}
+       ) do
     "must be greater than or equal to #{minimum}"
   end
 
-  defp format_max_concurrent_agents_error({:invalid_max_concurrent_agents, _value, :above_maximum, maximum}) do
+  defp format_max_concurrent_agents_error(
+         {:invalid_max_concurrent_agents, _value, :above_maximum, maximum}
+       ) do
     "must be less than or equal to #{maximum}"
   end
 
@@ -438,7 +453,10 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
 
   defp table(opts) do
     opts_config = normalize_config(Keyword.get(opts, :config, []))
-    app_config = normalize_config(Application.get_env(:symphony_elixir, :workspace_settings_repository, []))
+
+    app_config =
+      normalize_config(Application.get_env(:symphony_elixir, :workspace_settings_repository, []))
+
     Map.get(opts_config, :table) || Map.get(app_config, :table) || @table
   end
 

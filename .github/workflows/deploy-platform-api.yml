@@ -144,6 +144,25 @@ jobs:
 
           echo "$CONFIG_JSON" | jq -e '.terraform_backend and .terraform_vars' >/dev/null
 
+          if [[ "$DEPLOY_ENVIRONMENT" == "production" ]]; then
+            jq -e '
+              (.terraform_vars.supabase_service_role_key_ssm_arn // "" | length) > 0 and
+              (.terraform_vars.openai_api_key_ssm_arn // "" | length) > 0 and
+              (.terraform_vars.learning_distillation_model // "" | length) > 0 and
+              (.terraform_vars.learning_embedding_model // "" | length) > 0
+            ' <<<"$CONFIG_JSON" >/dev/null || {
+              printf '%s\n' \
+                "Production platform-api deploy config is missing learning sidecar settings." \
+                "Required terraform_vars:" \
+                "  - supabase_service_role_key_ssm_arn" \
+                "  - openai_api_key_ssm_arn" \
+                "  - learning_distillation_model" \
+                "  - learning_embedding_model" \
+                "Reflection still requires a stored provider credential in the target workspace." >&2
+              exit 1
+            }
+          fi
+
           jq -r '.terraform_backend | to_entries[] |
             if (.value | type) == "boolean" or (.value | type) == "number" then
               "\(.key) = \(.value)"

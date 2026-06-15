@@ -114,12 +114,6 @@ export async function setSystemAgentToolGrant(input: {
     (await listAgentToolGrantRows({ agentId: input.agentId, workspaceId: input.workspaceId })).find(
       (grant) => grant.tool_id === tool.id,
     ) ?? null;
-  if (input.operation === "create" && existingGrant) {
-    throw new ApiRouteError(409, "agent_tool_grant_exists", "A grant row already exists for this agent and tool");
-  }
-  if (input.operation === "update" && !existingGrant) {
-    throw new ApiRouteError(404, "agent_tool_grant_not_found", "No grant row exists for this agent and tool");
-  }
   if (existingGrant?.source === "system" && existingGrant.mode === input.mode) {
     throw new ApiRouteError(
       409,
@@ -127,6 +121,12 @@ export async function setSystemAgentToolGrant(input: {
       "This system grant was already applied; escalate instead of repeating the same grant",
       { agentId: input.agentId, toolId: tool.id, mode: input.mode },
     );
+  }
+  if (input.operation === "create" && existingGrant) {
+    throw new ApiRouteError(409, "agent_tool_grant_exists", "A grant row already exists for this agent and tool");
+  }
+  if (input.operation === "update" && !existingGrant) {
+    throw new ApiRouteError(404, "agent_tool_grant_not_found", "No grant row exists for this agent and tool");
   }
 
   const rows = await upsertAgentToolGrantRow({

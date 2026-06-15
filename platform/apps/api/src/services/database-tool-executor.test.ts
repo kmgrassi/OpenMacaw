@@ -375,7 +375,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     });
   });
 
-  it("backs off when the same system grant already exists", async () => {
+  it("backs off when create repeats the same system grant", async () => {
     tables.agent_tool_grant?.push({
       id: "grant-system-existing",
       agent_id: targetAgentId,
@@ -388,11 +388,10 @@ describe("executeDatabaseTool scheduled_task tools", () => {
 
     await expect(
       executeDatabaseTool(
-        scheduledTaskTool("agent_tool_grant.update"),
+        scheduledTaskTool("agent_tool_grant.create"),
         {
           agentId: targetAgentId,
           toolSlug: "repo.read_file",
-          mode: "include",
           reason: "operability signature still recurs",
         },
         { workspaceId, agentId, sessionId: "grant-backoff-run" },

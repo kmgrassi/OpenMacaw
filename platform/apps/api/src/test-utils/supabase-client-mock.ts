@@ -215,6 +215,9 @@ class MockSupabaseQueryBuilder {
     if (this.table === "provider_cutover") {
       return `66666666-6666-4666-8666-${String(index).padStart(12, "0")}`;
     }
+    if (this.table === "scheduled_task") {
+      return `55555555-5555-4555-8555-${String(index).padStart(12, "0")}`;
+    }
     return `${this.table}-${index}`;
   }
 
@@ -278,6 +281,18 @@ export function createMockSupabaseClient(tables: TableMap) {
         const memberships = (tables.workspace_members ??= []);
         const existingMembership = memberships.find((row) => row.user_id === userId);
         if (existingMembership?.workspace_id) {
+          const workspaceSettings = (tables.workspace_settings ??= []);
+          if (!workspaceSettings.some((row) => row.workspace_id === existingMembership.workspace_id)) {
+            workspaceSettings.push({
+              workspace_id: existingMembership.workspace_id,
+              learning_enabled: false,
+              tracker_kind: "database",
+              tracker_credential_id: null,
+              max_concurrent_agents: 10,
+              updated_at: "2026-04-25T00:00:00.000Z",
+              updated_by_user_id: null,
+            });
+          }
           return Promise.resolve({ data: existingMembership.workspace_id, error: null });
         }
 
@@ -290,6 +305,16 @@ export function createMockSupabaseClient(tables: TableMap) {
           updated_at: "2026-04-25T00:00:00.000Z",
         };
         workspaces.push(workspace);
+        const workspaceSettings = (tables.workspace_settings ??= []);
+        workspaceSettings.push({
+          workspace_id: workspace.id,
+          learning_enabled: false,
+          tracker_kind: "database",
+          tracker_credential_id: null,
+          max_concurrent_agents: 10,
+          updated_at: "2026-04-25T00:00:00.000Z",
+          updated_by_user_id: null,
+        });
         memberships.push({
           workspace_id: workspace.id,
           user_id: userId,

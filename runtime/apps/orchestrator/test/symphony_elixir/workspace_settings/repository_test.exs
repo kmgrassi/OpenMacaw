@@ -30,12 +30,26 @@ defmodule SymphonyElixir.WorkspaceSettings.RepositoryTest do
     assert {:ok,
             %{
               "workspace_id" => "workspace-1",
-              "learning_enabled" => true,
+              "learning_enabled" => false,
               "tracker_kind" => "database",
               "tracker_credential_id" => nil,
               "max_concurrent_agents" => 10,
               "exists" => false
             }} = Repository.read("workspace-1")
+  end
+
+  test "learning_enabled? defaults to false when no row exists" do
+    Req.Test.stub(__MODULE__, fn conn ->
+      assert conn.method == "GET"
+      assert conn.request_path == "/rest/v1/workspace_settings"
+      assert URI.decode_query(conn.query_string)["select"] == "learning_enabled"
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, "[]")
+    end)
+
+    assert {:ok, false} = Repository.learning_enabled?("workspace-1")
   end
 
   test "max_concurrent_agents returns the default when no row exists" do
@@ -185,7 +199,8 @@ defmodule SymphonyElixir.WorkspaceSettings.RepositoryTest do
               "tracker_kind" => "linear",
               "tracker_credential_id" => ^credential_id,
               "exists" => true
-            }} = Repository.update_tracker_kind("workspace-1", "linear", credential_id, updated_by_user_id: "user-1")
+            }} =
+             Repository.update_tracker_kind("workspace-1", "linear", credential_id, updated_by_user_id: "user-1")
   end
 
   test "update_tracker_kind rejects invalid tracker values before writing" do
@@ -196,7 +211,11 @@ defmodule SymphonyElixir.WorkspaceSettings.RepositoryTest do
              Repository.update_tracker_kind("workspace-1", "github", nil)
 
     assert {:error, {:tracker_credential_not_supported, "database"}} =
-             Repository.update_tracker_kind("workspace-1", "database", "123e4567-e89b-12d3-a456-426614174000")
+             Repository.update_tracker_kind(
+               "workspace-1",
+               "database",
+               "123e4567-e89b-12d3-a456-426614174000"
+             )
   end
 
   test "delete removes the workspace settings row" do
@@ -208,7 +227,10 @@ defmodule SymphonyElixir.WorkspaceSettings.RepositoryTest do
 
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, Jason.encode!([%{"workspace_id" => "workspace-1", "learning_enabled" => false}]))
+      |> Plug.Conn.send_resp(
+        200,
+        Jason.encode!([%{"workspace_id" => "workspace-1", "learning_enabled" => false}])
+      )
     end)
 
     assert {:ok, %{"deleted" => true, "settings" => %{"workspace_id" => "workspace-1"}}} =
@@ -236,7 +258,10 @@ defmodule SymphonyElixir.WorkspaceSettings.RepositoryTest do
             }} =
              ToolRegistry.execute(
                "workspace_settings.manage",
-               %{"operation" => "upsert", "settings" => %{"learning_enabled" => false, "max_concurrent_agents" => 25}},
+               %{
+                 "operation" => "upsert",
+                 "settings" => %{"learning_enabled" => false, "max_concurrent_agents" => 25}
+               },
                %{workspace_id: "workspace-1", updated_by_user_id: "user-1"},
                ["workspace_settings.manage"]
              )

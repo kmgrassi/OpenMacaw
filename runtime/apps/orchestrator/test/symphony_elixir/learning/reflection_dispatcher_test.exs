@@ -24,11 +24,10 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcherTest do
 
       * `:enabled`   → `{:ok, true}` (memory on)
       * `:disabled`  → `{:ok, false}` (memory off)
-      * `:no_row`    → `{:ok, true}` (mirrors repo's "no row = default true")
+      * `:no_row`    → `{:ok, false}` (mirrors repo's "no row = default false")
       * `{:error, reason}` → returned verbatim (caller should fail open)
       * default      → `{:ok, true}` (same as :enabled — keeps existing
-                       tests' default behaviour aligned with the new
-                       opt-out semantics)
+                       tests' default behaviour explicit)
     """
     def learning_enabled?(workspace_id, opts) do
       test_pid = Application.fetch_env!(:symphony_elixir, :reflection_dispatcher_test_pid)
@@ -37,7 +36,7 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcherTest do
       case Application.get_env(:symphony_elixir, :reflection_dispatcher_test_workspace_setting) do
         :disabled -> {:ok, false}
         :enabled -> {:ok, true}
-        :no_row -> {:ok, true}
+        :no_row -> {:ok, false}
         {:error, _} = error -> error
         _ -> {:ok, true}
       end
@@ -58,7 +57,11 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcherTest do
 
   describe "workspace gate" do
     test "enqueues when workspace_settings.learning_enabled is true" do
-      Application.put_env(:symphony_elixir, :reflection_dispatcher_test_workspace_setting, :enabled)
+      Application.put_env(
+        :symphony_elixir,
+        :reflection_dispatcher_test_workspace_setting,
+        :enabled
+      )
 
       scope = %{workspace_id: "ws-1", agent_id: "agent-7"}
 
@@ -72,8 +75,12 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcherTest do
       assert_receive {:create_task, _payload, _opts}
     end
 
-    test "enqueues when no workspace_settings row exists (defaults to enabled)" do
-      Application.put_env(:symphony_elixir, :reflection_dispatcher_test_workspace_setting, :no_row)
+    test "skips enqueue when no workspace_settings row exists (defaults to disabled)" do
+      Application.put_env(
+        :symphony_elixir,
+        :reflection_dispatcher_test_workspace_setting,
+        :no_row
+      )
 
       scope = %{workspace_id: "ws-1", agent_id: "agent-7"}
 
@@ -83,11 +90,16 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcherTest do
                  workspace_settings: TestWorkspaceSettings
                )
 
-      assert_receive {:create_task, _payload, _opts}
+      assert_receive {:workspace_settings_read, "ws-1", _opts}
+      refute_received {:create_task, _, _}
     end
 
     test "skips enqueue when workspace_settings.learning_enabled is false" do
-      Application.put_env(:symphony_elixir, :reflection_dispatcher_test_workspace_setting, :disabled)
+      Application.put_env(
+        :symphony_elixir,
+        :reflection_dispatcher_test_workspace_setting,
+        :disabled
+      )
 
       scope = %{workspace_id: "ws-1", agent_id: "agent-7"}
 
@@ -123,7 +135,12 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcherTest do
 
   describe "payload shape (workspace gate on)" do
     setup do
-      Application.put_env(:symphony_elixir, :reflection_dispatcher_test_workspace_setting, :enabled)
+      Application.put_env(
+        :symphony_elixir,
+        :reflection_dispatcher_test_workspace_setting,
+        :enabled
+      )
+
       :ok
     end
 
@@ -144,7 +161,10 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcherTest do
       assert payload["workspace_id"] == "ws-1"
       assert payload["agent_id"] == "agent-7"
       assert payload["title"] == "Learning reflection"
-      assert payload["instructions"] == "Reflect on the completed agent run and extract durable workspace memory."
+
+      assert payload["instructions"] ==
+               "Reflect on the completed agent run and extract durable workspace memory."
+
       assert payload["enabled"] == true
       assert payload["timezone"] == "Etc/UTC"
       assert payload["next_run_at"] == "2026-05-18T12:00:00Z"
@@ -176,7 +196,12 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcherTest do
 
   describe "error swallowing (workspace gate on)" do
     setup do
-      Application.put_env(:symphony_elixir, :reflection_dispatcher_test_workspace_setting, :enabled)
+      Application.put_env(
+        :symphony_elixir,
+        :reflection_dispatcher_test_workspace_setting,
+        :enabled
+      )
+
       :ok
     end
 
@@ -230,7 +255,11 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcherTest do
     end
 
     test "skips enqueue when agent_id missing (workspace gate already passed)" do
-      Application.put_env(:symphony_elixir, :reflection_dispatcher_test_workspace_setting, :enabled)
+      Application.put_env(
+        :symphony_elixir,
+        :reflection_dispatcher_test_workspace_setting,
+        :enabled
+      )
 
       scope = %{workspace_id: "ws-1", agent_id: nil}
 
@@ -247,7 +276,11 @@ defmodule SymphonyElixir.Learning.ReflectionDispatcherTest do
 
   describe "scope key shapes" do
     test "reads scope fields from string-keyed maps too" do
-      Application.put_env(:symphony_elixir, :reflection_dispatcher_test_workspace_setting, :enabled)
+      Application.put_env(
+        :symphony_elixir,
+        :reflection_dispatcher_test_workspace_setting,
+        :enabled
+      )
 
       scope = %{"workspace_id" => "ws-1", "agent_id" => "agent-7"}
 

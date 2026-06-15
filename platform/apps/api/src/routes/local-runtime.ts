@@ -63,7 +63,7 @@ async function requireWorkspaceAccess(userId: string, workspaceId: string) {
   }
 }
 
-function assertDevOnlyLocalProbe() {
+function assertDevOnlyLocalProbe(_req: Request) {
   // Arbitrary endpoint probing only makes sense when the API server and the
   // model host share the same machine during local development. In production,
   // probing a user-supplied loopback URL turns into server-side localhost
@@ -164,7 +164,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
       bodySchema: LocalModelProbeRequestSchema,
       invalidBodyMessage: "Local runtime probe request is invalid",
       async handler({ req, res, body, userId }) {
-        assertDevOnlyLocalProbe();
+        assertDevOnlyLocalProbe(req);
         const workspaceId = requireWorkspaceId(req);
         await requireWorkspaceAccess(userId, workspaceId);
         return res.status(200).json(await probeLocalModel(body));

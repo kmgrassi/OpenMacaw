@@ -66,7 +66,7 @@ defmodule SymphonyElixir.ScheduledTask.Delivery do
          {:ok, instructions} <- required_string(task, "instructions"),
          {:ok, scheduled_task_id} <- required_string(task, "id"),
          {:ok, scheduled_task_run_id} <- required_string(run, "id") do
-      run_id = "scheduled_" <> scheduled_task_run_id
+      run_id = scheduled_task_run_id
       scheduled_for = string_value(run, "scheduled_for") || string_value(task, "next_run_at")
       source_work_item_id = string_value(task, "source_work_item_id")
 
@@ -108,7 +108,7 @@ defmodule SymphonyElixir.ScheduledTask.Delivery do
     with {:ok, workspace_id} <- workspace_id(task, opts),
          {:ok, scheduled_task_id} <- required_string(task, "id"),
          {:ok, scheduled_task_run_id} <- required_string(run, "id") do
-      run_id = "scheduled_" <> scheduled_task_run_id
+      run_id = scheduled_task_run_id
       delivery = delivery_map(task)
 
       payload =
@@ -120,8 +120,7 @@ defmodule SymphonyElixir.ScheduledTask.Delivery do
           "workspace_id" => workspace_id,
           "agent_id" => string_value(task, "agent_id"),
           "source_work_item_id" => string_value(task, "source_work_item_id"),
-          "scheduled_for" =>
-            string_value(run, "scheduled_for") || string_value(task, "next_run_at"),
+          "scheduled_for" => string_value(run, "scheduled_for") || string_value(task, "next_run_at"),
           "delivery" => delivery,
           "trace_id" => Keyword.get(opts, :trace_id)
         }
