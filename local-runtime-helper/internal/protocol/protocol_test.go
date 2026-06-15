@@ -181,6 +181,7 @@ func TestFrameRoundTrip(t *testing.T) {
 				ToolCallID:      "call_123",
 				Name:            "filesystem_read",
 				Arguments:       map[string]any{"path": "README.md"},
+				Context:         map[string]any{"workspace_id": "workspace_123", "agent_id": "agent_123"},
 				ExecutionKind:   "filesystem_read",
 				ExecutionConfig: map[string]any{"max_read_bytes": float64(1024)},
 			},

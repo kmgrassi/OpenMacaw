@@ -30,8 +30,8 @@ defmodule SymphonyElixir.LocalRelay.ProtocolExtensions do
     |> Map.put_new("schema_version", @schema_version)
   end
 
-  @spec tool_execution_request(String.t(), map(), map() | nil) :: map()
-  def tool_execution_request(correlation_id, tool_call, tool_definition \\ nil) when is_map(tool_call) do
+  @spec tool_execution_request(String.t(), map(), map() | nil, map()) :: map()
+  def tool_execution_request(correlation_id, tool_call, tool_definition \\ nil, context \\ %{}) when is_map(tool_call) do
     %{
       "type" => "tool_execution_request",
       "protocol" => @protocol_version,
@@ -40,7 +40,8 @@ defmodule SymphonyElixir.LocalRelay.ProtocolExtensions do
       "name" => string_value(tool_call, :name),
       "arguments" => map_value(tool_call, :arguments) || %{},
       "execution_kind" => tool_definition && string_value(tool_definition, :execution_kind),
-      "execution_config" => tool_definition && (map_value(tool_definition, :execution_config) || %{})
+      "execution_config" => tool_definition && (map_value(tool_definition, :execution_config) || %{}),
+      "context" => if(map_size(context) > 0, do: context)
     }
     |> reject_nil_values()
   end

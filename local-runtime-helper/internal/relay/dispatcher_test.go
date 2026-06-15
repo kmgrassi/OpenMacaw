@@ -32,6 +32,7 @@ func toolExecRequest(correlationID, toolCallID string) *protocol.ToolExecutionRe
 		ToolCallID:      toolCallID,
 		Name:            "git.run",
 		Arguments:       map[string]any{"argv": []any{"gh", "pr", "list"}},
+		Context:         map[string]any{"workspace_id": "workspace-1", "agent_id": "agent-1"},
 		ExecutionKind:   "helper",
 	}
 }
@@ -56,6 +57,9 @@ func TestHandleFrameExecutesDelegatedToolAndReturnsResult(t *testing.T) {
 
 	if exec.gotReq.Name != "git.run" || exec.gotReq.ToolCallID != "call-1" {
 		t.Fatalf("executor got %+v, want git.run / call-1", exec.gotReq)
+	}
+	if exec.gotReq.Context["workspace_id"] != "workspace-1" || exec.gotReq.Context["agent_id"] != "agent-1" {
+		t.Fatalf("executor context = %+v", exec.gotReq.Context)
 	}
 
 	frame, ok := sender.only(t).(*protocol.ToolCallResultFrame)

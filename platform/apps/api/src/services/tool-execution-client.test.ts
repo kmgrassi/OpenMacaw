@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { executeToolCall, injectToolExecutionContext } from "./tool-execution-client.js";
+import { executeToolCall, injectToolExecutionContext, normalizeToolExecutionContext } from "./tool-execution-client.js";
 import type { ToolDefinition } from "./tool-spec-translator.js";
 
 function toolWithParameters(parameters: Record<string, unknown>): ToolDefinition {
@@ -43,6 +43,28 @@ function legacyHttpTool(): ToolDefinition {
 }
 
 describe("injectToolExecutionContext", () => {
+  it("normalizes the formal tool execution context", () => {
+    expect(
+      normalizeToolExecutionContext({
+        agentId: " agent-1 ",
+        workspaceId: "workspace-1",
+        userId: "",
+        sessionId: null,
+        requestId: "request-1",
+        traceId: "trace-1",
+        workspaceRoot: " /tmp/workspace ",
+        metadata: { source: "test" },
+      }),
+    ).toEqual({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      requestId: "request-1",
+      traceId: "trace-1",
+      workspaceRoot: "/tmp/workspace",
+      metadata: { source: "test" },
+    });
+  });
+
   it("injects declared runtime context ids into tool arguments", () => {
     const tool = toolWithParameters({
       type: "object",
