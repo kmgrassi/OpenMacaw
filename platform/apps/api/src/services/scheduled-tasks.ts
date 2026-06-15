@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import type { PostgrestError } from "@supabase/supabase-js";
 
 import type {
@@ -343,7 +341,6 @@ export async function createScheduledTaskForWorkspace(params: {
   const timezone =
     request.timezone ?? (request.schedule.kind === "cron" ? request.schedule.timezone : undefined) ?? DEFAULT_TIMEZONE;
   const body: JsonRecord = {
-    id: randomUUID(),
     workspace_id: workspaceId,
     agent_id: request.agentId,
     source_work_item_id: request.sourceWorkItemId ?? null,

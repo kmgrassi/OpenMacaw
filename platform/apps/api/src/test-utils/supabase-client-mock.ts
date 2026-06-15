@@ -215,6 +215,9 @@ class MockSupabaseQueryBuilder {
     if (this.table === "provider_cutover") {
       return `66666666-6666-4666-8666-${String(index).padStart(12, "0")}`;
     }
+    if (this.table === "scheduled_task") {
+      return `55555555-5555-4555-8555-${String(index).padStart(12, "0")}`;
+    }
     return `${this.table}-${index}`;
   }
 
