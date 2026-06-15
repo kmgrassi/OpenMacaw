@@ -175,7 +175,9 @@ export function LocalRuntimeRegistrationCard({
           {!noneSelected && registration.registerError && (
             <span className="text-red-400">{registration.registerError}</span>
           )}
-          {registration.modelEnabled && registration.draftProbe && (
+          {registration.draftProbeAvailable &&
+            registration.modelEnabled &&
+            registration.draftProbe && (
             <span
               className={
                 registration.draftProbe.reachable &&
@@ -192,7 +194,7 @@ export function LocalRuntimeRegistrationCard({
           )}
         </div>
         <div className="flex items-center gap-2">
-          {registration.modelEnabled && (
+          {registration.draftProbeAvailable && registration.modelEnabled && (
             <Button
               size="sm"
               variant="secondary"

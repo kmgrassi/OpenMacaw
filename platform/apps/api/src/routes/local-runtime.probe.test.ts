@@ -12,16 +12,48 @@ vi.mock("../supabase-client.js", () => ({
 describe("local runtime route probes", () => {
   let closeServer = async () => {};
   let baseUrl = "";
+  let originalNodeEnv: string | undefined;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    originalNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = "development";
     const server = await createLocalRuntimeTestServer();
     closeServer = server.close;
     baseUrl = server.baseUrl;
   });
 
   afterEach(async () => {
+    process.env.NODE_ENV = originalNodeEnv;
     await closeServer();
+  });
+
+  it("rejects arbitrary endpoint probes outside development", async () => {
+    process.env.NODE_ENV = "production";
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(
+      createMockSupabaseClient({
+        workspaces: [{ id: workspaceId, owner_user_id: userId }],
+      }) as never,
+    );
+
+    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes/probe?workspaceId=${workspaceId}`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        endpoint: "http://127.0.0.1:11434/v1",
+        model: "qwen3-coder:30b",
+      }),
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "not_found",
+      },
+    });
   });
 
   it("rejects probe requests for workspaces the caller does not belong to", async () => {
