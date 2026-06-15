@@ -24,6 +24,14 @@ distillation has no route at all. Everything downstream of that edge (LLM
 reflection, embeddings, clustering, memory writes) is implemented and unit
 tested. This scope fixes the edge and the production config around it.
 
+It also closes a **content gap that matters more than the plumbing**: today the
+reflector reads only the chat `message` table, but the dominant production
+failures are **operability defects** — agents missing a tool, calling a tool
+with the wrong columns, DB rejections. That signal lives in
+`agent_tool_call_event`, which the reflector never reads. P6 below makes
+tool-call events first-class reflection input so the loop actually learns from
+the problems we're seeing, not just from conversational text.
+
 ## What was actually decided (clearing up "learning agent")
 
 There is no `learning` agent type and the design never called for one. Agent
@@ -258,6 +266,51 @@ env list covers both:
 - Add a dashboard / log query for learning-job HTTP status so a future 404 is
   visible immediately, not silent.
 
+### P6 — Feed tool-call events into reflection (operability learning) — **priority**
+
+Rationale: in practice the majority of run failures are tool/config defects —
+an agent lacks a granted tool, calls a tool with the wrong columns/arguments, or
+the DB rejects the call. None of that is reliably visible in the chat
+transcript, and the current reflector cannot surface it. The structured record
+already exists; we just need to read it and prompt for it.
+
+- **Widen the reflector's inputs.** In
+  [`services/learning/reflector.ts`](../../apps/api/src/services/learning/reflector.ts),
+  in addition to `loadRunMessages`, load this run's `agent_tool_call_event`
+  rows (by `run_id`) via the service-role client — the same table/columns
+  `agent-dashboard.ts` already queries: `tool_slug, status, arguments, result,
+  output_summary, error_code, error_message, approval_state, started_at`. No
+  migration — the table exists.
+- **Build a structured tool-call summary** alongside the chat transcript and
+  feed both to the model: each call's tool, status (esp. `error`/`denied`),
+  error code/message, and the argument shape. Redact values per the existing
+  "no secrets" rule; keep keys/shape so "called `scheduled_task.create` with a
+  non-existent `due_at` column" survives.
+- **Revise the reflection prompt**
+  ([`reflection-prompt.md`](../../apps/api/src/services/learning/reflection-prompt.md)).
+  Today it tells the model to *exclude* "transient status / process commentary,"
+  which actively suppresses tool-failure lessons. Add an explicit category for
+  **tool & configuration failures** (missing-tool, wrong-argument/column,
+  repeated DB rejection, denied-grant) and instruct the model to record them as
+  actionable memories. Tag these distinctly (e.g.
+  `tags: { kind: "operability", failure: "tool_call", tool_slug }`) so the
+  router/manager agents that *can* fix them (grant a tool, correct arg shape)
+  can retrieve them, and so they're separable from durable workspace facts.
+- **Don't let the ≤5-memory cap crowd them out.** Either give operability
+  memories a separate small budget within the run, or run tool-failure
+  extraction as its own concern so a chatty run can't starve the failure
+  lessons. Decide in the PR; recommend a separate budget over a second LLM call.
+- **(Stretch) cross-run aggregation.** A repeat offender — same `tool_slug` +
+  same `error_code` across many runs/agents — is the highest-value signal.
+  That's a distillation-style rollup over the new operability memories; note it
+  as a fast follow once per-run capture lands.
+- Tests: a reflector test with a run that has a failed `agent_tool_call_event`
+  (wrong-column DB error) asserting an operability-tagged memory is produced.
+
+This depends on P1 (jobs must actually reach the platform) but is otherwise
+independent of distillation, and given production experience it should land
+right after the core wiring fix.
+
 ## Out of scope (tracked elsewhere)
 
 - **Skill → PR bot** (Track D in the original PR plan): turning distilled skill
@@ -293,3 +346,7 @@ env list covers both:
    cross-repo drift check guards the contract.
 5. Learning is enabled for the internal workspace with the documented config,
    and there is a log/metric surface for learning-job HTTP status.
+6. Reflection ingests `agent_tool_call_event` and produces operability-tagged
+   memories for tool/config failures (missing tool, wrong column/argument, DB
+   rejection) — verified by a run with a real failed tool call yielding such a
+   memory.

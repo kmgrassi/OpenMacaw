@@ -122,7 +122,9 @@ In-flight work. Each entry should map to one or more open PRs.
   runtime↔platform break: the runtime POSTs `/api/learning/jobs/<kind>` but
   the platform only registers a reflection-only path, so reflection 404s and
   distillation has no route. Converges both repos on one endpoint that reuses
-  the existing dispatcher, plus prod config + rollout + verification.
+  the existing dispatcher, plus prod config + rollout + verification. Also adds
+  an operability track: feed `agent_tool_call_event` into reflection so the loop
+  learns from tool/config failures, not just chat transcripts.
 - [active/local-chat-deprecation-scope.md](active/local-chat-deprecation-scope.md)
   — Phase out `/local-chat` and route coding-agent local-model traffic
   through the Runtime relay path.
