@@ -72,6 +72,7 @@ function tables(): Record<string, Record<string, unknown>[]> {
         updated_at: "2026-05-18T10:00:00.000Z",
       },
     ],
+    agent_tool_call_event: [],
     memory_items: [],
   };
 }
@@ -145,6 +146,101 @@ describe("reflectRunToMemories", () => {
         sourceTaskId,
         embedding: "[0.1,0.2]",
         tags: { topic: "invoice-tests", source: "learning_reflection" },
+      }),
+    );
+  });
+
+  it("feeds failed tool-call events into reflection as operability memories", async () => {
+    const data = tables();
+    data.agent_tool_call_event = [
+      {
+        id: "99999999-9999-4999-8999-999999999991",
+        workspace_id: workspaceId,
+        agent_id: agentId,
+        run_id: sourceRunId,
+        tool_slug: "scheduled_task.create",
+        status: "error",
+        arguments: {
+          title: "Follow up",
+          due_at: "2026-05-19T12:00:00.000Z",
+          assignee: { agent_id: agentId },
+        },
+        result: { code: "PGRST204", details: { column: "due_at" } },
+        output_summary: "Database rejected scheduled_task.create.",
+        error_code: "PGRST204",
+        error_message: "Could not find the 'due_at' column of 'scheduled_task' in the schema cache",
+        approval_state: null,
+        started_at: "2026-05-18T11:57:00.000Z",
+      },
+    ];
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(data) as never);
+
+    const generateReflection = vi.fn(async () => ({
+      memories: [
+        {
+          content:
+            "scheduled_task.create failed with PGRST204 because the agent sent a due_at argument, but scheduled_task has no due_at column.",
+          importance: 9,
+          tags: { kind: "operability", failure: "tool_call", tool_slug: "scheduled_task.create" },
+        },
+      ],
+    }));
+    const createEmbedding = vi.fn(async () => "[0.3,0.4]");
+    const insertMemory = vi.fn(async (request) => ({
+      id: "88888888-8888-4888-8888-888888888889",
+      workspaceId: request.workspaceId,
+      agentId: request.agentId ?? null,
+      scope: request.scope,
+      content: request.content,
+      importance: request.importance,
+      eventTime: request.eventTime ?? "2026-05-18T12:00:00.000Z",
+      sourceRunId: request.sourceRunId ?? null,
+      sourceTaskId: request.sourceTaskId ?? null,
+      sourcePath: null,
+      tags: request.tags ?? {},
+      embedding: request.embedding ?? null,
+      canonicalId: null,
+      supersedesId: null,
+      isDeleted: false,
+      createdAt: "2026-05-18T12:00:00.000Z",
+      updatedAt: "2026-05-18T12:00:00.000Z",
+    }));
+
+    const result = await reflectRunToMemories({
+      sourceRunId,
+      sourceTaskId,
+      clients: { generateReflection, createEmbedding, insertMemory },
+    });
+
+    expect(result.memoriesWritten).toBe(1);
+    expect(generateReflection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transcript: expect.stringContaining("STRUCTURED TOOL-CALL EVENTS"),
+      }),
+    );
+    expect(generateReflection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transcript: expect.stringContaining("tool_slug: scheduled_task.create"),
+      }),
+    );
+    expect(generateReflection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transcript: expect.stringContaining('"due_at":"string"'),
+      }),
+    );
+    expect(generateReflection).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        transcript: expect.stringContaining("2026-05-19T12:00:00.000Z"),
+      }),
+    );
+    expect(insertMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tags: {
+          kind: "operability",
+          failure: "tool_call",
+          tool_slug: "scheduled_task.create",
+          source: "learning_reflection",
+        },
       }),
     );
   });
