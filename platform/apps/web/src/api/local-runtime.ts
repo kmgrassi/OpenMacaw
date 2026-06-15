@@ -187,28 +187,12 @@ export type AssignLocalRuntimeResponse = {
   model: string;
 };
 
-// ── Route constants ────────────────────────────────────────────────────
-
-export const LOCAL_RUNTIME_ROUTES = {
-  runtimes: localRuntimesRoute(),
-  machine: localRuntimeRoute,
-  probe: localRuntimeProbeRoute(),
-  runnerProbe: localRuntimeRunnerProbeRoute,
-  config: localRuntimeConfigRoute,
-  events: localRuntimeEventsRoute,
-  testDispatch: localRuntimeTestDispatchRoute,
-  rotateToken: localRuntimeRotateTokenRoute,
-} as const;
-
 // ── API functions ──────────────────────────────────────────────────────
 
 export async function listLocalRuntimes(
   workspaceId: string,
 ): Promise<LocalRuntimeListResponse> {
-  const response = await workspaceScopedFetch(
-    workspaceId,
-    LOCAL_RUNTIME_ROUTES.runtimes,
-  );
+  const response = await workspaceScopedFetch(workspaceId, localRuntimesRoute());
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
@@ -222,15 +206,11 @@ export async function registerLocalRuntime(
   workspaceId: string,
   input: RegisterLocalRuntimeInput,
 ): Promise<RegisterLocalRuntimeResponse> {
-  const response = await workspaceScopedFetch(
-    workspaceId,
-    LOCAL_RUNTIME_ROUTES.runtimes,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-    },
-  );
+  const response = await workspaceScopedFetch(workspaceId, localRuntimesRoute(), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
@@ -244,13 +224,9 @@ export async function removeLocalRuntime(
   workspaceId: string,
   machineId: string,
 ): Promise<void> {
-  const response = await workspaceScopedFetch(
-    workspaceId,
-    LOCAL_RUNTIME_ROUTES.machine(machineId),
-    {
-      method: "DELETE",
-    },
-  );
+  const response = await workspaceScopedFetch(workspaceId, localRuntimeRoute(machineId), {
+    method: "DELETE",
+  });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
@@ -263,15 +239,11 @@ export async function probeLocalModel(
   workspaceId: string,
   input: { endpoint: string; model: string },
 ): Promise<LocalModelProbeResponse> {
-  const response = await workspaceScopedFetch(
-    workspaceId,
-    LOCAL_RUNTIME_ROUTES.probe,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(input),
-    },
-  );
+  const response = await workspaceScopedFetch(workspaceId, localRuntimeProbeRoute(), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(input),
+  });
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
@@ -287,7 +259,7 @@ export async function probeRegisteredLocalRuntimeRunner(
 ): Promise<LocalModelProbeResponse> {
   const response = await workspaceScopedFetch(
     workspaceId,
-    LOCAL_RUNTIME_ROUTES.runnerProbe(runnerId),
+    localRuntimeRunnerProbeRoute(runnerId),
     { method: "POST" },
   );
   if (!response.ok) {
@@ -305,7 +277,7 @@ export async function getLocalRuntimeConfig(
 ): Promise<LocalRuntimeConfigResponse> {
   const response = await workspaceScopedFetch(
     workspaceId,
-    LOCAL_RUNTIME_ROUTES.config(machineId),
+    localRuntimeConfigRoute(machineId),
   );
   if (!response.ok) {
     const body = await response.text().catch(() => "");
@@ -323,7 +295,7 @@ export async function listLocalRuntimeEvents(
 ): Promise<LocalRuntimeEventsResponse> {
   const response = await workspaceScopedFetch(
     workspaceId,
-    `${LOCAL_RUNTIME_ROUTES.events(machineId)}?limit=${encodeURIComponent(String(limit))}`,
+    localRuntimeEventsRoute(machineId, { limit }),
   );
   if (!response.ok) {
     const body = await response.text().catch(() => "");
@@ -340,7 +312,7 @@ export async function testLocalRuntimeDispatch(
 ): Promise<LocalRuntimeTestDispatchResponse> {
   const response = await workspaceScopedFetch(
     workspaceId,
-    LOCAL_RUNTIME_ROUTES.testDispatch(machineId),
+    localRuntimeTestDispatchRoute(machineId),
     { method: "POST" },
   );
   if (!response.ok) {
@@ -358,7 +330,7 @@ export async function rotateLocalRuntimeToken(
 ): Promise<LocalRuntimeConfigResponse> {
   const response = await workspaceScopedFetch(
     workspaceId,
-    LOCAL_RUNTIME_ROUTES.rotateToken(machineId),
+    localRuntimeRotateTokenRoute(machineId),
     { method: "POST" },
   );
   if (!response.ok) {

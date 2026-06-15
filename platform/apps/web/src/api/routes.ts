@@ -1,4 +1,5 @@
 import {
+  agentRuntimeProfileRoute,
   storedAgentActivateRoute,
   storedAgentCredentialLaunchRoute,
   storedAgentCredentialReferenceRoute,
@@ -51,12 +52,7 @@ export const ROUTES = {
 
   /** Single agent by ID (GET / PATCH / DELETE) */
   agent: (id: string) => `${AGENTS_PREFIX}/${encodeURIComponent(id)}`,
-  agentRuntimeProfile: (agentId: string, workspaceId?: string | null) => {
-    const path = `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/runtime-profile`;
-    return workspaceId
-      ? `${path}?workspaceId=${encodeURIComponent(workspaceId)}`
-      : path;
-  },
+  agentRuntimeProfile: agentRuntimeProfileRoute,
   agentHealth: (id: string) =>
     `${AGENTS_PREFIX}/${encodeURIComponent(id)}/health`,
   agentDashboardVersion: (agentId: string, workspaceId?: string | null) => {
