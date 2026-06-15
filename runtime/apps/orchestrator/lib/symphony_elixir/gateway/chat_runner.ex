@@ -454,11 +454,19 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   end
 
   # CLI tools whose execution + auth must follow the local model onto the
-  # user's machine: the helper shells out (git/gh, arbitrary shell commands)
-  # with the laptop's own session, in the configured workspace_root. The cloud
-  # loop delegates these by execution_kind (see
-  # ToolCallingLoop.ToolExecutionDispatcher); everything else stays runtime-side.
+  # user's machine: when present in the agent's granted tools, the helper shells
+  # out (git/gh, arbitrary shell commands) with the laptop's own session in the
+  # configured workspace_root. The cloud loop delegates these by execution_kind
+  # (see ToolCallingLoop.ToolExecutionDispatcher); everything else stays
+  # runtime-side. This is only a *marking* list — a tool is offered only if the
+  # agent is actually granted it (or it is in the no-grants fallback below).
   @local_helper_cli_tools ["git.run", "shell.exec"]
+
+  # CLI tools added to the no-grants fallback surface. Kept to git.run only:
+  # shell.exec (arbitrary execution on the user's machine) must require an
+  # explicit `agent_tool_grant`, never appear just because an agent has no
+  # persisted grants.
+  @fallback_helper_cli_tools ["git.run"]
 
   # Workspace-local tools the helper executor cannot run yet: runtime-side
   # execution requires the user's `workspace_root` (which lives on the laptop,
@@ -514,7 +522,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     else
       _ ->
         ToolRegistry.definitions(ToolRegistry.bundle(:universal)) ++
-          ToolRegistry.definitions(@local_helper_cli_tools)
+          ToolRegistry.definitions(@fallback_helper_cli_tools)
     end
   end
 
