@@ -60,14 +60,14 @@ export function ChatComposer({
           disabled={disabled}
           rows={1}
           wrapperClassName="flex-1"
-          className="resize-none overflow-hidden rounded-lg placeholder-slate-500 outline-none focus:ring-0"
+          className="block min-h-[38px] resize-none overflow-hidden rounded-lg placeholder-slate-500 outline-none focus:ring-0"
         />
         <Button
           type="button"
           onClick={submit}
           disabled={disabled || submitting || !text.trim()}
           loading={submitting}
-          className="rounded-lg bg-blue-600 px-4 hover:bg-blue-500"
+          className="h-[38px] rounded-lg bg-blue-600 px-4 hover:bg-blue-500"
         >
           Send
         </Button>
