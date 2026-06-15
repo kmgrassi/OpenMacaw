@@ -290,7 +290,7 @@ describe("credential routes", () => {
     expect(response.status).toBe(200);
     expect(listStoredAgentsFromSupabase).toHaveBeenCalledWith({
       accessToken: "test-token",
-      userId: "",
+      userId: "user-1",
     });
   });
 
