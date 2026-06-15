@@ -10,6 +10,7 @@ import {
   requireVerifiedUser,
 } from "../http.js";
 import { attachRuntimeDispatchContext, buildRuntimeDispatchContext } from "./runtime-dispatch-context.js";
+import { internalServiceRoleHeaders } from "./internal-service-auth.js";
 import { resolveRequestAgentId, resolveRuntimeTargetForAgent } from "./runtime-target.js";
 import { createUpstreamRequester, type UpstreamResponse } from "./upstream.js";
 
@@ -76,19 +77,7 @@ function normalizeRuntimeResponse(result: UpstreamResponse): UpstreamResponse {
 }
 
 function internalRuntimeHeaders(req: Request): Record<string, string> {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "";
-  if (!serviceRoleKey) {
-    throw new ApiRouteError(
-      503,
-      "service_role_unconfigured",
-      "Service-role authentication is not configured for runtime proxy requests",
-    );
-  }
-
-  return {
-    ...parseHeaders(req.headers as Record<string, string | string[] | undefined>),
-    authorization: `Bearer ${serviceRoleKey}`,
-  };
+  return internalServiceRoleHeaders(parseHeaders(req.headers as Record<string, string | string[] | undefined>));
 }
 
 async function proxyRequest(

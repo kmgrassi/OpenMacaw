@@ -3,6 +3,8 @@ defmodule SymphonyElixir.Launcher.RouterTestSupport do
   alias SymphonyElixir.Launcher.{Router, Server}
   alias SymphonyElixir.WorkerBridge.Server, as: WorkerBridgeServer
 
+  @service_role_key "launcher-router-test-service-role"
+
   defmacro __using__(_opts) do
     quote do
       use SymphonyElixir.TestSupport
@@ -256,6 +258,9 @@ defmodule SymphonyElixir.Launcher.RouterTestSupport do
   end
 
   def setup_launcher_router_test(test_parent) do
+    previous_service_role_key = System.get_env("SUPABASE_SERVICE_ROLE_KEY")
+    System.put_env("SUPABASE_SERVICE_ROLE_KEY", @service_role_key)
+
     Application.put_env(:symphony_elixir, :test_parent, test_parent)
     Application.put_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
     Application.put_env(:symphony_elixir, :planner_plan_draft_adapter, TestPlanDraft)
@@ -307,6 +312,11 @@ defmodule SymphonyElixir.Launcher.RouterTestSupport do
       )
 
     ExUnit.Callbacks.on_exit(fn ->
+      case previous_service_role_key do
+        nil -> System.delete_env("SUPABASE_SERVICE_ROLE_KEY")
+        value -> System.put_env("SUPABASE_SERVICE_ROLE_KEY", value)
+      end
+
       Application.delete_env(:symphony_elixir, :test_parent)
       Application.delete_env(:symphony_elixir, :message_log_adapter)
       Application.delete_env(:symphony_elixir, :agent_inventory_adapter)
@@ -332,7 +342,10 @@ defmodule SymphonyElixir.Launcher.RouterTestSupport do
   end
 
   def call(conn) do
-    Router.call(conn, Router.init([]))
+    conn
+    |> Plug.Conn.delete_req_header("authorization")
+    |> Plug.Conn.put_req_header("authorization", "Bearer #{@service_role_key}")
+    |> Router.call(Router.init([]))
   end
 
   def git!(args, opts) do

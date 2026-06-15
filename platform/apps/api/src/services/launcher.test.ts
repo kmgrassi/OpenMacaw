@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { withRequestContext } from "../middleware/request-context.js";
 import { createLauncherClient, LauncherNetworkError, type StartWorkerBridgeSessionRequest } from "./launcher.js";
@@ -14,8 +14,19 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 describe("createLauncherClient", () => {
+  const originalServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
   afterEach(() => {
+    if (originalServiceRoleKey === undefined) {
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    } else {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = originalServiceRoleKey;
+    }
     vi.restoreAllMocks();
+  });
+
+  beforeEach(() => {
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
   });
 
   it("retries 5xx responses with bounded backoff and logs each attempt", async () => {
@@ -88,6 +99,7 @@ describe("createLauncherClient", () => {
       "http://127.0.0.1:4100/health",
       expect.objectContaining({
         headers: expect.objectContaining({
+          authorization: "Bearer service-role-key",
           "x-trace-id": "trc-test",
           "x-request-id": "req-test",
         }),
