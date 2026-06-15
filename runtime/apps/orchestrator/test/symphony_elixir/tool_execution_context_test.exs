@@ -21,6 +21,23 @@ defmodule SymphonyElixir.ToolExecutionContextTest do
            }
   end
 
+  test "preserves atom compatibility keys used by coding tools" do
+    on_event = fn _event -> :ok end
+
+    assert ToolExecutionContext.normalize(%{
+             workspace_root: "/tmp/workspace",
+             on_event: on_event,
+             env_allowlist: ["PATH"]
+           }) == %{
+             "workspace_root" => "/tmp/workspace",
+             "on_event" => on_event,
+             "env_allowlist" => ["PATH"],
+             workspace_root: "/tmp/workspace",
+             on_event: on_event,
+             env_allowlist: ["PATH"]
+           }
+  end
+
   test "builds context from session, metadata, execution profile, and extra values" do
     session = %{
       metadata: %{"workspace_id" => "workspace-from-metadata", "agent_id" => "agent-1"},

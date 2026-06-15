@@ -36,6 +36,8 @@ defmodule SymphonyElixir.ToolExecutionContext do
     "trace_id" => "trace_id"
   }
 
+  @atom_compatibility_fields MapSet.new([:env_allowlist, :on_event, :workspace_root])
+
   @spec normalize(map() | nil) :: t()
   def normalize(context) when is_map(context) do
     context
@@ -45,7 +47,7 @@ defmodule SymphonyElixir.ToolExecutionContext do
           put_metadata(acc, value)
 
         normalized_key when is_binary(normalized_key) ->
-          put_present(acc, normalized_key, value)
+          put_context_value(acc, key, normalized_key, value)
 
         nil ->
           acc
@@ -82,7 +84,7 @@ defmodule SymphonyElixir.ToolExecutionContext do
 
   def inject_arguments(arguments, _tool, _context), do: arguments
 
-  defp normalize_key(key) when is_atom(key), do: Map.get(@known_context_fields, key) || Atom.to_string(key)
+  defp normalize_key(key) when is_atom(key), do: key |> Atom.to_string() |> normalize_key()
 
   defp normalize_key(key) when is_binary(key) do
     cond do
@@ -106,6 +108,19 @@ defmodule SymphonyElixir.ToolExecutionContext do
   defp put_present(acc, _key, value) when is_nil(value), do: acc
   defp put_present(acc, _key, value) when value == "", do: acc
   defp put_present(acc, key, value), do: Map.put(acc, key, value)
+
+  defp put_context_value(acc, original_key, normalized_key, value) do
+    acc = put_present(acc, normalized_key, value)
+
+    if atom_compatibility_key?(original_key) do
+      put_present(acc, original_key, value)
+    else
+      acc
+    end
+  end
+
+  defp atom_compatibility_key?(key) when is_atom(key), do: MapSet.member?(@atom_compatibility_fields, key)
+  defp atom_compatibility_key?(_key), do: false
 
   defp put_metadata(acc, value) when is_map(value) and map_size(value) > 0, do: Map.put(acc, "metadata", value)
   defp put_metadata(acc, _value), do: acc
