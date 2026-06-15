@@ -109,12 +109,12 @@ defmodule SymphonyElixirWeb.GatewaySocket do
     if reply, do: {:push, [reply], state}, else: {:ok, state}
   end
 
-  def handle_info({:gateway_runner_complete, _session_key, run_id, :ok}, state) do
-    handle_runner_complete(run_id, state, [])
+  def handle_info({:gateway_runner_complete, session_key, run_id, :ok}, state) do
+    handle_runner_complete(session_key, run_id, state, [])
   end
 
-  def handle_info({:gateway_runner_complete, _session_key, run_id, {:ok, result}}, state) do
-    handle_runner_complete(run_id, state,
+  def handle_info({:gateway_runner_complete, session_key, run_id, {:ok, result}}, state) do
+    handle_runner_complete(session_key, run_id, state,
       assistant_fallback: Map.get(result, "output_text"),
       model: Map.get(result, "model"),
       provider: Map.get(result, "provider"),
@@ -174,14 +174,49 @@ defmodule SymphonyElixirWeb.GatewaySocket do
     {:push, [Frame.event("chat", payload)], drop_tool_calls(state, run_id)}
   end
 
+  def handle_info({:gateway_runner_aborted, session_key, run_id}, state) do
+    # Emitted when a run's session is deleted while the run is still in
+    # flight. SessionStore.delete_session/1 kills the task and
+    # demonitor-flushes it, so neither a later :gateway_runner_complete
+    # nor a :gateway_runner_down ever arrives — the only place that can
+    # tell this run's client the turn is over is here. Without it the web
+    # composer's send lifecycle never unwinds and the Send button stays
+    # disabled.
+    payload = %{
+      runId: run_id,
+      sessionKey: session_key,
+      state: "aborted"
+    }
+
+    {:push, [Frame.event("chat", payload)], drop_tool_calls(state, run_id)}
+  end
+
   def handle_info(_message, state), do: {:ok, state}
 
-  defp handle_runner_complete(run_id, state, opts) do
+  defp handle_runner_complete(session_key, run_id, state, opts) do
     log_gateway(:info, :run_completed, state, %{run_id: run_id})
 
     case SessionStore.complete_run(run_id, opts) do
       {:ok, nil} ->
-        {:ok, state}
+        # The run completed but SessionStore had no run/session to attach
+        # the assistant message to — e.g. the session was deleted mid-turn,
+        # the run was already cleared, or this is a duplicate completion.
+        # We still owe the client a terminal frame: without one the web
+        # client's send lifecycle never unwinds and the composer spins
+        # forever (the Send button stays disabled). Emit a best-effort
+        # `final` to release it; persistence already happened (or is moot)
+        # on whichever path cleared the run.
+        payload = %{
+          runId: run_id,
+          sessionKey: session_key,
+          state: "final",
+          message: %{
+            role: "assistant",
+            content: Keyword.get(opts, :assistant_fallback) || ""
+          }
+        }
+
+        {:push, [Frame.event("chat", payload)], drop_tool_calls(state, run_id)}
 
       {:ok, session} ->
         record_assistant_message(state, latest_assistant_content(session), run_id, %{

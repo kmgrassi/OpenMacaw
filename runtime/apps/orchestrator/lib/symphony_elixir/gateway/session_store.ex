@@ -306,6 +306,13 @@ defmodule SymphonyElixir.Gateway.SessionStore do
 
           run ->
             if is_pid(run.task_pid), do: Process.exit(run.task_pid, :kill)
+            # Killing the task and demonitor-flushing means no :DOWN and no
+            # subsequent completion will reach the owner socket, so tell it
+            # the run is over here. Otherwise the client's send lifecycle
+            # never unwinds and its composer spins forever.
+            if is_pid(run.owner_pid),
+              do: send(run.owner_pid, {:gateway_runner_aborted, session_key, run_id})
+
             acc |> demonitor_run(run) |> remove_run(run_id)
         end
       end)
