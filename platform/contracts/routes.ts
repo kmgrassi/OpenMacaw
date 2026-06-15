@@ -4,6 +4,20 @@ function appendWorkspaceQuery(path: string, workspaceId?: string | null) {
     : path;
 }
 
+function appendQuery(
+  path: string,
+  params: Record<string, string | number | null | undefined>,
+) {
+  const searchParams = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === undefined) continue;
+    searchParams.set(key, String(value));
+  }
+
+  const query = searchParams.toString();
+  return query ? `${path}?${query}` : path;
+}
+
 const STORED_AGENTS_PREFIX = "/api/stored-agents";
 const AGENTS_PREFIX = "/api/agents";
 const LOCAL_RUNTIME_PREFIX = "/api/local-runtime/runtimes";
@@ -115,8 +129,13 @@ export function localRuntimeConfigRoute(machineId: string) {
   return `${localRuntimeRoute(machineId)}/config`;
 }
 
-export function localRuntimeEventsRoute(machineId: string) {
-  return `${localRuntimeRoute(machineId)}/events`;
+export function localRuntimeEventsRoute(
+  machineId: string,
+  options: { limit?: number | null } = {},
+) {
+  return appendQuery(`${localRuntimeRoute(machineId)}/events`, {
+    limit: options.limit,
+  });
 }
 
 export function localRuntimeTestDispatchRoute(machineId: string) {
