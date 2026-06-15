@@ -218,7 +218,7 @@ defmodule SymphonyElixir.Integration.ManagerLocalSmokeTest do
     assert capability_requirements != %{}
 
     assert Enum.map(provider_tool_specs, &get_in(&1, ["function", "name"])) ==
-             ToolRegistry.bundle(:manager)
+             Enum.map(ToolRegistry.bundle(:manager), &String.replace(&1, ".", "_"))
 
     # snooze round-tripped: PostgREST patch hit, continuation frame carried tool output.
     assert_received {:work_items_patch, %{"id" => "eq.work-1", "workspace_id" => "eq.workspace-1"}, %{"next_poll_at" => next_poll_at}}
@@ -244,6 +244,64 @@ defmodule SymphonyElixir.Integration.ManagerLocalSmokeTest do
                      }}
 
     assert_received {:manager_event, %{event: :turn_completed, payload: %{"id" => ^correlation_id}}}
+
+    assert :ok = Manager.stop_session(session)
+  end
+
+  test "maps provider-safe local relay git_run tool call back to git.run with command arguments" do
+    test_pid = self()
+    helper = start_provider_safe_git_run_helper(test_pid)
+
+    Registry.register(%{
+      workspace_id: "workspace-1",
+      machine_id: "machine-1",
+      pid: helper,
+      runners: [
+        %{
+          runner_kind: "openai_compatible",
+          provider: "ollama",
+          model: "qwen",
+          capabilities: %{runtime_managed_tools: true}
+        }
+      ]
+    })
+
+    on_message = fn message -> send(test_pid, {:manager_event, message}) end
+
+    {:ok, session} =
+      Manager.start_session(
+        %{
+          "provider" => "local",
+          "model" => "qwen",
+          "workspace_id" => "workspace-1",
+          "tool_definitions" => ToolRegistry.specs(["git.run"]),
+          on_message: on_message
+        },
+        nil
+      )
+
+    work_item = %WorkItem{id: "work-1", identifier: "MAN-1", title: "Manage work"}
+
+    assert {:ok, %{"output_text" => "There are 2 open PRs."}} =
+             Manager.run_turn(session, "How many open PRs are in https://github.com/kmgrassi/OpenMacaw?", work_item)
+
+    assert_received {:manager_dispatch, frame}
+    assert ["git_run"] = provider_tool_names(frame)
+    assert [%{"name" => "git.run", "execution_kind" => "helper"}] = frame["tool_definitions"]
+
+    assert_received {:helper_tool_execution_request,
+                     %{
+                       "name" => "git.run",
+                       "arguments" => %{
+                         "command" => "gh pr list --repo kmgrassi/OpenMacaw --state open --json number --jq length"
+                       }
+                     }}
+
+    assert_received {:manager_event,
+                     %{
+                       event: :tool_call_completed,
+                       payload: %{"params" => %{"tool" => "git.run"}}
+                     }}
 
     assert :ok = Manager.stop_session(session)
   end
@@ -312,8 +370,7 @@ defmodule SymphonyElixir.Integration.ManagerLocalSmokeTest do
              batch: %{total: 1, ok: 1, error: 0}
            } = Scheduler.tick(scheduler)
 
-    assert_received {:onboarding_due_query,
-                     {"00000000-0000-0000-0000-000000000001", "manager-agent-1", _now, _opts}}
+    assert_received {:onboarding_due_query, {"00000000-0000-0000-0000-000000000001", "manager-agent-1", _now, _opts}}
 
     assert_received {:manager_dispatch,
                      %{
@@ -401,6 +458,50 @@ defmodule SymphonyElixir.Integration.ManagerLocalSmokeTest do
 
   defp start_manager_completion_helper(parent) do
     spawn_link(fn -> manager_completion_loop(parent) end)
+  end
+
+  defp start_provider_safe_git_run_helper(parent) do
+    spawn_link(fn ->
+      receive do
+        {:local_relay_dispatch, %{"correlation_id" => correlation_id} = frame} ->
+          send(parent, {:manager_dispatch, frame})
+
+          Registry.tool_call_request(correlation_id, %{
+            "type" => "tool_call_request",
+            "tool_calls" => [
+              %{
+                "id" => "call-git",
+                "name" => "git.run",
+                "arguments" => %{
+                  "command" => "gh pr list --repo kmgrassi/OpenMacaw --state open --json number --jq length"
+                }
+              }
+            ]
+          })
+
+          receive do
+            {:local_relay_tool_execution_request, request} ->
+              send(parent, {:helper_tool_execution_request, request})
+
+              Registry.tool_call_result(correlation_id, %{
+                "type" => "tool_call_result",
+                "tool_call_id" => "call-git",
+                "success" => true,
+                "output" => %{"ok" => true, "stdout" => "2\n", "stderr" => ""}
+              })
+          end
+
+          receive do
+            {:local_relay_frame, continuation} ->
+              send(parent, {:manager_continuation, continuation})
+
+              Registry.complete(correlation_id, %{
+                "output_text" => "There are 2 open PRs.",
+                "usage" => %{"total_tokens" => 9}
+              })
+          end
+      end
+    end)
   end
 
   defp manager_completion_loop(parent) do
