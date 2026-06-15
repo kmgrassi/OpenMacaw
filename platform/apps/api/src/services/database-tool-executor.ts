@@ -7,6 +7,7 @@ import type { ToolExecutionContext } from "./tool-execution-client.js";
 import { memoryResultTokenCount, retrieveRelevantMemories } from "./learning/memory-retriever.js";
 import { isLearningEnabledForAgent } from "./learning/settings.js";
 import { appendToolExamples } from "./database-tool-executor/tool-examples.js";
+import { createAgentToolGrant, updateAgentToolGrant } from "./database-tool-executor/agent-tool-grants.js";
 import { assertAgentInWorkspace, workspaceAgentIds } from "./database-tool-executor/agent-helpers.js";
 import {
   createScheduledTask,
@@ -224,6 +225,12 @@ export async function executeDatabaseTool(
 
     case "tool_examples.append":
       return appendToolExamples(args, workspaceId, context);
+
+    case "agent_tool_grant.create":
+      return createAgentToolGrant(args, workspaceId, context);
+
+    case "agent_tool_grant.update":
+      return updateAgentToolGrant(args, workspaceId, context);
 
     case "scheduled_task.read": {
       const scheduledTaskId = scheduledTaskIdArg(args);
