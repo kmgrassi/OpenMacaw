@@ -19,6 +19,8 @@ const MAX_OPERABILITY_MEMORIES_PER_RUN = 2;
 const MAX_MEMORIES_PER_RUN = MAX_GENERAL_MEMORIES_PER_RUN + MAX_OPERABILITY_MEMORIES_PER_RUN;
 const MAX_MEMORY_CONTENT_LENGTH = 1024;
 const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
+const TOOL_FAILURE_STATUSES = new Set(["error", "failed", "denied"]);
+const TOOL_FAILURE_APPROVAL_STATES = new Set(["denied", "rejected", "expired"]);
 
 const ReflectionCandidateSchema = z.object({
   content: z.string().trim().min(1).max(MAX_MEMORY_CONTENT_LENGTH),
@@ -158,8 +160,13 @@ function shapeOnly(value: unknown, depth = 0): unknown {
 }
 
 function hasToolFailure(row: ToolCallEventRow) {
+  const status = row.status.toLowerCase();
+  const approvalState = row.approval_state?.toLowerCase() ?? "";
   return (
-    row.status === "error" || row.status === "denied" || row.approval_state === "denied" || Boolean(row.error_code)
+    TOOL_FAILURE_STATUSES.has(status) ||
+    TOOL_FAILURE_APPROVAL_STATES.has(approvalState) ||
+    Boolean(row.error_code) ||
+    Boolean(row.error_message)
   );
 }
 

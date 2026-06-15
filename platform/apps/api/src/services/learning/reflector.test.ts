@@ -159,17 +159,17 @@ describe("reflectRunToMemories", () => {
         agent_id: agentId,
         run_id: sourceRunId,
         tool_slug: "scheduled_task.create",
-        status: "error",
+        status: "failed",
         arguments: {
           title: "Follow up",
           due_at: "2026-05-19T12:00:00.000Z",
           assignee: { agent_id: agentId },
         },
-        result: { code: "PGRST204", details: { column: "due_at" } },
+        result: { details: { column: "due_at" } },
         output_summary: "Database rejected scheduled_task.create.",
-        error_code: "PGRST204",
+        error_code: null,
         error_message: "Could not find the 'due_at' column of 'scheduled_task' in the schema cache",
-        approval_state: null,
+        approval_state: "rejected",
         started_at: "2026-05-18T11:57:00.000Z",
       },
     ];
@@ -177,9 +177,14 @@ describe("reflectRunToMemories", () => {
 
     const generateReflection = vi.fn(async () => ({
       memories: [
+        ...Array.from({ length: 5 }, (_, index) => ({
+          content: `General run fact ${index + 1}.`,
+          importance: 4,
+          tags: { topic: `general-${index + 1}` },
+        })),
         {
           content:
-            "scheduled_task.create failed with PGRST204 because the agent sent a due_at argument, but scheduled_task has no due_at column.",
+            "scheduled_task.create failed because the agent sent a due_at argument, but scheduled_task has no due_at column.",
           importance: 9,
           tags: { kind: "operability", failure: "tool_call", tool_slug: "scheduled_task.create" },
         },
@@ -212,7 +217,7 @@ describe("reflectRunToMemories", () => {
       clients: { generateReflection, createEmbedding, insertMemory },
     });
 
-    expect(result.memoriesWritten).toBe(1);
+    expect(result.memoriesWritten).toBe(6);
     expect(generateReflection).toHaveBeenCalledWith(
       expect.objectContaining({
         transcript: expect.stringContaining("STRUCTURED TOOL-CALL EVENTS"),
