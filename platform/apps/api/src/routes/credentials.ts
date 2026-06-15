@@ -52,7 +52,7 @@ export function registerCredentialRoutes(app: Express) {
       requireAuth: true,
       bodySchema: CreateCredentialRequestSchema,
       invalidBodyMessage: "Credential scope and key are required",
-      handler: async ({ body, req, res, userId, accessToken }) => {
+      handler: async ({ body, res, userId, accessToken }) => {
         const { key, scope } = body;
         if (scope.kind === "user") {
           throw new ApiRouteError(
@@ -73,6 +73,7 @@ export function registerCredentialRoutes(app: Express) {
           scope.kind === "agent"
             ? await requireStoredAgent({
                 accessToken,
+                userId,
                 agentId: scope.agentId,
                 workspaceId: scope.workspaceId,
               })
@@ -184,7 +185,7 @@ export function registerCredentialRoutes(app: Express) {
             },
             credentialId: saved.credentialRowId,
             provider: saved.provider ?? key.provider,
-            userId: req.userId,
+            userId,
           });
         }
 
