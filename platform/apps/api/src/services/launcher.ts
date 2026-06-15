@@ -13,6 +13,7 @@ import { z } from "zod";
 
 import { logEvent } from "../logger.js";
 import { contextHeaders } from "../middleware/request-context.js";
+import { internalServiceRoleHeaders } from "./internal-service-auth.js";
 
 const WorkerCredentialSourceSchema = z.union([
   z.object({
@@ -229,10 +230,10 @@ export function createLauncherClient({
         const response = await fetchFn(`${baseUrl}${path}`, {
           method,
           signal: controller.signal,
-          headers: {
+          headers: internalServiceRoleHeaders({
             "content-type": "application/json",
             ...contextHeaders(),
-          },
+          }),
           body: body === undefined ? undefined : JSON.stringify(body),
         });
         const responseBody = await parseResponseBody(response);

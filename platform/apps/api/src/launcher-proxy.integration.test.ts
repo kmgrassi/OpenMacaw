@@ -486,6 +486,7 @@ describe("launcher runtime proxy integration", () => {
       expect(launcherHits).toBe(0);
 
       expect(launcherWsHeaders).toMatchObject({
+        authorization: "Bearer service-role-key",
         "x-trace-id": "trc-ws-integration",
         "x-request-id": "req-ws-integration",
       });

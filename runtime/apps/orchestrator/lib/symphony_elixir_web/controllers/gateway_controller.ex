@@ -5,13 +5,21 @@ defmodule SymphonyElixirWeb.GatewayController do
 
   use Phoenix.Controller, formats: [:json]
 
-  def upgrade(conn, _params) do
-    state = %{
-      query_params: conn.query_params,
-      request_headers: Map.new(conn.req_headers),
-      peer_data: conn.remote_ip
-    }
+  alias SymphonyElixirWeb.Plugs.RequireServiceRoleBearer
 
-    Plug.Conn.upgrade_adapter(conn, :websocket, {SymphonyElixirWeb.GatewaySocket, state, []})
+  def upgrade(conn, _params) do
+    conn = RequireServiceRoleBearer.call(conn, [])
+
+    if conn.halted do
+      conn
+    else
+      state = %{
+        query_params: conn.query_params,
+        request_headers: Map.new(conn.req_headers),
+        peer_data: conn.remote_ip
+      }
+
+      Plug.Conn.upgrade_adapter(conn, :websocket, {SymphonyElixirWeb.GatewaySocket, state, []})
+    end
   end
 end
