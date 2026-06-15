@@ -381,6 +381,49 @@ This also means **we don't need a merge webhook to close the loop** — see step
    planner must **not** open a second PR — it escalates (attention item /
    `needs_human`) instead. **Natural quiescence is the success signal.**
 
+#### Two fix routes: grant (data, autonomous) vs code (PR)
+
+When the planner classifies a finding (step 3), it picks a route. "Allowlist"
+is not a separate thing — tool availability *is* the grant rows — so there are
+exactly two routes plus an escape hatch:
+
+1. **Grant fix — a data mutation, fully autonomous (decided).** The dominant
+   operability failure is "agent called a tool it wasn't granted." Tool
+   availability is a row in **`agent_tool_grant`** (`mode: include|exclude`,
+   `source`, `reason`), read every turn and **mutable at runtime** via
+   `setAgentToolGrant` (today `PUT /api/agents/:agentId/tool-grants/:toolId`).
+   Expose this to the planner as an agent-callable tool
+   (`agent_tool_grant.create` / `.update`, per the resource-CRUD conventions).
+   **Decision: the planner may grant any *existing catalog* tool to any agent in
+   the workspace to clear a failure** — no PR, immediate effect. Every loop-driven
+   grant is written with `source = "system"` and `reason = <operability finding>`
+   and lands in the existing tool-change audit
+   (`20260611140000_routing_agent_tools_and_change_audit.sql`), so it is fully
+   attributable and trivially reversible. (New tools that don't exist in the
+   catalog still require a PR — that's route 2.)
+2. **Code fix — the PR loop.** Tool implementation maps to a non-existent column,
+   wrong argument handling, a missing catalog tool, or a wrong *default template*
+   (a seed/migration) → work-item → coding agent → PR → your merge infra. This is
+   the main P7 path.
+3. **Escape hatch — escalate.** Unclassifiable, or a signature that keeps failing
+   after both a grant and a PR attempt → write to the `escalation` table.
+   **Caveat:** the escalation *resolution* surface (attention-queue dashboard,
+   claim/resolve) is scoped but **not shipped** — see
+   [`attention-queue-scope.md`](./attention-queue-scope.md). Until it ships, an
+   escalation is a write-only signal a human must poll for. P7 should treat the
+   attention queue as a soft dependency, not assume a working resolution UI.
+
+**Residual risk of full-autonomy grants (accepted, mitigated by monitoring).**
+A missing-tool failure is *sometimes the system working as intended* — a
+deliberate restriction stopping an agent from doing something it shouldn't.
+Full autonomy means the loop can override such a restriction. We accept this per
+the autonomy goal; the mitigations that do **not** cost autonomy are: every grant
+is `source="system"` + audited + reversible; a **per-run cap** on grants; and
+**back-off** — if the *same* `(agent, tool)` was already auto-granted and the
+signature still recurs, the grant didn't fix it, so stop granting and escalate.
+A per-workspace kill-switch for autonomous grants is the cheap insurance if this
+ever misbehaves.
+
 #### State lives in records that already exist
 
 No new table. The "is this being worked / already fixed?" state is read from:
@@ -401,17 +444,25 @@ Provenance is preserved end-to-end without a candidate table: PR → work-item
   creation-time hook so new workspaces get this and the distillation row
   (closes O2). No migration; no new delivery kind required (it's a
   `scheduled_agent_message`).
-- **P7.2 — planner behavior** *(prompt + classification)*: the instruction
-  template; signature-tagging of work-items; the "open work-item already exists?"
-  dedup check; code-vs-config routing (O5); a per-run cap on new remediation
-  work-items.
-- **P7.3 — work-item ↔ issue linkage** *(platform, light)*: a convention/helper
+- **P7.2 — grant tool** *(platform)*: expose `agent_tool_grant.create` /
+  `.update` as planner-callable tools wrapping the existing `setAgentToolGrant`
+  service, writing `source="system"` + `reason`. Wire the resource-CRUD surfaces
+  (catalog, grants, runtime registry, restricted-allowlist updates, tests) and a
+  per-run grant cap + the `(agent, tool)` back-off. No migration — the table and
+  audit already exist.
+- **P7.3 — planner behavior** *(prompt + classification)*: the instruction
+  template; the grant-vs-code-vs-escalate routing (O5); signature-tagging of
+  work-items; the "open work-item already exists?" dedup check; a per-run cap on
+  new remediation work-items.
+- **P7.4 — work-item ↔ issue linkage** *(platform, light)*: a convention/helper
   for the signature tag and source-memory ids on work-item metadata, plus the
   query the planner uses to find an existing open work-item for a signature.
-- **P7.4 — tests + observability** *(platform)*: end-to-end — failed tool call →
-  operability memory → recurs past threshold → planner creates a signature-tagged
-  plan + work-item → PR opened and linked → on re-run the dedup check prevents a
-  second PR; plus a simple view of recurring issues and their open work-items.
+- **P7.5 — tests + observability** *(platform)*: end-to-end — failed tool call →
+  operability memory → recurs past threshold → planner either auto-grants the
+  tool (audited `source="system"` row) or creates a signature-tagged plan +
+  work-item → PR opened and linked → on re-run the dedup/back-off prevents a
+  second grant or PR; plus a view of recurring issues, their open work-items, and
+  recent autonomous grants.
 
 #### Guardrails
 
@@ -419,9 +470,10 @@ Provenance is preserved end-to-end without a candidate table: PR → work-item
 - **Dedup via signature tag** (soft, but anchored on a concrete work-item query —
   not LLM memory) + a **per-run cap** on new remediation work-items.
 - **Escalate, don't re-PR**, when a signature recurs with an open work-item/PR.
-- **Config-fix routing (O5):** grants/allowlists are workspace state, not code —
-  route to a planner grant-mutation tool, a seed/IaC PR, or the attention queue;
-  don't assume every fix is a repo edit.
+- **Fix routing (O5, decided):** grant fix → autonomous `agent_tool_grant`
+  mutation (`source="system"`, audited, per-run cap, `(agent,tool)` back-off);
+  code/new-tool/default-template fix → PR loop; otherwise → escalate. Don't
+  assume every fix is a repo edit.
 - The loop **never** edits agent instructions/context (that's the separate
   [persistent-context channel](./agent-persistent-context-scope.md)) and
   **never** merges — merge is the repo's configured infrastructure.
@@ -465,11 +517,16 @@ Sequencing: P7 depends on P6 (something to route) and P1 (jobs must run).
   CODEOWNERS, GitHub auto-merge). Owners who want hands-off operation enable
   auto-merge-on-approval; the learning system itself holds no merge button. No
   in-system human step is required to keep the loop autonomous up to PR.
-- **O5 — fix routing (P7).** How are *config* fixes (missing tool grant, wrong
-  allowlist) applied vs. *code* fixes? Options: planning agent with scoped
-  grant-mutation tools; an IaC/seed PR if grants are declarative; or human via
-  the attention queue. Decide before P7, since a large share of operability
-  findings are config, not code.
+- **O5 — fix routing (P7). DECIDED:** there are two routes plus an escape hatch.
+  (1) **Grant fix — full autonomy:** the planner may grant any *existing catalog*
+  tool to any agent via `agent_tool_grant` (`source="system"` + `reason`, audited
+  in the tool-change audit, runtime-mutable, no PR). Grants are runtime DB rows,
+  so this needs no migration. (2) **Code fix:** implementation bug, missing
+  catalog tool, or wrong default template → PR loop. (3) **Escalate:** anything
+  else → `escalation` table (note its resolution UI is scoped-not-shipped, so
+  it's a write-only signal for now). Mitigations that don't cost autonomy:
+  per-run grant cap, `(agent,tool)` back-off, and an optional per-workspace
+  kill-switch. See the "Two fix routes" subsection in P7.
 
 ## Definition of done
 
@@ -486,8 +543,10 @@ Sequencing: P7 depends on P6 (something to route) and P1 (jobs must run).
    rejection) — verified by a run with a real failed tool call yielding such a
    memory.
 7. (P7) A recurring operability signature (read-time threshold) is handed to the
-   planning agent → it creates a signature-tagged plan + work-items → the coding
-   agent opens a PR, with **no human step inside the system** and **no new
-   table**; a re-run with an open work-item for the same signature does not open
-   a second PR. The loop quiesces when the signature stops recurring. Merge
-   remains the repo's own infrastructure.
+   planning agent, which routes it: a **grant fix** is applied autonomously as an
+   audited `agent_tool_grant` row (`source="system"`), and a **code fix** becomes
+   a signature-tagged plan + work-items → coding agent → PR — with **no human
+   step inside the system** and **no new table**. A re-run does not re-grant the
+   same `(agent,tool)` or open a second PR for the same signature. The loop
+   quiesces when the signature stops recurring; merge remains the repo's own
+   infrastructure.
