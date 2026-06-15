@@ -63,7 +63,7 @@ async function requireWorkspaceAccess(userId: string, workspaceId: string) {
   }
 }
 
-function assertDevOnlyLocalProbe(req: Request) {
+function assertDevOnlyLocalProbe(_req: Request) {
   // Arbitrary endpoint probing only makes sense when the API server and the
   // model host share the same machine during local development. In production,
   // probing a user-supplied loopback URL turns into server-side localhost
