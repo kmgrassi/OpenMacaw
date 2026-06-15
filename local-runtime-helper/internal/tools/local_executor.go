@@ -48,6 +48,8 @@ func (e *Executor) execute(ctx context.Context, req runner.ToolCallRequest) (map
 	switch req.Name {
 	case "git.run":
 		return e.gitRun(ctx, req.Arguments)
+	case "shell.exec":
+		return e.shellExec(ctx, req.Arguments)
 	default:
 		return map[string]any{
 			"ok":    false,
@@ -71,6 +73,23 @@ func (e *Executor) gitRun(ctx context.Context, args map[string]any) (map[string]
 			"argv":    argv,
 		}, false
 	}
+	return e.runCommand(ctx, argv, args)
+}
+
+// shellExec runs an arbitrary command in the workspace for a local model. Unlike
+// gitRun it applies no command allowlist (shell.exec is a general CLI tool), but
+// it shares the same workspace-root cwd confinement, timeout, and output caps.
+// The orchestrator's sandbox_policy is not enforced here: the helper runs as the
+// user on the user's own machine, which is the point of a local-model agent.
+func (e *Executor) shellExec(ctx context.Context, args map[string]any) (map[string]any, bool) {
+	argv, err := commandArgv(args)
+	if err != nil {
+		return errorOutput(err), false
+	}
+	return e.runCommand(ctx, argv, args)
+}
+
+func (e *Executor) runCommand(ctx context.Context, argv []string, args map[string]any) (map[string]any, bool) {
 	cwd, err := e.resolveCWD(stringArg(args, "cwd"))
 	if err != nil {
 		return errorOutput(err), false
