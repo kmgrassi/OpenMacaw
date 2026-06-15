@@ -903,6 +903,39 @@ defmodule SymphonyElixirWeb.GatewaySocketTest do
     {:ok, %{run: _run}} = SessionStore.start_run(session_key, "run-next", self())
   end
 
+  test "deleting a session with an in-flight run aborts the run's client" do
+    session_key = default_session_key()
+
+    {:ok, state} =
+      GatewaySocket.init(%{
+        query_params: scope_query(),
+        request_headers: %{},
+        peer_data: {127, 0, 0, 1}
+      })
+
+    {:push, [{:text, _hello_json}], state} =
+      GatewaySocket.handle_in({request_frame("connect", %{}), []}, state)
+
+    {:ok, %{run: _run}} = SessionStore.start_run(session_key, "run-deleted", self())
+
+    :ok = SessionStore.delete_session(session_key)
+
+    # Deleting the session kills the run's task and demonitor-flushes it, so
+    # the store proactively tells the run's owner socket it was aborted.
+    assert_receive {:gateway_runner_aborted, ^session_key, "run-deleted"}
+
+    # The owner socket turns that into a terminal `aborted` chat frame so the
+    # client's send lifecycle unwinds instead of spinning forever.
+    {:push, [{:text, aborted_json}], _state} =
+      GatewaySocket.handle_info({:gateway_runner_aborted, session_key, "run-deleted"}, state)
+
+    aborted = Jason.decode!(aborted_json)
+    assert aborted["event"] == "chat"
+    assert aborted["payload"]["state"] == "aborted"
+    assert aborted["payload"]["runId"] == "run-deleted"
+    assert aborted["payload"]["sessionKey"] == session_key
+  end
+
   test "completing an unresolved run still pushes a terminal final frame" do
     session_key = default_session_key()
 

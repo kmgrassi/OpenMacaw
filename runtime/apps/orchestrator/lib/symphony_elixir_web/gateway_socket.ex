@@ -174,6 +174,23 @@ defmodule SymphonyElixirWeb.GatewaySocket do
     {:push, [Frame.event("chat", payload)], drop_tool_calls(state, run_id)}
   end
 
+  def handle_info({:gateway_runner_aborted, session_key, run_id}, state) do
+    # Emitted when a run's session is deleted while the run is still in
+    # flight. SessionStore.delete_session/1 kills the task and
+    # demonitor-flushes it, so neither a later :gateway_runner_complete
+    # nor a :gateway_runner_down ever arrives — the only place that can
+    # tell this run's client the turn is over is here. Without it the web
+    # composer's send lifecycle never unwinds and the Send button stays
+    # disabled.
+    payload = %{
+      runId: run_id,
+      sessionKey: session_key,
+      state: "aborted"
+    }
+
+    {:push, [Frame.event("chat", payload)], drop_tool_calls(state, run_id)}
+  end
+
   def handle_info(_message, state), do: {:ok, state}
 
   defp handle_runner_complete(session_key, run_id, state, opts) do
