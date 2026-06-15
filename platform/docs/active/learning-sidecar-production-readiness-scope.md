@@ -311,6 +311,76 @@ This depends on P1 (jobs must actually reach the platform) but is otherwise
 independent of distillation, and given production experience it should land
 right after the core wiring fix.
 
+### P7 — Close the loop: operability finding → planning agent → coding agent
+
+The strategic payoff. P1–P6 give us *detection* (operability memories). P7
+turns detection into *autonomous remediation* by routing findings to the
+planning agent, which already owns plans/work-items and can drive the coding
+agent against the repo. The design intent already exists — the
+[fleet-sampling-observer scope](./fleet-sampling-observer-scope.md) states
+"advisory by default… acting on it is the consuming agent's job." P7 wires that
+consumer.
+
+Most of the loop is **existing primitives**; the new work is aggregation,
+hand-off, and a safety gate.
+
+1. **Detect** *(P6, new)* — tool-call failures → operability-tagged
+   `memory_items`.
+2. **Aggregate** *(new, small)* — a scheduled rollup groups raw per-run
+   operability memories by `(tool_slug, error_code, agent_type)` and only
+   promotes an issue to a *remediation candidate* once it crosses a
+   **recurrence threshold** (e.g. ≥N occurrences across M runs). This is the
+   single most important guardrail: it stops the loop from acting on one-off
+   blips and from thrashing. Reuse the distiller's clustering pattern.
+3. **Hand off to planning** *(new — the piece this is really about)* — the
+   mechanism already exists: a `scheduled_agent_message` delivers free-text
+   `instructions` to a specific `agent_id` via `ChatGateway.post_message`
+   ([`scheduled_task/delivery.ex` `deliver_agent_message`](../../../runtime/apps/orchestrator/lib/symphony_elixir/scheduled_task/delivery.ex)).
+   Seed a scheduled task targeting the workspace's **planning agent** whose
+   instructions are roughly: *"Review this period's recurring operability
+   findings (call `memory.search` for `kind:operability` remediation
+   candidates). For each high-confidence recurring issue not already linked to
+   an open plan, create a remediation plan + work items."* The planning agent
+   needs (a) retrieval of operability memories (the existing `memory.search`
+   tool, optionally a narrower filter), and (b) **dedup state** so it never
+   re-plans an issue that already has an open plan/PR.
+4. **Plan → work items** *(exists)* — the planning agent creates a plan and
+   work-items (planner tools; see the browser-login planner smoke).
+5. **Code → PR** *(exists)* — the coding agent picks up work-items, edits the
+   repo, and opens a PR (repo rule: always open PRs).
+6. **Gate** *(decision — O4)* — a human merges the PR. This is the one
+   checkpoint and it keeps the loop consistent with the project's "agent
+   proposes, human merges / don't let agents poison their own instructions"
+   stance. A later trust dial could auto-merge low-risk classes.
+7. **Close** — merged fix corrects the tool/config → future runs stop emitting
+   that operability memory → the issue's recurrence count decays → the loop
+   quiesces on its own. **Natural quiescence is the success signal.**
+
+**Two flavors of fix, and they route differently (O5).** Many operability
+issues are *configuration*, not code: an agent missing a tool grant, a wrong
+restricted allowlist. The coding-agent-against-the-repo path fixes *code*
+defects (e.g. a tool implementation mapping to a non-existent column). Config
+fixes (grants/allowlists) are DB/workspace state — they need either a planning
+agent with scoped grant-mutation tools, an IaC/seed PR if grants are
+declaratively defined, or a human via the attention queue. P7 must classify the
+finding and route accordingly; don't assume every fix is a repo edit.
+
+**Guardrails (non-negotiable for an autonomous loop):**
+- Recurrence threshold before acting (step 2) + never two open remediations for
+  the same `(tool_slug, error_code)`.
+- Cap concurrent auto-remediation work-items per workspace.
+- **Back-off:** if a remediation PR itself produces new operability errors,
+  stop and escalate rather than re-planning.
+- **Provenance:** link plan → work-item → PR back to the source memory and
+  `agent_tool_call_event` so a human can audit *why* the system acted.
+- The loop may **never** edit agent instructions/context or auto-merge without
+  an explicit trust dial (ties to
+  [`agent-persistent-context-scope.md`](./agent-persistent-context-scope.md)).
+
+Sequencing: P7 depends on P6 (something to route) and P1 (jobs must run). It is
+a larger effort than P1–P6 and may warrant its own scoping doc once P6 lands —
+but it is the reason the operability track matters, so it is captured here.
+
 ## Out of scope (tracked elsewhere)
 
 - **Skill → PR bot** (Track D in the original PR plan): turning distilled skill
@@ -335,6 +405,17 @@ right after the core wiring fix.
   run failed and logs a warning. Decide whether learning-job failures should
   raise an attention-queue item or stay log-only (recommend log-only + a metric;
   learning is best-effort and must never block runs).
+- **O4 — autonomy gate (P7).** Where does the human sit in the
+  detect→plan→code→merge loop? Recommend **PR-gated** to start (the loop opens
+  PRs; a human merges), graduating specific low-risk classes to auto-merge via a
+  trust dial later. The alternative — fully autonomous merge from day one —
+  conflicts with the project's self-modification stance and is high-risk until
+  the loop has a track record.
+- **O5 — fix routing (P7).** How are *config* fixes (missing tool grant, wrong
+  allowlist) applied vs. *code* fixes? Options: planning agent with scoped
+  grant-mutation tools; an IaC/seed PR if grants are declarative; or human via
+  the attention queue. Decide before P7, since a large share of operability
+  findings are config, not code.
 
 ## Definition of done
 
