@@ -64,6 +64,38 @@ export function useChat(
     getRunId: () => runIdRef.current,
   });
 
+  const reconcilePersistedResponse = useCallback(
+    async (runId: string, targetSessionKey: SessionKey) => {
+      const queryKey = queryKeys.messages.history(agentId, targetSessionKey);
+
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        if (!runtimeEventMatchesActiveRun(runIdRef.current, runId)) return;
+        if (attempt > 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+        }
+
+        const page = await fetchAgentMessages(agentId);
+        queryClient.setQueryData<ChatMessagesPage>(queryKey, page);
+
+        const hasPersistedAssistant = page.messages.some((message) => {
+          if (message.role !== "assistant") return false;
+          return message.runId === runId;
+        });
+
+        if (hasPersistedAssistant) {
+          if (runtimeEventMatchesActiveRun(runIdRef.current, runId)) {
+            setStreamText(null);
+            setActiveRunId(null);
+            runIdRef.current = null;
+          }
+          void invalidateRuntimeQueries(queryClient, agentId, targetSessionKey);
+          return;
+        }
+      }
+    },
+    [agentId, queryClient],
+  );
+
   useEffect(() => {
     if (messagesQuery.error) {
       setError((messagesQuery.error as Error).message);
@@ -179,6 +211,7 @@ export function useChat(
           const runId = result?.runId ?? idempotencyKey;
           runIdRef.current = runId;
           setActiveRunId(runId);
+          void reconcilePersistedResponse(runId, sessionKey);
         }
       } catch (err) {
         if (!runIdRef.current) return;
@@ -203,7 +236,15 @@ export function useChat(
         setErrorCode(detectedCode);
       }
     },
-    [agentId, connected, options.historyOnly, sessionKey, scope, sendMutation],
+    [
+      agentId,
+      connected,
+      options.historyOnly,
+      reconcilePersistedResponse,
+      sessionKey,
+      scope,
+      sendMutation,
+    ],
   );
 
   const abort = useCallback(async () => {
