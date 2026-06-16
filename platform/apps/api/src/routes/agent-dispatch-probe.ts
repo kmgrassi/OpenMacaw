@@ -1,22 +1,12 @@
 // DEV ONLY - Dispatch probes are intended for local manual testing and
 // reviewable smoke evidence, not production traffic.
-import type { Express, Request } from "express";
+import type { Express } from "express";
 
 import { AgentDispatchProbeRequestSchema } from "../../../../contracts/agent-dispatch-probe.js";
-import { ApiRouteError, apiRoute, handleApiRouteError, requireRouteParam } from "../http.js";
+import { apiRoute, handleApiRouteError, requireRouteParam } from "../http.js";
 import type { LauncherClient } from "../services/launcher.js";
 import { buildAgentDispatchDryRun, runAgentDispatchLive } from "../services/agent-dispatch-probe.js";
-
-function assertDevOnly(req: Request) {
-  if (process.env.NODE_ENV !== "development") {
-    throw new ApiRouteError(404, "not_found", "Endpoint is unavailable");
-  }
-
-  const ip = req.ip ?? req.socket.remoteAddress ?? "";
-  if (ip !== "127.0.0.1" && ip !== "::1" && ip !== "::ffff:127.0.0.1") {
-    throw new ApiRouteError(403, "forbidden", "Local-only endpoint is unavailable from this address");
-  }
-}
+import { assertDevRouteAccess } from "./dev-route-guard.js";
 
 export function registerAgentDispatchProbeRoutes(app: Express, launcherClient: LauncherClient) {
   app.post(
@@ -26,10 +16,10 @@ export function registerAgentDispatchProbeRoutes(app: Express, launcherClient: L
       bodySchema: AgentDispatchProbeRequestSchema,
       invalidBodyMessage: "workspaceId is required",
       async handler({ req, res, body, accessToken, userId }) {
-        assertDevOnly(req);
+        assertDevRouteAccess(req, { localhostOnly: true });
         const result = await buildAgentDispatchDryRun({
-          accessToken: accessToken ?? "",
-          requesterUserId: userId ?? "",
+          accessToken,
+          requesterUserId: userId,
           agentId: requireRouteParam(req, "agentId"),
           workspaceId: body.workspaceId,
         });
@@ -52,10 +42,10 @@ export function registerAgentDispatchProbeRoutes(app: Express, launcherClient: L
       bodySchema: AgentDispatchProbeRequestSchema,
       invalidBodyMessage: "workspaceId is required",
       async handler({ req, res, body, accessToken, userId }) {
-        assertDevOnly(req);
+        assertDevRouteAccess(req, { localhostOnly: true });
         const result = await runAgentDispatchLive({
-          accessToken: accessToken ?? "",
-          requesterUserId: userId ?? "",
+          accessToken,
+          requesterUserId: userId,
           agentId: requireRouteParam(req, "agentId"),
           workspaceId: body.workspaceId,
           launcherClient,
