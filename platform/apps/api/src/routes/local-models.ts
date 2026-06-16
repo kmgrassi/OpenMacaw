@@ -11,6 +11,7 @@
 import type { Express, Request, Response } from "express";
 
 import { ApiRouteError, errorPayload, handleApiRouteError } from "../http.js";
+import { assertDevRouteAccess } from "./dev-route-guard.js";
 
 type OllamaModel = {
   name: string;
@@ -20,20 +21,6 @@ type OllamaModel = {
   details?: { family?: string; parameter_size?: string; quantization_level?: string };
 };
 
-function isLocalRequest(req: Request): boolean {
-  const ip = req.ip ?? req.socket.remoteAddress ?? "";
-  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
-}
-
-function assertDevOnly(req: Request) {
-  if (process.env.NODE_ENV !== "development") {
-    throw new ApiRouteError(404, "not_found", "Endpoint is unavailable");
-  }
-  if (!isLocalRequest(req)) {
-    throw new ApiRouteError(403, "forbidden", "Local-only endpoint is unavailable from this address");
-  }
-}
-
 function localModelHostBase(): string {
   return (process.env.LOCAL_MODEL_HOST_BASE_URL || "http://127.0.0.1:11434").replace(/\/+$/, "");
 }
@@ -41,7 +28,7 @@ function localModelHostBase(): string {
 export function registerLocalModelsRoutes(app: Express) {
   app.get("/api/local/installed-models", async (req: Request, res: Response) => {
     try {
-      assertDevOnly(req);
+      assertDevRouteAccess(req, { localhostOnly: true });
       const base = localModelHostBase();
 
       const upstream = await fetch(`${base}/api/tags`).catch((error) => {

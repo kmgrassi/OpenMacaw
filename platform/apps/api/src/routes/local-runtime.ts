@@ -21,6 +21,7 @@ import {
   type LauncherRequest,
 } from "../services/local-runtime-machines.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
+import { assertDevRouteAccess } from "./dev-route-guard.js";
 
 function requireWorkspaceId(req: Request) {
   const workspaceId = requestWorkspaceId(req);
@@ -68,9 +69,7 @@ function assertDevOnlyLocalProbe(_req: Request) {
   // model host share the same machine during local development. In production,
   // probing a user-supplied loopback URL turns into server-side localhost
   // access against whatever else is bound on the API host.
-  if (process.env.NODE_ENV !== "development") {
-    throw new ApiRouteError(404, "not_found", "Endpoint is unavailable");
-  }
+  assertDevRouteAccess(_req);
 }
 
 export function registerLocalRuntimeRoutes(app: Express, launcherRequest: LauncherRequest) {

@@ -24,6 +24,7 @@ import {
   requireRouteParam,
   requireVerifiedUser,
 } from "../http.js";
+import { assertDevRouteAccess } from "./dev-route-guard.js";
 
 type ValidateResult =
   | { ok: true; path: string }
@@ -62,20 +63,6 @@ function expandHome(p: string): string {
     if (home) return path.join(home, p.slice(1));
   }
   return p;
-}
-
-function isLocalRequest(req: Request): boolean {
-  const ip = req.ip ?? req.socket.remoteAddress ?? "";
-  return ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1";
-}
-
-function assertDevOnly(req: Request) {
-  if (process.env.NODE_ENV !== "development") {
-    throw new ApiRouteError(404, "not_found", "Endpoint is unavailable");
-  }
-  if (!isLocalRequest(req)) {
-    throw new ApiRouteError(403, "forbidden", "Local-only endpoint is unavailable from this address");
-  }
 }
 
 async function spawnFolderPicker(opts: { defaultLocation?: string; prompt?: string }): Promise<string | null> {
@@ -131,7 +118,7 @@ async function spawnFolderPicker(opts: { defaultLocation?: string; prompt?: stri
 export function registerLocalDirectoryRoutes(app: Express) {
   app.post("/api/local/pick-directory", async (req: Request, res: Response) => {
     try {
-      assertDevOnly(req);
+      assertDevRouteAccess(req, { localhostOnly: true });
       const body = (req.body ?? {}) as { defaultLocation?: unknown; prompt?: unknown };
       const defaultLocation = typeof body.defaultLocation === "string" ? body.defaultLocation : undefined;
       const prompt = typeof body.prompt === "string" ? body.prompt : "Choose a workspace directory for this agent";
@@ -152,7 +139,7 @@ export function registerLocalDirectoryRoutes(app: Express) {
 
   app.post("/api/local/validate-directory", async (req: Request, res: Response) => {
     try {
-      assertDevOnly(req);
+      assertDevRouteAccess(req, { localhostOnly: true });
       const body = (req.body ?? {}) as { path?: unknown };
       const result = await validateDirectory(body.path);
       return res.status(200).json(result);
@@ -167,7 +154,7 @@ export function registerLocalDirectoryRoutes(app: Express) {
 
   app.get("/api/local/agents/:agentId/workspace-path", async (req: Request, res: Response) => {
     try {
-      assertDevOnly(req);
+      assertDevRouteAccess(req, { localhostOnly: true });
       const accessToken = requireAccessToken(req);
       requireVerifiedUser(req);
       const agentId = requireRouteParam(req, "agentId");
@@ -194,7 +181,7 @@ export function registerLocalDirectoryRoutes(app: Express) {
 
   app.put("/api/local/agents/:agentId/workspace-path", async (req: Request, res: Response) => {
     try {
-      assertDevOnly(req);
+      assertDevRouteAccess(req, { localhostOnly: true });
       const accessToken = requireAccessToken(req);
       const userId = requireVerifiedUser(req);
       const agentId = requireRouteParam(req, "agentId");
