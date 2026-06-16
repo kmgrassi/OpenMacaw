@@ -179,7 +179,9 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
       {-numeric_priority(Map.get(rule, "priority")), -predicate_count, -local_model_coding_score(rule), index}
     end)
     |> List.first()
-    |> elem(0)
+    |> then(fn {rule, _index} ->
+      Map.put(rule, "_routing_matches", Map.get(matches_by_rule, Map.get(rule, "id"), []))
+    end)
   end
 
   defp rule_matches?(matches, agent) when is_list(matches) do
@@ -243,7 +245,13 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
         "provider" => Map.get(rule, "provider"),
         "model" => Map.get(rule, "model"),
         "credential_ref" => credential_ref(rule),
-        "source_metadata" => %{"source" => "routing_rule", "routing_rule_id" => Map.get(rule, "id")}
+        "source_metadata" =>
+          %{
+            "source" => "routing_rule",
+            "routing_rule_id" => Map.get(rule, "id"),
+            "local_workspace_root" => local_workspace_root(rule)
+          }
+          |> reject_nil_values()
       }
       |> reject_nil_values()
 
@@ -257,6 +265,20 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
       {:error, changeset} ->
         {:error, profile_error(changeset)}
     end
+  end
+
+  defp local_workspace_root(rule) do
+    rule
+    |> Map.get("_routing_matches", [])
+    |> Enum.find_value(fn match ->
+      kind = match |> Map.get("kind") |> normalized_key_string()
+      key = match |> Map.get("key") |> normalized_optional_key_string()
+      value = match |> Map.get("value") |> trimmed_string()
+
+      if kind == "local_workspace_root" and key in [nil, "path"] and value != "" do
+        value
+      end
+    end)
   end
 
   defp credential_ref(%{"credential_id" => credential_id}) when is_binary(credential_id) and credential_id != "" do
@@ -429,7 +451,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
 
   defp atomize_profile(profile) do
     profile
-    |> Map.take(["agent_id", "workspace_id", "runner_kind", "provider", "model", "credential_ref"])
+    |> Map.take(["agent_id", "workspace_id", "runner_kind", "provider", "model", "credential_ref", "source_metadata"])
     |> Map.new(fn {key, value} -> {String.to_atom(key), value} end)
   end
 

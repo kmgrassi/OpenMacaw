@@ -51,6 +51,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
         agent_id: agent_id(config),
         user_id: user_id(config),
         session_id: session_id(config),
+        workspace_root: workspace_root(config),
         target_runner_kind: target_runner_kind(config),
         provider: provider(config),
         model: model(config),
@@ -283,6 +284,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   defp agent_id(config), do: get_config(config, ["agent_id"]) || get_config(config, ["routing", "agentId"])
   defp user_id(config), do: get_config(config, ["user_id"]) || get_config(config, ["routing", "userId"])
   defp session_id(config), do: get_config(config, ["session_id"]) || get_config(config, ["routing", "sessionId"])
+  defp workspace_root(config), do: get_config(config, ["workspace_root"]) || get_config(config, ["workspaceRoot"]) || get_config(config, ["routing", "workspaceRoot"])
   defp model(config), do: get_config(config, ["model"]) || get_config(config, ["routing", "model"])
   defp provider(config), do: get_config(config, ["provider"]) || get_config(config, ["routing", "provider"]) || "local"
 
@@ -394,17 +396,26 @@ defmodule SymphonyElixir.Runner.LocalRelay do
       "agent_id: #{Map.get(context, "agent_id") || ""}",
       "workspace_id: #{Map.get(context, "workspace_id") || ""}",
       "user_id: #{Map.get(context, "user_id") || ""}",
-      "session_id: #{Map.get(context, "session_id") || ""}"
+      "session_id: #{Map.get(context, "session_id") || ""}",
+      local_workspace_context_line(context)
     ]
+    |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join("\n")
   end
+
+  defp local_workspace_context_line(%{"workspace_root" => workspace_root}) when is_binary(workspace_root) and workspace_root != "" do
+    "local_workspace_root: #{workspace_root}"
+  end
+
+  defp local_workspace_context_line(_context), do: nil
 
   defp runtime_context(session, work_item) do
     ToolExecutionContext.from_session(session, %{
       agent_id: session.agent_id || work_item_agent_id(work_item),
       workspace_id: session.workspace_id,
       user_id: Map.get(session, :user_id),
-      session_id: Map.get(session, :session_id) || work_item_session_id(work_item)
+      session_id: Map.get(session, :session_id) || work_item_session_id(work_item),
+      workspace_root: Map.get(session, :workspace_root)
     })
   end
 

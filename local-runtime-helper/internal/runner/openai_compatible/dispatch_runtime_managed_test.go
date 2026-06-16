@@ -58,6 +58,51 @@ func TestDispatchRuntimeManagedParsesTaggedTextToolCall(t *testing.T) {
 	}
 }
 
+func TestDispatchRuntimeManagedParsesRepoReadFileTaggedTextToolCall(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"I'll read the README.md file to find the first heading.\n\n<function=repo.read_file>\n<parameter=path>\nREADME.md\n</parameter>\n<parameter=workspace_id>\n7a5d31a8-2ffd-4fd2-ab12-a3c4f7e83b47\n</parameter>\n</function>\n</tool_call>"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	r, err := New(Config{Endpoint: server.URL + "/v1", Model: "local-model"})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	var events []any
+	err = r.Dispatch(context.Background(), runner.ChatCompletionInput{
+		Messages:        []runner.ChatMessage{{Role: "user", Content: "read README"}},
+		ToolCallingMode: "runtime_managed",
+		ToolDefinitions: []runner.ToolDefinition{{
+			Name:          "repo.read_file",
+			ExecutionKind: "runtime",
+		}},
+	}, func(event any) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+
+	event, ok := events[0].(runner.ToolCallRequestEvent)
+	if !ok {
+		t.Fatalf("event = %T, want ToolCallRequestEvent", events[0])
+	}
+	if len(event.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %#v", event.ToolCalls)
+	}
+	call := event.ToolCalls[0]
+	if call.Name != "repo.read_file" {
+		t.Fatalf("tool call name = %q, want repo.read_file", call.Name)
+	}
+	if call.Arguments["path"] != "README.md" {
+		t.Fatalf("path argument = %#v, want README.md", call.Arguments["path"])
+	}
+	if call.Arguments["workspace_id"] != "7a5d31a8-2ffd-4fd2-ab12-a3c4f7e83b47" {
+		t.Fatalf("workspace_id argument = %#v", call.Arguments["workspace_id"])
+	}
+}
+
 func TestDispatchRuntimeManagedReturnsAbsentToolAsResultBeforeForwarding(t *testing.T) {
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
