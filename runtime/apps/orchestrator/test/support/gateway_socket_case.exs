@@ -100,11 +100,13 @@ defmodule SymphonyElixirWeb.GatewaySocketCase do
       start_supervised!(SymphonyElixir.Launcher.ConfigRegistry)
     end
 
-    Application.put_env(:symphony_elixir, :gateway_chat_runner, FakeRunner)
-    Application.put_env(:symphony_elixir, :agent_inventory_adapter, AgentInventoryStub)
-    Application.put_env(:symphony_elixir, :message_log_adapter, FakeMessageLog)
-    Application.put_env(:symphony_elixir, :gateway_socket_test_owner, self())
-    Application.put_env(:symphony_elixir, :gateway_socket_test_message_log_failure, %{})
+    SymphonyElixir.TestSupport.put_app_envs(:symphony_elixir,
+      gateway_chat_runner: FakeRunner,
+      agent_inventory_adapter: AgentInventoryStub,
+      message_log_adapter: FakeMessageLog,
+      gateway_socket_test_owner: self(),
+      gateway_socket_test_message_log_failure: %{}
+    )
 
     restart_session_store!()
 
