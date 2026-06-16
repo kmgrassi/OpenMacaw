@@ -4,6 +4,7 @@ import { createMockSupabaseClient } from "../../test-utils/supabase-client-mock.
 import { getServiceRoleSupabase } from "../../supabase-client.js";
 import {
   buildOperabilityRemediationInstructions,
+  ensureLearningSidecarScheduledTasks,
   findOpenOperabilityWorkItems,
   listOperabilityRemediationView,
   operabilitySignatureKey,
@@ -19,6 +20,10 @@ vi.mock("../../supabase-client.js", () => ({
 }));
 
 const workspaceId = "22222222-2222-4222-8222-222222222222";
+const managerAgentId = "33333333-3333-4333-8333-333333333333";
+const planningAgentId = "44444444-4444-4444-8444-444444444444";
+const alternatePlanningAgentId = "55555555-5555-4555-8555-555555555555";
+const userId = "66666666-6666-4666-8666-666666666666";
 const signature = {
   toolSlug: "scheduled_task.create",
   errorCode: "database_error",
@@ -34,6 +39,8 @@ describe("operability remediation helpers", () => {
       work_items: [],
       memory_items: [],
       agent_tool_grant: [],
+      workspace_settings: [],
+      scheduled_task: [],
     };
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(tables) as never);
   });
@@ -172,5 +179,63 @@ describe("operability remediation helpers", () => {
       ],
       recentAutonomousGrants: [expect.objectContaining({ id: "grant-1", source: "system" })],
     });
+  });
+
+  it("seeds learning sidecar scheduled tasks once for a learning-enabled workspace", async () => {
+    tables.workspace_settings = [{ workspace_id: workspaceId, learning_enabled: true }];
+
+    await ensureLearningSidecarScheduledTasks({
+      workspaceId,
+      userId,
+      managerAgentId,
+      planningAgentId,
+      now: new Date("2026-06-15T00:00:00.000Z"),
+    });
+    await ensureLearningSidecarScheduledTasks({
+      workspaceId,
+      userId,
+      managerAgentId,
+      planningAgentId: alternatePlanningAgentId,
+      now: new Date("2026-06-15T00:00:00.000Z"),
+    });
+
+    expect(tables.scheduled_task).toHaveLength(2);
+    expect(tables.scheduled_task).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          workspace_id: workspaceId,
+          agent_id: managerAgentId,
+          title: "Nightly learning distillation",
+          delivery: { kind: "learning_distillation", windowDays: 7 },
+        }),
+        expect.objectContaining({
+          workspace_id: workspaceId,
+          agent_id: planningAgentId,
+          title: "Learning operability remediation",
+          instructions: expect.stringContaining(
+            `/api/workspaces/${workspaceId}/learning/operability-remediation?threshold=2&limit=20`,
+          ),
+          delivery: {
+            kind: "scheduled_agent_message",
+            sessionStrategy: "scheduled_task",
+            metadata: { kind: "learning_operability_remediation" },
+          },
+          metadata: { kind: "learning_operability_remediation", source: "workspace_learning_sidecar_seed" },
+        }),
+      ]),
+    );
+  });
+
+  it("does not seed learning tasks when the workspace opted out", async () => {
+    tables.workspace_settings = [{ workspace_id: workspaceId, learning_enabled: false }];
+
+    await ensureLearningSidecarScheduledTasks({
+      workspaceId,
+      userId,
+      managerAgentId,
+      planningAgentId,
+    });
+
+    expect(tables.scheduled_task).toEqual([]);
   });
 });

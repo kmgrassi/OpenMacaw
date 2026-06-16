@@ -24,6 +24,7 @@ import {
   managerToolPolicyDefaults,
 } from "./builders.js";
 import { updateAgentModelSettings, updateAgentRuntimeDefaults } from "./gateway-config.js";
+import { ensureLearningSidecarScheduledTasks } from "../learning/operability-remediation.js";
 import { requireCurrentUser, workspaceManagerAgentId } from "./identity.js";
 import {
   ensureDefaultAgent,
@@ -85,6 +86,12 @@ export async function listSetupAuthState(accessToken: string, verifiedUserId: st
   };
   const managerAgent = await ensureWorkspaceManagerAgent(accessToken, workspace.id, userId);
   const routerAgent = await ensureWorkspaceRouterAgent(accessToken, workspace.id, userId);
+  await ensureLearningSidecarScheduledTasks({
+    workspaceId: workspace.id,
+    userId,
+    managerAgentId: managerAgent.id,
+    planningAgentId: defaultAgents.planning.id,
+  });
 
   const agentRows = await listSetupAgentRows(accessToken);
   const normalizedAgentRows = agentRows.map((agent) => ({

@@ -1,6 +1,8 @@
 import type { Json } from "@kmgrassi/supabase-schema";
 
 import { executeSupabaseRows, getServiceRoleSupabase } from "../../supabase-client.js";
+import { computeScheduledTaskNextRunAt } from "../scheduled-tasks.js";
+import { workspaceLearningDistillationTaskId, workspaceOperabilityRemediationTaskId } from "../setup/identity.js";
 
 export type OperabilityIssueSignature = {
   toolSlug: string;
@@ -47,10 +49,163 @@ type AgentToolGrantViewRow = {
   updated_at?: string;
 };
 
+const DISTILLATION_TASK_KIND = "learning_distillation";
+const OPERABILITY_TASK_KIND = "learning_operability_remediation";
+const DEFAULT_TIMEZONE = "Etc/UTC";
+const DISTILLATION_SCHEDULE = { kind: "every", interval: 1, unit: "day", at: "03:30" } as const;
+const OPERABILITY_SCHEDULE = { kind: "every", interval: 1, unit: "day", at: "04:00" } as const;
 const TERMINAL_WORK_ITEM_STATES = new Set(["done", "completed", "complete", "closed", "cancelled", "canceled"]);
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function metadataKind(metadata: unknown) {
+  const kind = asRecord(metadata).kind;
+  return typeof kind === "string" && kind.trim() ? kind.trim() : null;
+}
+
+function deliveryKind(delivery: unknown) {
+  const kind = asRecord(delivery).kind;
+  return typeof kind === "string" && kind.trim() ? kind.trim() : null;
+}
+
+async function learningEnabledForWorkspace(workspaceId: string) {
+  const rows = await executeSupabaseRows<{ learning_enabled?: unknown }>(
+    "workspace_settings learning query",
+    getServiceRoleSupabase()
+      .from("workspace_settings")
+      .select("workspace_id,learning_enabled")
+      .eq("workspace_id", workspaceId)
+      .limit(1),
+  );
+  return rows[0]?.learning_enabled === true;
+}
+
+async function scheduledTaskExists(input: { workspaceId: string; metadataKind?: string; deliveryKind?: string }) {
+  const rows = await executeSupabaseRows<{ metadata: Json; delivery: Json }>(
+    "learning scheduled_task query",
+    getServiceRoleSupabase()
+      .from("scheduled_task")
+      .select("id,metadata,delivery")
+      .eq("workspace_id", input.workspaceId),
+  );
+  return rows.some(
+    (row) =>
+      (input.metadataKind ? metadataKind(row.metadata) === input.metadataKind : true) &&
+      (input.deliveryKind ? deliveryKind(row.delivery) === input.deliveryKind : true),
+  );
+}
+
+export async function ensureLearningSidecarScheduledTasks(input: {
+  workspaceId: string;
+  userId: string;
+  managerAgentId: string;
+  planningAgentId: string;
+  now?: Date;
+}) {
+  if (!(await learningEnabledForWorkspace(input.workspaceId))) return;
+
+  await ensureLearningDistillationScheduledTask(input);
+  await ensureOperabilityRemediationScheduledTask(input);
+}
+
+export async function ensureLearningDistillationScheduledTask(input: {
+  workspaceId: string;
+  userId: string;
+  managerAgentId: string;
+  now?: Date;
+}) {
+  if (
+    await scheduledTaskExists({
+      workspaceId: input.workspaceId,
+      deliveryKind: DISTILLATION_TASK_KIND,
+    })
+  ) {
+    return;
+  }
+
+  const now = input.now ?? new Date();
+  const timestamp = now.toISOString();
+  await executeSupabaseRows(
+    "learning distillation scheduled_task insert",
+    getServiceRoleSupabase()
+      .from("scheduled_task")
+      .insert({
+        id: workspaceLearningDistillationTaskId(input.workspaceId, input.managerAgentId),
+        workspace_id: input.workspaceId,
+        agent_id: input.managerAgentId,
+        source_work_item_id: null,
+        created_by_user_id: input.userId,
+        title: "Nightly learning distillation",
+        instructions:
+          "Cluster recent important run-summary memories and store reusable skill candidates for human review.",
+        enabled: true,
+        schedule: DISTILLATION_SCHEDULE,
+        timezone: DEFAULT_TIMEZONE,
+        next_run_at: computeScheduledTaskNextRunAt(DISTILLATION_SCHEDULE, DEFAULT_TIMEZONE, now),
+        last_run_at: null,
+        last_run_status: null,
+        last_error: null,
+        delivery: { kind: DISTILLATION_TASK_KIND, windowDays: 7 },
+        metadata: { kind: DISTILLATION_TASK_KIND, source: "workspace_learning_sidecar_seed" },
+        updated_at: timestamp,
+      }),
+  );
+}
+
+export async function ensureOperabilityRemediationScheduledTask(input: {
+  workspaceId: string;
+  userId: string;
+  planningAgentId: string;
+  now?: Date;
+}) {
+  if (
+    await scheduledTaskExists({
+      workspaceId: input.workspaceId,
+      metadataKind: OPERABILITY_TASK_KIND,
+    })
+  ) {
+    return;
+  }
+
+  const now = input.now ?? new Date();
+  const timestamp = now.toISOString();
+  await executeSupabaseRows(
+    "learning operability scheduled_task insert",
+    getServiceRoleSupabase()
+      .from("scheduled_task")
+      .insert({
+        id: workspaceOperabilityRemediationTaskId(input.workspaceId),
+        workspace_id: input.workspaceId,
+        agent_id: input.planningAgentId,
+        source_work_item_id: null,
+        created_by_user_id: input.userId,
+        title: "Learning operability remediation",
+        instructions: [
+          "Review recurring operability findings for this workspace before taking action.",
+          `Fetch /api/workspaces/${input.workspaceId}/learning/operability-remediation?threshold=2&limit=20 for the current recurrence data, open remediation work, and recent system grants.`,
+          "For deliberate policy denials or intended restrictions, take no action.",
+          "For a missing grant to an existing catalog tool, use agent_tool_grant.create or agent_tool_grant.update with a reason that names the operability signature.",
+          "For implementation bugs, missing catalog tools, wrong argument handling, wrong default templates, or repeated DB rejections, create remediation plan/work-items for the coding agent.",
+          "Do not create a duplicate when an open work item already carries the same metadata.operability_remediation.signature.",
+        ].join("\n"),
+        enabled: true,
+        schedule: OPERABILITY_SCHEDULE,
+        timezone: DEFAULT_TIMEZONE,
+        next_run_at: computeScheduledTaskNextRunAt(OPERABILITY_SCHEDULE, DEFAULT_TIMEZONE, now),
+        last_run_at: null,
+        last_run_status: null,
+        last_error: null,
+        delivery: {
+          kind: "scheduled_agent_message",
+          sessionStrategy: "scheduled_task",
+          metadata: { kind: OPERABILITY_TASK_KIND },
+        },
+        metadata: { kind: OPERABILITY_TASK_KIND, source: "workspace_learning_sidecar_seed" },
+        updated_at: timestamp,
+      }),
+  );
 }
 
 export function operabilitySignatureKey(signature: OperabilityIssueSignature): string {

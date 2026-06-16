@@ -32,6 +32,10 @@ const routerAgentId = "77777777-7777-4777-8777-777777777777";
 
 type Row = Record<string, unknown>;
 
+function rowKind(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Row).kind : null;
+}
+
 function agent(overrides: Partial<Row> & { id: string; type: string | null }): Row {
   const { id, type, ...rest } = overrides;
   return {
@@ -66,6 +70,7 @@ function setupSupabaseMock(input?: {
   scopedCredentials?: Row[];
   gatewayConfigAgentIds?: string[];
   scheduledTasks?: Row[];
+  workspaceSettings?: Row[];
 }) {
   const state = {
     workspaces: [...(input?.workspaces ?? [])],
@@ -76,6 +81,7 @@ function setupSupabaseMock(input?: {
     scopedCredentials: input?.scopedCredentials ? [...input.scopedCredentials] : null,
     gatewayConfigAgentIds: new Set(input?.gatewayConfigAgentIds ?? []),
     scheduledTasks: [...(input?.scheduledTasks ?? [])],
+    workspaceSettings: [...(input?.workspaceSettings ?? [])],
   };
 
   const supabaseTables = {
@@ -107,6 +113,7 @@ function setupSupabaseMock(input?: {
       updated_by: userId,
     })),
     scheduled_task: state.scheduledTasks,
+    workspace_settings: state.workspaceSettings,
   };
   const supabaseClient = createMockSupabaseClient(supabaseTables);
   vi.mocked(getServiceRoleSupabase).mockReturnValue(supabaseClient as never);
@@ -130,7 +137,7 @@ describe("default-agent auth bootstrap", () => {
     const createdCodingAgent = state.agents.find((row) => row.type === "coding");
     const createdManagerAgent = state.agents.find((row) => row.type === "manager");
     const createdRouterAgent = state.agents.find((row) => row.type === "router");
-    const routerTask = state.scheduledTasks.find((row) => row.metadata && typeof row.metadata === "object");
+    const routerTask = state.scheduledTasks.find((row) => rowKind(row.metadata) === "router_optimization");
 
     expect(first.workspaceId).toBe(state.workspaces[0]?.id);
     expect(first.defaultAgents.planning?.agentId).toBe(createdPlanningAgent?.id);
@@ -219,6 +226,51 @@ describe("default-agent auth bootstrap", () => {
       instructions: "Prefer local models only after checking reliability.",
       schedule: { kind: "every", interval: 6, unit: "hour" },
       metadata: { kind: "router_optimization" },
+    });
+  });
+
+  it("seeds learning sidecar scheduled tasks for learning-enabled workspaces", async () => {
+    const state = setupSupabaseMock({
+      workspaces: [workspace()],
+      memberships: [
+        { workspace_id: workspaceId, user_id: userId, role: "owner", created_at: "2026-04-25T00:00:00.000Z" },
+      ],
+      workspaceSettings: [{ workspace_id: workspaceId, learning_enabled: true }],
+    });
+
+    await listSetupAuthState("access-token", userId);
+    await listSetupAuthState("access-token", userId);
+
+    const createdPlanningAgent = state.agents.find((row) => row.type === "planning");
+    const createdManagerAgent = state.agents.find((row) => row.type === "manager");
+    const distillationTask = state.scheduledTasks.find((row) => rowKind(row.delivery) === "learning_distillation");
+    const operabilityTask = state.scheduledTasks.find(
+      (row) => rowKind(row.metadata) === "learning_operability_remediation",
+    );
+
+    expect(state.scheduledTasks).toHaveLength(3);
+    expect(distillationTask).toMatchObject({
+      workspace_id: workspaceId,
+      agent_id: createdManagerAgent?.id,
+      title: "Nightly learning distillation",
+      enabled: true,
+      delivery: { kind: "learning_distillation", windowDays: 7 },
+      metadata: { kind: "learning_distillation", source: "workspace_learning_sidecar_seed" },
+    });
+    expect(operabilityTask).toMatchObject({
+      workspace_id: workspaceId,
+      agent_id: createdPlanningAgent?.id,
+      title: "Learning operability remediation",
+      enabled: true,
+      instructions: expect.stringContaining(
+        `/api/workspaces/${workspaceId}/learning/operability-remediation?threshold=2&limit=20`,
+      ),
+      delivery: {
+        kind: "scheduled_agent_message",
+        sessionStrategy: "scheduled_task",
+        metadata: { kind: "learning_operability_remediation" },
+      },
+      metadata: { kind: "learning_operability_remediation", source: "workspace_learning_sidecar_seed" },
     });
   });
 
