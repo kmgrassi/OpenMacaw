@@ -453,14 +453,14 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     end
   end
 
-  # CLI tools whose execution + auth must follow the local model onto the
-  # user's machine: when present in the agent's granted tools, the helper shells
-  # out (git/gh, arbitrary shell commands) with the laptop's own session in the
-  # configured workspace_root. The cloud loop delegates these by execution_kind
-  # (see ToolCallingLoop.ToolExecutionDispatcher); everything else stays
-  # runtime-side. This is only a *marking* list — a tool is offered only if the
-  # agent is actually granted it (or it is in the no-grants fallback below).
-  @local_helper_cli_tools ["git.run", "shell.exec"]
+  # Tools whose execution + auth must follow the local model onto the user's
+  # machine: CLI tools shell out with local auth, and repository read tools use
+  # the route's local workspace path instead of a cloud-side checkout. The cloud
+  # loop delegates these by execution_kind (see
+  # ToolCallingLoop.ToolExecutionDispatcher). This is only a *marking* list — a
+  # tool is offered only if the agent is actually granted it (or it is in the
+  # no-grants fallback below).
+  @local_helper_tools ["git.run", "shell.exec", "repo.list", "repo.read_file", "repo.search"]
 
   # CLI tools added to the no-grants fallback surface. Kept to git.run only:
   # shell.exec (arbitrary execution on the user's machine) must require an
@@ -494,6 +494,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       # falls back to Runner.LocalRelay's "openai_compatible" default.
       "target_runner_kind" => ExecutionProfile.local_relay_target_runner_kind(Map.get(profile, :provider)),
       "credential_ref" => Map.get(profile, :credential_ref),
+      "workspace_root" => local_workspace_root(profile),
       "tool_definitions" => local_relay_tool_definitions(profile),
       "tool_calling_mode" => "cloud_managed",
       "trace_id" => Process.get(:symphony_trace_id),
@@ -528,12 +529,64 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
 
   defp mark_local_helper_tools(definitions) do
     Enum.map(definitions, fn definition ->
-      if is_map(definition) and tool_definition_name(definition) in @local_helper_cli_tools do
-        Map.put(definition, "execution_kind", "helper")
+      if is_map(definition) and tool_definition_name(definition) in @local_helper_tools do
+        definition
+        |> Map.put("execution_kind", "helper")
+        |> maybe_add_local_repo_route_inputs()
       else
         definition
       end
     end)
+  end
+
+  defp maybe_add_local_repo_route_inputs(definition) do
+    if tool_definition_name(definition) in ["repo.list", "repo.read_file", "repo.search"] do
+      definition
+      |> update_tool_schema("parameters_schema")
+      |> update_tool_schema("inputSchema")
+      |> update_tool_schema("parameters")
+    else
+      definition
+    end
+  end
+
+  defp update_tool_schema(definition, schema_key) do
+    case Map.get(definition, schema_key) || Map.get(definition, String.to_atom(schema_key)) do
+      schema when is_map(schema) ->
+        Map.put(definition, schema_key, add_repo_route_properties(schema))
+
+      _ ->
+        definition
+    end
+  end
+
+  defp add_repo_route_properties(schema) do
+    properties = Map.get(schema, "properties") || Map.get(schema, :properties) || %{}
+
+    route_properties = %{
+      "repository_path" => %{
+        "type" => ["string", "null"],
+        "description" => "Optional absolute local repository checkout path. If omitted, the runtime-provided local_workspace_root is used."
+      },
+      "cwd" => %{
+        "type" => ["string", "null"],
+        "description" => "Optional alias for repository_path."
+      }
+    }
+
+    Map.put(schema, "properties", Map.merge(route_properties, properties))
+  end
+
+  defp local_workspace_root(profile) do
+    profile
+    |> Map.get(:source_metadata)
+    |> case do
+      metadata when is_map(metadata) ->
+        Map.get(metadata, "local_workspace_root") || Map.get(metadata, :local_workspace_root)
+
+      _ ->
+        nil
+    end
   end
 
   defp tool_definition_name(definition) do

@@ -67,7 +67,8 @@ defmodule SymphonyElixir.ToolExecutionContext do
         session_id: session_value(session, :session_id) || get_in(session, [:dispatch_frame, "session_id"]),
         request_id: session_value(session, :request_id),
         trace_id: session_value(session, :trace_id),
-        run_id: session_value(session, :run_id)
+        run_id: session_value(session, :run_id),
+        workspace_root: session_value(session, :workspace_root)
       }
 
     Map.merge(normalize(session_context), normalize(extra || %{}))

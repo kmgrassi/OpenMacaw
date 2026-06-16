@@ -274,10 +274,12 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert frame["session_id"] == "agent:relay-1:main"
     assert frame["run_id"] == "run-relay"
     assert frame["model"] == "qwen-chat"
+    assert [%{"role" => "system", "content" => system_message} | _] = frame["messages"]
+    assert system_message =~ "local_workspace_root: /Users/dev/repos/openmacaw"
     assert [%{"name" => _name} | _rest] = frame["tool_definitions"]
 
-    # git.run is offered to the local model and marked for helper-side
-    # execution so it runs on the user's machine with local CLI auth.
+    # Workspace-local tools are offered to the local model and marked for
+    # helper-side execution so they run against the user's routed checkout.
     git_tool = Enum.find(frame["tool_definitions"], &(&1["name"] == "git.run"))
     assert git_tool, "expected git.run in local_relay tool_definitions"
     assert git_tool["execution_kind"] == "helper"
@@ -363,9 +365,26 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     Req.Test.stub(__MODULE__, fn conn ->
       cond do
         conn.request_path == "/rest/v1/routing_rule_match" ->
+          params = URI.decode_query(conn.query_string)
+
+          matches =
+            if params["kind"] == "eq.agent_id" do
+              [%{"rule_id" => "rule-relay"}]
+            else
+              [
+                %{"rule_id" => "rule-relay", "kind" => "agent_id", "key" => "agent_id", "value" => "relay-1"},
+                %{
+                  "rule_id" => "rule-relay",
+                  "kind" => "local_workspace_root",
+                  "key" => "path",
+                  "value" => "/Users/dev/repos/openmacaw"
+                }
+              ]
+            end
+
           conn
           |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!([%{"rule_id" => "rule-relay"}]))
+          |> Plug.Conn.send_resp(200, Jason.encode!(matches))
 
         conn.request_path == "/rest/v1/routing_rule" ->
           conn
