@@ -8,6 +8,7 @@ import type * as CredentialRepository from "../repositories/credentials.js";
 import type * as StoredAgentCredentialStateService from "../services/stored-agent-credential-state.js";
 import { getCredentialRowByIdForWorkspace, upsertCredentialAlias } from "../repositories/credentials.js";
 import { listWorkspaceCredentialReferenceState } from "../services/stored-agent-credential-state.js";
+import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
 import { registerCredentialAliasRoutes } from "./credential-aliases.js";
 
 vi.mock("../repositories/credentials.js", async () => {
@@ -29,6 +30,10 @@ vi.mock("../services/stored-agent-credential-state.js", async () => {
   };
 });
 
+vi.mock("../services/work-item-ingest.js", () => ({
+  assertWorkspaceMembership: vi.fn(),
+}));
+
 function closeServer(server: Server | undefined) {
   if (!server) return Promise.resolve();
   server.closeAllConnections?.();
@@ -41,6 +46,7 @@ describe("credential alias routes", () => {
   let baseUrl = "";
 
   beforeEach(async () => {
+    vi.mocked(assertWorkspaceMembership).mockResolvedValue(undefined);
     vi.mocked(getCredentialRowByIdForWorkspace).mockResolvedValue({
       id: "credential-row-1",
       provider: "openai",
@@ -153,6 +159,29 @@ describe("credential alias routes", () => {
         credential: null,
       },
     });
+    expect(assertWorkspaceMembership).toHaveBeenCalledWith("user-1", "workspace-1");
     expect(listWorkspaceCredentialReferenceState).toHaveBeenCalledWith("workspace-1", "user-1");
+  });
+
+  it("rejects alias writes outside the caller workspace membership", async () => {
+    vi.mocked(assertWorkspaceMembership).mockRejectedValueOnce(new Error("not authorized for workspace"));
+
+    const response = await fetch(`${baseUrl}/api/credential-aliases/primary_openai`, {
+      method: "PUT",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        credentialId: "credential-row-1",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "workspace_forbidden" },
+    });
+    expect(upsertCredentialAlias).not.toHaveBeenCalled();
   });
 });

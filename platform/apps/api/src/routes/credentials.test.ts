@@ -14,6 +14,7 @@ import { listWorkspaceCredentialReferenceState } from "../services/stored-agent-
 import { listStoredAgentsFromSupabase } from "../services/stored-agent-management.js";
 import { syncCredentialIntoRoutingRuleForAgent } from "../services/stored-agent-routing.js";
 import { validateModelProviderCredential } from "../services/model-catalog.js";
+import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
 import { registerCredentialRoutes } from "./credentials.js";
 
 vi.mock("../repositories/credentials.js", () => ({
@@ -39,6 +40,10 @@ vi.mock("../services/stored-agent-routing.js", () => ({
 
 vi.mock("../services/model-catalog.js", () => ({
   validateModelProviderCredential: vi.fn(),
+}));
+
+vi.mock("../services/work-item-ingest.js", () => ({
+  assertWorkspaceMembership: vi.fn(),
 }));
 
 function closeServer(server: Server | undefined) {
@@ -76,6 +81,7 @@ describe("credential routes", () => {
   let baseUrl = "";
 
   beforeEach(async () => {
+    vi.mocked(assertWorkspaceMembership).mockResolvedValue(undefined);
     vi.mocked(validateModelProviderCredential).mockResolvedValue({
       ok: true,
       modelCount: 1,
@@ -219,7 +225,46 @@ describe("credential routes", () => {
         }),
       ],
     });
+    expect(assertWorkspaceMembership).toHaveBeenCalledWith("user-1", "workspace-1");
     expect(listWorkspaceCredentialReferenceState).toHaveBeenCalledWith("workspace-1", "user-1");
+  });
+
+  it("rejects workspace credential reads outside the caller workspace membership", async () => {
+    vi.mocked(assertWorkspaceMembership).mockRejectedValueOnce(new Error("not authorized for workspace"));
+
+    const response = await fetch(`${baseUrl}/api/credentials?workspaceId=workspace-1`, {
+      headers: {
+        authorization: "Bearer test-token",
+      },
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "workspace_forbidden" },
+    });
+    expect(listWorkspaceCredentialReferenceState).not.toHaveBeenCalled();
+  });
+
+  it("rejects workspace credential writes outside the caller workspace membership", async () => {
+    vi.mocked(assertWorkspaceMembership).mockRejectedValueOnce(new Error("not authorized for workspace"));
+
+    const response = await fetch(`${baseUrl}/api/credentials`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        scope: { kind: "workspace", workspaceId: "workspace-1" },
+        key: { format: "api_key", provider: "openai", secret: "sk-test" },
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "workspace_forbidden" },
+    });
+    expect(saveModelProviderCredentialForWorkspaceInSupabase).not.toHaveBeenCalled();
   });
 
   it("saves tracker workspace credentials without model-provider validation", async () => {

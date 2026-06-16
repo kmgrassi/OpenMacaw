@@ -11,6 +11,7 @@ import { ApiRouteError, apiRoute } from "../http.js";
 import { upsertCredentialAlias } from "../repositories/credentials.js";
 import { validateModelProviderCredential } from "../services/model-catalog.js";
 import { syncCredentialIntoRoutingRuleForAgent } from "../services/stored-agent-routing.js";
+import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
 import {
   saveInlineCredentialForAgentInSupabase,
   saveModelProviderCredentialForWorkspaceInSupabase,
@@ -25,6 +26,21 @@ function asModelProvider(provider: CredentialProvider): ModelProvider | null {
   return MODEL_CREDENTIAL_PROVIDERS.has(provider) ? (provider as ModelProvider) : null;
 }
 
+async function requireWorkspaceAccess(userId: string, workspaceId: string) {
+  try {
+    await assertWorkspaceMembership(userId, workspaceId);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not authorized")) {
+      throw new ApiRouteError(
+        403,
+        "workspace_forbidden",
+        "Authenticated user is not authorized for the requested workspace",
+      );
+    }
+    throw error;
+  }
+}
+
 export function registerCredentialRoutes(app: Express) {
   app.get(
     "/api/credentials",
@@ -36,6 +52,7 @@ export function registerCredentialRoutes(app: Express) {
           throw new ApiRouteError(400, "invalid_request", "workspaceId is required");
         }
 
+        await requireWorkspaceAccess(userId, workspaceId);
         const state = await listWorkspaceCredentialReferenceState(workspaceId, userId ?? null);
         return res.status(200).json(
           SavedCredentialListResponseSchema.parse({
@@ -67,6 +84,10 @@ export function registerCredentialRoutes(app: Express) {
             "unsupported_credential_format",
             "Credential format is not supported for this scope",
           );
+        }
+
+        if (scope.kind === "workspace" || scope.kind === "agent") {
+          await requireWorkspaceAccess(userId, scope.workspaceId);
         }
 
         const agent =
