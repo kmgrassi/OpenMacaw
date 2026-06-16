@@ -5,10 +5,15 @@ import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { saveGitHubAppInstallationCredentialForWorkspace } from "../services/resource-credentials.js";
+import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
 import { registerResourceCredentialRoutes } from "./resource-credentials.js";
 
 vi.mock("../services/resource-credentials.js", () => ({
   saveGitHubAppInstallationCredentialForWorkspace: vi.fn(),
+}));
+
+vi.mock("../services/work-item-ingest.js", () => ({
+  assertWorkspaceMembership: vi.fn(),
 }));
 
 function closeServer(server: Server | undefined) {
@@ -23,6 +28,7 @@ describe("resource credential routes", () => {
   let baseUrl = "";
 
   beforeEach(async () => {
+    vi.mocked(assertWorkspaceMembership).mockResolvedValue(undefined);
     vi.mocked(saveGitHubAppInstallationCredentialForWorkspace).mockResolvedValue({
       credentialId: "credential-1",
       workspaceId: "workspace-1",
@@ -111,6 +117,30 @@ describe("resource credential routes", () => {
     });
 
     expect(response.status).toBe(400);
+    expect(saveGitHubAppInstallationCredentialForWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("rejects GitHub App credential writes outside the caller workspace membership", async () => {
+    vi.mocked(assertWorkspaceMembership).mockRejectedValueOnce(new Error("not authorized for workspace"));
+
+    const response = await fetch(`${baseUrl}/api/resource-credentials/github-app-installations`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        appId: "123",
+        installationId: "456",
+        privateKey: "mock-github-app-private-key",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "workspace_forbidden" },
+    });
     expect(saveGitHubAppInstallationCredentialForWorkspace).not.toHaveBeenCalled();
   });
 });

@@ -13,6 +13,22 @@ import {
   upsertCredentialAlias,
 } from "../repositories/credentials.js";
 import { aliasResponse, listWorkspaceCredentialReferenceState } from "../services/stored-agent-credential-state.js";
+import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
+
+async function requireWorkspaceAccess(userId: string, workspaceId: string) {
+  try {
+    await assertWorkspaceMembership(userId, workspaceId);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not authorized")) {
+      throw new ApiRouteError(
+        403,
+        "workspace_forbidden",
+        "Authenticated user is not authorized for the requested workspace",
+      );
+    }
+    throw error;
+  }
+}
 
 export function registerCredentialAliasRoutes(app: Express) {
   app.get(
@@ -25,6 +41,7 @@ export function registerCredentialAliasRoutes(app: Express) {
           throw new ApiRouteError(400, "invalid_request", "workspaceId is required");
         }
 
+        await requireWorkspaceAccess(userId, workspaceId);
         const state = await listWorkspaceCredentialReferenceState(workspaceId, userId);
         return res.status(200).json(CredentialAliasListResponseSchema.parse({ aliases: state.aliases }));
       },
@@ -58,6 +75,7 @@ export function registerCredentialAliasRoutes(app: Express) {
           );
         }
 
+        await requireWorkspaceAccess(userId, parsed.data.workspaceId);
         const credential = await getCredentialRowByIdForWorkspace(parsed.data.credentialId, parsed.data.workspaceId);
         if (!credential) {
           return res.status(404).json(errorPayload("credential_not_found", "Credential was not found"));
