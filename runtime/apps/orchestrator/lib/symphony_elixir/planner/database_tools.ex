@@ -201,6 +201,40 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
     end
   end
 
+  def execute("agent_tool_grant.create", arguments, opts) do
+    with {:ok, args} <- Arguments.normalize_arguments(arguments),
+         {:ok, workspace_id} <- Arguments.workspace_id(args, opts),
+         {:ok, agent_id} <- Arguments.required_string(args, "agentId"),
+         {:ok, reason} <- Arguments.required_string(args, "reason"),
+         {:ok, tool_ref} <- agent_tool_ref(args),
+         {:ok, _agent} <- read_agent_in_workspace(agent_id, workspace_id, opts),
+         {:ok, tool} <- read_visible_enabled_tool(tool_ref, workspace_id, opts),
+         {:ok, nil} <- read_agent_tool_grant(agent_id, workspace_id, tool["id"], opts) do
+      upsert_agent_tool_grant(agent_id, workspace_id, tool, "include", reason, opts)
+    else
+      {:ok, grant} when is_map(grant) -> {:error, :agent_tool_grant_exists}
+      other -> other
+    end
+  end
+
+  def execute("agent_tool_grant.update", arguments, opts) do
+    with {:ok, args} <- Arguments.normalize_arguments(arguments),
+         {:ok, workspace_id} <- Arguments.workspace_id(args, opts),
+         {:ok, agent_id} <- Arguments.required_string(args, "agentId"),
+         {:ok, mode} <- agent_tool_grant_mode(args, required: true),
+         {:ok, reason} <- Arguments.required_string(args, "reason"),
+         {:ok, tool_ref} <- agent_tool_ref(args),
+         {:ok, _agent} <- read_agent_in_workspace(agent_id, workspace_id, opts),
+         {:ok, tool} <- read_visible_enabled_tool(tool_ref, workspace_id, opts),
+         {:ok, grant} when is_map(grant) <- read_agent_tool_grant(agent_id, workspace_id, tool["id"], opts),
+         :ok <- reject_repeated_system_grant(grant, mode) do
+      upsert_agent_tool_grant(agent_id, workspace_id, tool, mode, reason, opts)
+    else
+      {:ok, nil} -> {:error, :agent_tool_grant_not_found}
+      other -> other
+    end
+  end
+
   def execute(tool, _arguments, _opts), do: {:error, {:unsupported_planner_tool, tool, @tools}}
 
   @spec tool_specs() :: [map()]
@@ -374,6 +408,105 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
 
       _ ->
         {:error, {:invalid_argument, "plan_id", "must be a string"}}
+    end
+  end
+
+  defp agent_tool_ref(args) do
+    case {Arguments.optional_value(args, "toolId"), Arguments.optional_value(args, "toolSlug")} do
+      {tool_id, _tool_slug} when is_binary(tool_id) -> {:ok, {:id, tool_id}}
+      {_tool_id, tool_slug} when is_binary(tool_slug) -> {:ok, {:slug, tool_slug}}
+      _ -> {:error, {:missing_argument, "toolId or toolSlug"}}
+    end
+  end
+
+  defp agent_tool_grant_mode(args, opts) do
+    case Arguments.optional_value(args, "mode") do
+      value when value in ["include", "exclude"] -> {:ok, value}
+      nil -> if Keyword.get(opts, :required), do: {:error, {:missing_argument, "mode"}}, else: {:ok, "include"}
+      _ -> {:error, {:invalid_argument, "mode", "must be include or exclude"}}
+    end
+  end
+
+  defp read_agent_in_workspace(agent_id, workspace_id, opts) do
+    query = %{"id" => "eq.#{agent_id}", "workspace_id" => "eq.#{workspace_id}", "limit" => "1"}
+
+    with {:ok, client} <- client(opts) do
+      case PostgRESTClient.get(client, "agent", query) do
+        {:ok, rows} ->
+          case row_result(rows) do
+            row when is_map(row) -> {:ok, row}
+            nil -> {:error, :agent_not_found}
+          end
+
+        {:error, _} = error ->
+          error
+      end
+    end
+  end
+
+  defp read_visible_enabled_tool({field, value}, workspace_id, opts) do
+    query =
+      %{
+        Atom.to_string(field) => "eq.#{value}",
+        "or" => "(workspace_id.is.null,workspace_id.eq.#{workspace_id})",
+        "limit" => "1"
+      }
+
+    with {:ok, client} <- client(opts) do
+      case PostgRESTClient.get(client, "tool", query) do
+        {:ok, rows} ->
+          case row_result(rows) do
+            %{"enabled" => true} = tool -> {:ok, tool}
+            %{} -> {:error, :tool_disabled}
+            nil -> {:error, :tool_not_found}
+          end
+
+        {:error, _} = error ->
+          error
+      end
+    end
+  end
+
+  defp read_agent_tool_grant(agent_id, workspace_id, tool_id, opts) do
+    query = %{
+      "agent_id" => "eq.#{agent_id}",
+      "workspace_id" => "eq.#{workspace_id}",
+      "tool_id" => "eq.#{tool_id}",
+      "limit" => "1"
+    }
+
+    with {:ok, client} <- client(opts) do
+      case PostgRESTClient.get(client, "agent_tool_grant", query) do
+        {:ok, rows} -> {:ok, row_result(rows)}
+        {:error, _} = error -> error
+      end
+    end
+  end
+
+  defp reject_repeated_system_grant(%{"source" => "system", "mode" => mode}, mode),
+    do: {:error, :system_tool_grant_backoff}
+
+  defp reject_repeated_system_grant(_grant, _mode), do: :ok
+
+  defp upsert_agent_tool_grant(agent_id, workspace_id, tool, mode, reason, opts) do
+    payload = %{
+      "agent_id" => agent_id,
+      "workspace_id" => workspace_id,
+      "tool_id" => tool["id"],
+      "mode" => mode,
+      "source" => "system",
+      "reason" => reason,
+      "created_by_user_id" => nil
+    }
+
+    with {:ok, client} <- client(opts) do
+      case PostgRESTClient.post(client, "agent_tool_grant", payload,
+             prefer: "resolution=merge-duplicates,return=representation",
+             query: %{"on_conflict" => "agent_id,workspace_id,tool_id"}
+           ) do
+        {:ok, rows} -> {:ok, %{"grant" => row_result(rows), "tool" => Map.take(tool, ["id", "slug", "name"])}}
+        {:error, _} = error -> error
+      end
     end
   end
 

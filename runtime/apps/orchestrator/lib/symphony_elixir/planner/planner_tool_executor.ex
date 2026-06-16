@@ -3,7 +3,7 @@ defmodule SymphonyElixir.Planner.PlannerToolExecutor do
   Executes planner tools through the registry, with DynamicTool fallback.
   """
 
-  alias SymphonyElixir.{Codex.DynamicTool, ToolRegistry}
+  alias SymphonyElixir.{Codex.DynamicTool, ToolExecutionContext, ToolRegistry}
 
   @database_tools [
     "plan.create",
@@ -12,6 +12,8 @@ defmodule SymphonyElixir.Planner.PlannerToolExecutor do
     "task.create",
     "task.update",
     "task.schedule",
+    "agent_tool_grant.create",
+    "agent_tool_grant.update",
     "scheduled_task.create",
     "scheduled_task.read",
     "scheduled_task.update",
@@ -57,7 +59,7 @@ defmodule SymphonyElixir.Planner.PlannerToolExecutor do
 
   defp execute_registry_tool(session, tool, arguments) do
     context =
-      compact_context(%{
+      %{
         agent_id: Map.get(session, :agent_id),
         default_repository: Map.get(session, :default_repository),
         default_runner_kind: Map.get(session, :default_runner_kind),
@@ -66,7 +68,9 @@ defmodule SymphonyElixir.Planner.PlannerToolExecutor do
         workspace: Map.get(session, :workspace),
         workspace_id: Map.get(session, :workspace_id),
         workspace_root: Map.get(session, :workspace_root)
-      })
+      }
+      |> compact_context()
+      |> ToolExecutionContext.normalize()
 
     case registry_execute(tool, arguments, context, Map.get(session, :tool_names, [])) do
       {:ok, %{output: output}} ->

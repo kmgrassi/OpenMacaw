@@ -2,6 +2,7 @@ import { ToolPolicySchema, type ToolPolicy } from "../../../../../../contracts/a
 import type { DefaultAgentRole, SetupRequest, SetupUpdateRequest } from "../../../../../../contracts/setup.js";
 import {
   DEFAULT_PLANNING_TOOL_SLUGS,
+  AGENT_TOOL_GRANT_TOOL_SLUGS,
   GIT_COMMAND_TOOL_SLUG,
   ROUTER_TOOL_SLUGS,
   SCHEDULED_TASK_TOOL_SLUGS,
@@ -12,7 +13,7 @@ export function plannerToolPolicyDefaults(): ToolPolicy {
   return ToolPolicySchema.parse({
     planning: {
       destination: "database",
-      tools: [...DEFAULT_PLANNING_TOOL_SLUGS, ...SCHEDULED_TASK_TOOL_SLUGS],
+      tools: [...DEFAULT_PLANNING_TOOL_SLUGS, ...SCHEDULED_TASK_TOOL_SLUGS, ...AGENT_TOOL_GRANT_TOOL_SLUGS],
     },
   });
 }

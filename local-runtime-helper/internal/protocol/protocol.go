@@ -181,6 +181,7 @@ type ToolExecutionRequestFrame struct {
 	ToolCallID      string         `json:"tool_call_id"`
 	Name            string         `json:"name"`
 	Arguments       map[string]any `json:"arguments"`
+	Context         map[string]any `json:"context,omitempty"`
 	ExecutionKind   string         `json:"execution_kind"`
 	ExecutionConfig map[string]any `json:"execution_config,omitempty"`
 	// TimeoutMs bounds local execution to the cloud loop's per-tool wait, so a

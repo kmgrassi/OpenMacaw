@@ -462,6 +462,24 @@ defmodule SymphonyElixir.Runner.Observability do
 
   defp tool_output_error_code(%{"error" => "invalid_arguments"}, _output), do: "tool_invalid_args"
 
+  # Local-relay helper failure shapes (git.run / shell.exec on the user's
+  # machine). Classify these explicitly so a real helper failure is not
+  # flattened to the default "tool_unknown" — which reads as "the tool does
+  # not exist" and is non-retryable, masking the actual cause and blocking the
+  # model from self-correcting. A genuine unsupported tool stays "tool_unknown";
+  # everything else maps to a code that reflects what really happened.
+  defp tool_output_error_code(%{"error" => "unsupported_local_tool"}, _output), do: "tool_unknown"
+  defp tool_output_error_code(%{"error" => "no_local_tool_executor"}, _output), do: "tool_process_failed"
+  defp tool_output_error_code(%{"error" => "command_blocked"}, _output), do: "tool_denied"
+  defp tool_output_error_code(%{"error" => "command_timeout"}, _output), do: "tool_timeout"
+  defp tool_output_error_code(%{"error" => "command_failed_to_start"}, _output), do: "tool_dependency_missing"
+
+  defp tool_output_error_code(%{"error" => "helper_tool_failed", "reason" => reason}, _output)
+       when is_binary(reason),
+       do: tool_reason_error_code(reason)
+
+  defp tool_output_error_code(%{"error" => "helper_tool_failed"}, _output), do: "tool_process_failed"
+
   defp tool_output_error_code(%{"error" => %{"message" => message}}, _output) when is_binary(message) do
     cond do
       String.contains?(message, "not allowed by this agent's tool policy") -> "tool_denied"

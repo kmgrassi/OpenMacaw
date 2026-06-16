@@ -5,9 +5,15 @@ defmodule SymphonyElixir.ToolRegistryPlannerTest do
 
   test "resolves planner database and repo read tools" do
     assert {:ok, SymphonyElixir.Planner.Tools.PlanCreate} = ToolRegistry.get("plan.create")
+
+    assert {:ok, SymphonyElixir.Planner.Tools.AgentToolGrantCreate} =
+             ToolRegistry.get("agent_tool_grant.create")
+
     assert {:ok, SymphonyElixir.Planner.Tools.RepoReadFile} = ToolRegistry.get("repo.read_file")
 
     assert "plan.create" in ToolRegistry.bundle(:planner)
+    assert "agent_tool_grant.create" in ToolRegistry.bundle(:planner)
+    assert "agent_tool_grant.update" in ToolRegistry.bundle(:planner)
     assert "snooze_work_item" in ToolRegistry.bundle(:planner)
     assert "workspace_settings.update_tracker_kind" in ToolRegistry.bundle(:planner)
     assert "workspace_settings.manage" in ToolRegistry.bundle(:planner)

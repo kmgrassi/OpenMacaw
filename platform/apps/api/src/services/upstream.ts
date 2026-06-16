@@ -1,4 +1,5 @@
 import { contextHeaders } from "../middleware/request-context.js";
+import { internalServiceRoleHeaders } from "./internal-service-auth.js";
 
 export type UpstreamResponse = {
   status: number;
@@ -18,16 +19,19 @@ export function createUpstreamRequester(baseUrl: string, timeoutMs: number) {
         init.method !== "GET" &&
         init.method !== "HEAD";
 
+      const requestHeaders = new Headers(init.headers);
+      const headerRecord = Object.fromEntries(requestHeaders.entries());
+
       const response = await fetch(`${baseUrl}${path}`, {
         ...init,
         method: init.method || "GET",
         body: hasBody ? init.body : undefined,
         signal: controller.signal,
-        headers: {
+        headers: internalServiceRoleHeaders({
           "content-type": "application/json",
-          ...(typeof init.headers === "object" && init.headers !== null ? init.headers : {}),
+          ...headerRecord,
           ...contextHeaders(),
-        },
+        }),
       });
 
       const contentType = response.headers.get("content-type") ?? "";

@@ -216,6 +216,7 @@ func (d *Dispatcher) startToolExecution(ctx context.Context, f *protocol.ToolExe
 				ToolCallID: f.ToolCallID,
 				Name:       f.Name,
 				Arguments:  f.Arguments,
+				Context:    runner.ToolExecutionContext(f.Context),
 			})
 			result.Success = res.Success
 			result.Output = res.Output

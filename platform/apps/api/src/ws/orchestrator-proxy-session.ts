@@ -6,6 +6,7 @@ import { verifyBearerToken } from "../middleware/authJwt.js";
 import { contextHeaders } from "../middleware/request-context.js";
 import { getAppUserByAuthId, type AppUserRow } from "../services/auth/app-user.js";
 import { assertAgentAccess } from "../services/agent-tools/access.js";
+import { internalServiceRoleHeaders } from "../services/internal-service-auth.js";
 
 import { WebSocketUpgradeError } from "./orchestrator-proxy-upgrade.js";
 
@@ -156,10 +157,10 @@ export async function prepareAuthenticatedWebSocketSession(request: IncomingMess
   request.url = `${requestUrl.pathname}${requestUrl.search}`;
 
   return {
-    headers: {
+    headers: internalServiceRoleHeaders({
       ...contextHeaders(),
       ...(request.headers.cookie ? { cookie: String(request.headers.cookie) } : {}),
-    },
+    }),
     authUserId: auth.userId,
     userId: appUser.id,
   };

@@ -6,12 +6,19 @@ import { executeDatabaseTool } from "./database-tool-executor.js";
 import type { ToolDefinition } from "./tool-spec-translator.js";
 
 vi.mock("../supabase-client.js", () => ({
+  executeSupabaseRows: async (_context: string, query: PromiseLike<{ data: unknown; error: unknown }>) => {
+    const { data, error } = await query;
+    if (error) throw error;
+    if (!data) return [];
+    return Array.isArray(data) ? data : [data];
+  },
   getServiceRoleSupabase: vi.fn(),
   normalizeSupabaseError: (_context: string, error: Error) => error,
 }));
 
 const workspaceId = "22222222-2222-4222-8222-222222222222";
 const agentId = "33333333-3333-4333-8333-333333333333";
+const targetAgentId = "55555555-5555-4555-8555-555555555555";
 const foreignAgentId = "44444444-4444-4444-8444-444444444444";
 
 function scheduledTaskTool(slug: string): ToolDefinition {
@@ -36,6 +43,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     tables = {
       agent: [
         { id: agentId, workspace_id: workspaceId },
+        { id: targetAgentId, workspace_id: workspaceId },
         { id: foreignAgentId, workspace_id: "foreign-workspace" },
       ],
       tool: [
@@ -44,14 +52,26 @@ describe("executeDatabaseTool scheduled_task tools", () => {
           workspace_id: null,
           slug: "repo.read_file",
           name: "Read File",
+          description: "Read a file.",
           examples: [{ input: { path: "README.md" } }],
+          parameters: {},
+          function_name: "repo.read_file",
+          execution_kind: "filesystem_read",
+          runner_kind: "codex",
+          enabled: true,
         },
         {
           id: "foreign-tool",
           workspace_id: "foreign-workspace",
           slug: "foreign.tool",
           name: "Foreign Tool",
+          description: "Foreign.",
           examples: [],
+          parameters: {},
+          function_name: "foreign.tool",
+          execution_kind: "database",
+          runner_kind: "planner",
+          enabled: true,
         },
       ],
       agent_tool_grant: [
@@ -264,7 +284,13 @@ describe("executeDatabaseTool scheduled_task tools", () => {
       workspace_id: null,
       slug: "repo.search",
       name: "Search",
+      description: "Search files.",
       examples: [],
+      parameters: {},
+      function_name: "repo.search",
+      execution_kind: "filesystem_read",
+      runner_kind: "codex",
+      enabled: true,
     });
 
     await expect(
@@ -291,6 +317,135 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     ).rejects.toMatchObject({
       status: 403,
       code: "learning_disabled",
+    });
+  });
+
+  it("creates system-authored agent tool grants for planner remediation", async () => {
+    const result = await executeDatabaseTool(
+      scheduledTaskTool("agent_tool_grant.create"),
+      {
+        agentId: targetAgentId,
+        toolSlug: "repo.read_file",
+        reason: "operability signature tool:repo.read_file|error:tool_not_granted|agent:coding",
+      },
+      { workspaceId, agentId, sessionId: "grant-create-run" },
+    );
+
+    expect(result.status).toBe(201);
+    expect(JSON.parse(result.output)).toMatchObject({
+      grant: {
+        agent_id: targetAgentId,
+        workspace_id: workspaceId,
+        tool_id: "tool-repo-read",
+        mode: "include",
+        source: "system",
+        reason: "operability signature tool:repo.read_file|error:tool_not_granted|agent:coding",
+        created_by_user_id: null,
+      },
+      tool: {
+        slug: "repo.read_file",
+      },
+    });
+    expect(tables.agent_tool_grant).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          agent_id: targetAgentId,
+          tool_id: "tool-repo-read",
+          source: "system",
+        }),
+      ]),
+    );
+  });
+
+  it("requires agent_tool_grant.update to target an existing grant", async () => {
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("agent_tool_grant.update"),
+        {
+          agentId: targetAgentId,
+          toolSlug: "repo.read_file",
+          mode: "exclude",
+          reason: "Reverse an incorrect grant.",
+        },
+        { workspaceId, agentId, sessionId: "grant-update-missing-run" },
+      ),
+    ).rejects.toMatchObject({
+      status: 404,
+      code: "agent_tool_grant_not_found",
+    });
+  });
+
+  it("backs off when create repeats the same system grant", async () => {
+    tables.agent_tool_grant?.push({
+      id: "grant-system-existing",
+      agent_id: targetAgentId,
+      workspace_id: workspaceId,
+      tool_id: "tool-repo-read",
+      mode: "include",
+      source: "system",
+      reason: "previous autonomous grant",
+    });
+
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("agent_tool_grant.create"),
+        {
+          agentId: targetAgentId,
+          toolSlug: "repo.read_file",
+          reason: "operability signature still recurs",
+        },
+        { workspaceId, agentId, sessionId: "grant-backoff-run" },
+      ),
+    ).rejects.toMatchObject({
+      status: 409,
+      code: "system_tool_grant_backoff",
+    });
+  });
+
+  it("caps autonomous grants per planner run", async () => {
+    for (let index = 1; index <= 4; index += 1) {
+      tables.tool?.push({
+        id: `tool-cap-${index}`,
+        workspace_id: null,
+        slug: `cap.tool_${index}`,
+        name: `Cap Tool ${index}`,
+        description: "Cap test tool.",
+        examples: [],
+        parameters: {},
+        function_name: `cap.tool_${index}`,
+        execution_kind: "database",
+        runner_kind: "planner",
+        enabled: true,
+      });
+    }
+
+    for (let index = 1; index <= 3; index += 1) {
+      await expect(
+        executeDatabaseTool(
+          scheduledTaskTool("agent_tool_grant.create"),
+          {
+            agentId: targetAgentId,
+            toolSlug: `cap.tool_${index}`,
+            reason: `operability grant ${index}`,
+          },
+          { workspaceId, agentId, sessionId: "grant-cap-run" },
+        ),
+      ).resolves.toMatchObject({ status: 201 });
+    }
+
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("agent_tool_grant.create"),
+        {
+          agentId: targetAgentId,
+          toolSlug: "cap.tool_4",
+          reason: "operability grant 4",
+        },
+        { workspaceId, agentId, sessionId: "grant-cap-run" },
+      ),
+    ).rejects.toMatchObject({
+      status: 429,
+      code: "system_tool_grant_cap_exceeded",
     });
   });
 

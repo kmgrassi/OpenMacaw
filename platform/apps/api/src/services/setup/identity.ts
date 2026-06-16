@@ -32,8 +32,8 @@ export function workspaceLearningDistillationTaskId(workspaceId: string, agentId
   return deterministicUuid(`workspace-learning-distillation-task:${workspaceId}:${agentId}`);
 }
 
-export function workspaceOperabilityRemediationTaskId(workspaceId: string, agentId: string) {
-  return deterministicUuid(`workspace-operability-remediation-task:${workspaceId}:${agentId}`);
+export function workspaceOperabilityRemediationTaskId(workspaceId: string) {
+  return deterministicUuid(`workspace-operability-remediation-task:${workspaceId}`);
 }
 
 export function requireCurrentUser(userId: string) {

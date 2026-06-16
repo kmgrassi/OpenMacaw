@@ -7,6 +7,7 @@ import { ApiRouteError } from "../http.js";
 import { getServiceRoleSupabase, normalizeSupabaseError } from "../supabase-client.js";
 
 import { loadAgentDiagnostic } from "./diagnostics/agent-diagnostic.js";
+import { internalServiceRoleHeaders } from "./internal-service-auth.js";
 import type { LauncherClient } from "./launcher.js";
 import { attachRuntimeDispatchContext, buildRuntimeDispatchContext } from "./runtime-dispatch-context.js";
 import { assertRuntimePrepareSupported } from "./runtime-prepare.js";
@@ -101,7 +102,9 @@ async function sendGatewayMessage(input: {
   };
 
   const observation = await new Promise<RuntimeObservation>((resolve) => {
-    const ws = new WebSocket(wsUrlWithScope(target.wsUrl, input), gatewayProtocols(input.accessToken));
+    const ws = new WebSocket(wsUrlWithScope(target.wsUrl, input), gatewayProtocols(input.accessToken), {
+      headers: internalServiceRoleHeaders(),
+    });
     let settled = false;
     let accepted = false;
     let fallback: RuntimeObservation = started;

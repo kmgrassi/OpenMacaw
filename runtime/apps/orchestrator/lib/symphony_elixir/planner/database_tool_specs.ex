@@ -12,6 +12,8 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
     "task.create",
     "task.update",
     "task.schedule",
+    "agent_tool_grant.create",
+    "agent_tool_grant.update",
     "plan.read",
     "task.read",
     "task.status"
@@ -226,6 +228,14 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
           }
         }
       },
+      agent_tool_grant_spec(
+        "agent_tool_grant.create",
+        "Create a system-authored include grant for an existing enabled catalog tool. Use only for operability remediation after a missing-grant signature repeats."
+      ),
+      agent_tool_grant_spec(
+        "agent_tool_grant.update",
+        "Update an existing grant to include or exclude an enabled catalog tool. Use reason to name the operability signature or rollback rationale."
+      ),
       read_tool_spec(
         "plan.read",
         "plan_id",
@@ -261,6 +271,30 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
         "properties" => %{
           "workspace_id" => string_schema("Workspace database UUID."),
           id_key => string_schema("Database UUID.")
+        }
+      }
+    }
+  end
+
+  defp agent_tool_grant_spec(name, description) do
+    %{
+      "name" => name,
+      "description" => description,
+      "inputSchema" => %{
+        "type" => "object",
+        "additionalProperties" => false,
+        "required" => ["agentId", "reason"],
+        "properties" => %{
+          "workspace_id" => string_schema("Workspace database UUID."),
+          "agentId" => string_schema("Target agent database UUID."),
+          "toolId" => nullable_string_schema("Catalog tool id. Provide toolId or toolSlug."),
+          "toolSlug" => nullable_string_schema("Catalog tool slug. Provide toolSlug or toolId."),
+          "mode" => %{
+            "type" => ["string", "null"],
+            "enum" => ["include", "exclude", nil],
+            "description" => "Grant mode. create defaults to include; update requires the desired mode."
+          },
+          "reason" => string_schema("Required non-empty reason naming the operability signature or rollback rationale.")
         }
       }
     }

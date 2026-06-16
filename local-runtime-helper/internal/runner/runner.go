@@ -209,6 +209,10 @@ type ToolCall struct {
 	GrantProvenance *GrantProvenance `json:"grant_provenance,omitempty"`
 }
 
+// ToolExecutionContext is runtime-authored provenance and scope supplied
+// out-of-band with model-authored tool arguments.
+type ToolExecutionContext map[string]any
+
 // ToolCallRequestEvent asks the cloud-managed loop to execute tool calls.
 type ToolCallRequestEvent struct {
 	Kind      string     `json:"kind"`
@@ -227,10 +231,11 @@ type ToolExecutionEvent struct {
 
 // ToolCallRequest is passed to a local tool executor.
 type ToolCallRequest struct {
-	ToolCallID string          `json:"tool_call_id"`
-	Name       string          `json:"name"`
-	Arguments  map[string]any  `json:"arguments"`
-	Definition *ToolDefinition `json:"definition,omitempty"`
+	ToolCallID string               `json:"tool_call_id"`
+	Name       string               `json:"name"`
+	Arguments  map[string]any       `json:"arguments"`
+	Context    ToolExecutionContext `json:"context,omitempty"`
+	Definition *ToolDefinition      `json:"definition,omitempty"`
 }
 
 // ToolCallResult is the result of executing a local tool.

@@ -1,73 +1,52 @@
-import { getServiceRoleSupabase, normalizeSupabaseError } from "../../supabase-client.js";
+import type { Json } from "@kmgrassi/supabase-schema";
+
+import { executeSupabaseRows, getServiceRoleSupabase } from "../../supabase-client.js";
 import { computeScheduledTaskNextRunAt } from "../scheduled-tasks.js";
 import { workspaceLearningDistillationTaskId, workspaceOperabilityRemediationTaskId } from "../setup/identity.js";
 
-type JsonRecord = Record<string, unknown>;
-
-type MemoryRow = {
-  id: string;
-  workspace_id: string;
-  agent_id: string | null;
-  content: string;
-  tags: unknown;
-  event_time: string;
-  source_run_id: string | null;
-  source_task_id: string | null;
-};
-
-type AgentRow = {
-  id: string;
-  type: string | null;
-};
-
-type ToolEventRow = {
-  id: string;
-  run_id: string | null;
-  tool_slug: string | null;
-  status: string | null;
-  error_code: string | null;
-  error_message: string | null;
-  approval_state: string | null;
-  output_summary: string | null;
-  started_at: string | null;
-};
-
-export type RecurringOperabilityFinding = {
-  signature: string;
+export type OperabilityIssueSignature = {
   toolSlug: string;
   errorCode: string;
-  agentType: string;
-  count: number;
-  memoryIds: string[];
-  sourceRunIds: string[];
-  firstSeenAt: string;
-  lastSeenAt: string;
-  examples: Array<{
-    memoryId: string;
-    content: string;
-    sourceRunId: string | null;
-    sourceTaskId: string | null;
-    eventTime: string;
-  }>;
-  toolEvents: Array<{
-    id: string;
-    runId: string | null;
-    toolSlug: string | null;
-    status: string | null;
-    errorCode: string | null;
-    errorMessage: string | null;
-    approvalState: string | null;
-    outputSummary: string | null;
-    startedAt: string | null;
-  }>;
+  agentType?: string | null;
 };
 
-export type RecurringOperabilityFindingList = {
-  workspaceId: string;
-  threshold: number;
-  windowDays: number;
-  generatedAt: string;
-  findings: RecurringOperabilityFinding[];
+export type OperabilityRemediationIssue = {
+  signature: OperabilityIssueSignature;
+  occurrenceCount: number;
+  sourceMemoryIds: string[];
+  examples?: Array<Record<string, unknown>>;
+};
+
+type WorkItemLinkRow = {
+  id: string;
+  workspace_id: string | null;
+  plan_id: string | null;
+  title: string | null;
+  state: string;
+  metadata: Json;
+  updated_at: string;
+};
+
+type MemoryItemRow = {
+  id: string;
+  workspace_id: string;
+  content: string;
+  tags: Json;
+  event_time: string | null;
+  created_at: string;
+  is_deleted: boolean;
+};
+
+type AgentToolGrantViewRow = {
+  id: string;
+  agent_id: string;
+  tool_id: string;
+  workspace_id: string;
+  mode: string;
+  source: string;
+  reason: string | null;
+  created_at?: string;
+  updated_at?: string;
 };
 
 const DISTILLATION_TASK_KIND = "learning_distillation";
@@ -75,85 +54,47 @@ const OPERABILITY_TASK_KIND = "learning_operability_remediation";
 const DEFAULT_TIMEZONE = "Etc/UTC";
 const DISTILLATION_SCHEDULE = { kind: "every", interval: 1, unit: "day", at: "03:30" } as const;
 const OPERABILITY_SCHEDULE = { kind: "every", interval: 1, unit: "day", at: "04:00" } as const;
+const TERMINAL_WORK_ITEM_STATES = new Set(["done", "completed", "complete", "closed", "cancelled", "canceled"]);
 
-export const DEFAULT_OPERABILITY_REMEDIATION_INSTRUCTIONS = [
-  "Review recurring operability findings for this workspace before taking action.",
-  "Use the learning operability recurrence query as the source of truth: group by tool slug, error code, and agent type; ignore signatures below the recurrence threshold.",
-  "For each recurring signature, decide whether the behavior is an intended policy stop or a real defect.",
-  "If it is intended, take no action. If a tool grant fixes an existing catalog tool, route it through the agent_tool_grant workflow. If code, catalog, or template changes are required, create signature-tagged remediation work-items for the coding agent.",
-  "Do not create a second work-item or PR when an open remediation item already carries the same signature. Escalate instead when the same signature keeps recurring while remediation is already open.",
-].join("\n");
-
-function record(value: unknown): JsonRecord | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonRecord) : null;
-}
-
-function stringField(source: JsonRecord | null, ...keys: string[]) {
-  if (!source) return null;
-  for (const key of keys) {
-    const value = source[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return null;
-}
-
-function isOperabilityToolFailure(tags: JsonRecord | null) {
-  return stringField(tags, "kind") === "operability" && stringField(tags, "failure") === "tool_call";
-}
-
-function normalizeSignaturePart(value: string | null, fallback: string) {
-  return (value ?? fallback).trim().toLowerCase().replace(/\s+/g, "_");
-}
-
-function findingSignature(input: { toolSlug: string; errorCode: string; agentType: string }) {
-  return [
-    normalizeSignaturePart(input.toolSlug, "unknown_tool"),
-    normalizeSignaturePart(input.errorCode, "unknown_error"),
-    normalizeSignaturePart(input.agentType, "unknown_agent"),
-  ].join("|");
-}
-
-async function learningEnabledForWorkspace(workspaceId: string) {
-  const { data, error } = await getServiceRoleSupabase()
-    .from("workspace_settings")
-    .select("workspace_id, learning_enabled")
-    .eq("workspace_id", workspaceId)
-    .limit(1);
-
-  if (error) throw normalizeSupabaseError("workspace_settings query", error);
-  const row = (data ?? [])[0] as { learning_enabled?: unknown } | undefined;
-  return row?.learning_enabled !== false;
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function metadataKind(metadata: unknown) {
-  return stringField(record(metadata), "kind");
+  const kind = asRecord(metadata).kind;
+  return typeof kind === "string" && kind.trim() ? kind.trim() : null;
 }
 
-function isDuplicateKeyError(error: unknown) {
-  return (error as { code?: unknown } | null)?.code === "23505";
+function deliveryKind(delivery: unknown) {
+  const kind = asRecord(delivery).kind;
+  return typeof kind === "string" && kind.trim() ? kind.trim() : null;
 }
 
-async function scheduledTaskExists(input: {
-  workspaceId: string;
-  agentId?: string;
-  metadataKind?: string;
-  deliveryKind?: string;
-}) {
-  let query = getServiceRoleSupabase()
-    .from("scheduled_task")
-    .select("id, metadata, delivery")
-    .eq("workspace_id", input.workspaceId);
-  if (input.agentId) query = query.eq("agent_id", input.agentId);
-  const { data, error } = await query;
+async function learningEnabledForWorkspace(workspaceId: string) {
+  const rows = await executeSupabaseRows<{ learning_enabled?: unknown }>(
+    "workspace_settings learning query",
+    getServiceRoleSupabase()
+      .from("workspace_settings")
+      .select("workspace_id,learning_enabled")
+      .eq("workspace_id", workspaceId)
+      .limit(1),
+  );
+  return rows[0]?.learning_enabled === true;
+}
 
-  if (error) throw normalizeSupabaseError("scheduled_task query", error);
-  return (data ?? []).some((row) => {
-    const task = row as { metadata?: unknown; delivery?: unknown };
-    return (
-      (input.metadataKind ? metadataKind(task.metadata) === input.metadataKind : true) &&
-      (input.deliveryKind ? stringField(record(task.delivery), "kind") === input.deliveryKind : true)
-    );
-  });
+async function scheduledTaskExists(input: { workspaceId: string; metadataKind?: string; deliveryKind?: string }) {
+  const rows = await executeSupabaseRows<{ metadata: Json; delivery: Json }>(
+    "learning scheduled_task query",
+    getServiceRoleSupabase()
+      .from("scheduled_task")
+      .select("id,metadata,delivery")
+      .eq("workspace_id", input.workspaceId),
+  );
+  return rows.some(
+    (row) =>
+      (input.metadataKind ? metadataKind(row.metadata) === input.metadataKind : true) &&
+      (input.deliveryKind ? deliveryKind(row.delivery) === input.deliveryKind : true),
+  );
 }
 
 export async function ensureLearningSidecarScheduledTasks(input: {
@@ -186,31 +127,31 @@ export async function ensureLearningDistillationScheduledTask(input: {
 
   const now = input.now ?? new Date();
   const timestamp = now.toISOString();
-  const { error } = await getServiceRoleSupabase()
-    .from("scheduled_task")
-    .insert({
-      id: workspaceLearningDistillationTaskId(input.workspaceId, input.managerAgentId),
-      workspace_id: input.workspaceId,
-      agent_id: input.managerAgentId,
-      source_work_item_id: null,
-      created_by_user_id: input.userId,
-      title: "Nightly learning distillation",
-      instructions:
-        "Cluster recent important run-summary memories and store reusable skill candidates for human review.",
-      enabled: true,
-      schedule: DISTILLATION_SCHEDULE,
-      timezone: DEFAULT_TIMEZONE,
-      next_run_at: computeScheduledTaskNextRunAt(DISTILLATION_SCHEDULE, DEFAULT_TIMEZONE, now),
-      last_run_at: null,
-      last_run_status: null,
-      last_error: null,
-      delivery: { kind: DISTILLATION_TASK_KIND, windowDays: 7 },
-      metadata: { kind: DISTILLATION_TASK_KIND, source: "workspace_learning_sidecar_seed" },
-      updated_at: timestamp,
-    });
-
-  if (isDuplicateKeyError(error)) return;
-  if (error) throw normalizeSupabaseError("scheduled_task insert", error);
+  await executeSupabaseRows(
+    "learning distillation scheduled_task insert",
+    getServiceRoleSupabase()
+      .from("scheduled_task")
+      .insert({
+        id: workspaceLearningDistillationTaskId(input.workspaceId, input.managerAgentId),
+        workspace_id: input.workspaceId,
+        agent_id: input.managerAgentId,
+        source_work_item_id: null,
+        created_by_user_id: input.userId,
+        title: "Nightly learning distillation",
+        instructions:
+          "Cluster recent important run-summary memories and store reusable skill candidates for human review.",
+        enabled: true,
+        schedule: DISTILLATION_SCHEDULE,
+        timezone: DEFAULT_TIMEZONE,
+        next_run_at: computeScheduledTaskNextRunAt(DISTILLATION_SCHEDULE, DEFAULT_TIMEZONE, now),
+        last_run_at: null,
+        last_run_status: null,
+        last_error: null,
+        delivery: { kind: DISTILLATION_TASK_KIND, windowDays: 7 },
+        metadata: { kind: DISTILLATION_TASK_KIND, source: "workspace_learning_sidecar_seed" },
+        updated_at: timestamp,
+      }),
+  );
 }
 
 export async function ensureOperabilityRemediationScheduledTask(input: {
@@ -222,7 +163,6 @@ export async function ensureOperabilityRemediationScheduledTask(input: {
   if (
     await scheduledTaskExists({
       workspaceId: input.workspaceId,
-      agentId: input.planningAgentId,
       metadataKind: OPERABILITY_TASK_KIND,
     })
   ) {
@@ -231,159 +171,203 @@ export async function ensureOperabilityRemediationScheduledTask(input: {
 
   const now = input.now ?? new Date();
   const timestamp = now.toISOString();
-  const { error } = await getServiceRoleSupabase()
-    .from("scheduled_task")
-    .insert({
-      id: workspaceOperabilityRemediationTaskId(input.workspaceId, input.planningAgentId),
-      workspace_id: input.workspaceId,
-      agent_id: input.planningAgentId,
-      source_work_item_id: null,
-      created_by_user_id: input.userId,
-      title: "Learning operability remediation",
-      instructions: DEFAULT_OPERABILITY_REMEDIATION_INSTRUCTIONS,
-      enabled: true,
-      schedule: OPERABILITY_SCHEDULE,
-      timezone: DEFAULT_TIMEZONE,
-      next_run_at: computeScheduledTaskNextRunAt(OPERABILITY_SCHEDULE, DEFAULT_TIMEZONE, now),
-      last_run_at: null,
-      last_run_status: null,
-      last_error: null,
-      delivery: {
-        kind: "scheduled_agent_message",
-        sessionStrategy: "scheduled_task",
-        metadata: { kind: OPERABILITY_TASK_KIND },
-      },
-      metadata: { kind: OPERABILITY_TASK_KIND, source: "workspace_learning_sidecar_seed" },
-      updated_at: timestamp,
-    });
-
-  if (isDuplicateKeyError(error)) return;
-  if (error) throw normalizeSupabaseError("scheduled_task insert", error);
+  await executeSupabaseRows(
+    "learning operability scheduled_task insert",
+    getServiceRoleSupabase()
+      .from("scheduled_task")
+      .insert({
+        id: workspaceOperabilityRemediationTaskId(input.workspaceId),
+        workspace_id: input.workspaceId,
+        agent_id: input.planningAgentId,
+        source_work_item_id: null,
+        created_by_user_id: input.userId,
+        title: "Learning operability remediation",
+        instructions: [
+          "Review recurring operability findings for this workspace before taking action.",
+          `Fetch /api/workspaces/${input.workspaceId}/learning/operability-remediation?threshold=2&limit=20 for the current recurrence data, open remediation work, and recent system grants.`,
+          "For deliberate policy denials or intended restrictions, take no action.",
+          "For a missing grant to an existing catalog tool, use agent_tool_grant.create or agent_tool_grant.update with a reason that names the operability signature.",
+          "For implementation bugs, missing catalog tools, wrong argument handling, wrong default templates, or repeated DB rejections, create remediation plan/work-items for the coding agent.",
+          "Do not create a duplicate when an open work item already carries the same metadata.operability_remediation.signature.",
+        ].join("\n"),
+        enabled: true,
+        schedule: OPERABILITY_SCHEDULE,
+        timezone: DEFAULT_TIMEZONE,
+        next_run_at: computeScheduledTaskNextRunAt(OPERABILITY_SCHEDULE, DEFAULT_TIMEZONE, now),
+        last_run_at: null,
+        last_run_status: null,
+        last_error: null,
+        delivery: {
+          kind: "scheduled_agent_message",
+          sessionStrategy: "scheduled_task",
+          metadata: { kind: OPERABILITY_TASK_KIND },
+        },
+        metadata: { kind: OPERABILITY_TASK_KIND, source: "workspace_learning_sidecar_seed" },
+        updated_at: timestamp,
+      }),
+  );
 }
 
-export async function listRecurringOperabilityFindings(input: {
-  workspaceId: string;
-  threshold?: number;
-  windowDays?: number;
-  limit?: number;
-  now?: Date;
-}): Promise<RecurringOperabilityFindingList> {
-  const threshold = input.threshold ?? 3;
-  const windowDays = input.windowDays ?? 14;
-  const limit = input.limit ?? 500;
-  const now = input.now ?? new Date();
-  const since = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+export function operabilitySignatureKey(signature: OperabilityIssueSignature): string {
+  const toolSlug = signature.toolSlug.trim() || "unknown_tool";
+  const errorCode = signature.errorCode.trim() || "unknown_error";
+  const agentType = signature.agentType?.trim() || "unknown_agent_type";
+  return `tool:${toolSlug}|error:${errorCode}|agent:${agentType}`;
+}
 
-  const { data: memoryData, error: memoryError } = await getServiceRoleSupabase()
-    .from("memory_items")
-    .select("id, workspace_id, agent_id, content, tags, event_time, source_run_id, source_task_id")
-    .eq("workspace_id", input.workspaceId)
-    .eq("is_deleted", false)
-    .gte("event_time", since)
-    .order("event_time", { ascending: false })
-    .limit(limit);
-
-  if (memoryError) throw normalizeSupabaseError("memory_items operability query", memoryError);
-  const memories = ((memoryData ?? []) as MemoryRow[]).filter((memory) =>
-    isOperabilityToolFailure(record(memory.tags)),
-  );
-  const agentIds = [...new Set(memories.map((memory) => memory.agent_id).filter((id): id is string => Boolean(id)))];
-  const agentTypes = await loadAgentTypes(agentIds);
-  const grouped = new Map<string, RecurringOperabilityFinding>();
-
-  for (const memory of memories) {
-    const tags = record(memory.tags);
-    const toolSlug = stringField(tags, "tool_slug", "toolSlug") ?? "unknown_tool";
-    const errorCode = stringField(tags, "error_code", "errorCode") ?? "unknown_error";
-    const agentType =
-      stringField(tags, "agent_type", "agentType") ??
-      (memory.agent_id ? agentTypes.get(memory.agent_id) : null) ??
-      "unknown_agent";
-    const signature = findingSignature({ toolSlug, errorCode, agentType });
-    const existing = grouped.get(signature) ?? {
-      signature,
-      toolSlug,
-      errorCode,
-      agentType,
-      count: 0,
-      memoryIds: [],
-      sourceRunIds: [],
-      firstSeenAt: memory.event_time,
-      lastSeenAt: memory.event_time,
-      examples: [],
-      toolEvents: [],
-    };
-
-    existing.count += 1;
-    existing.memoryIds.push(memory.id);
-    if (memory.source_run_id && !existing.sourceRunIds.includes(memory.source_run_id)) {
-      existing.sourceRunIds.push(memory.source_run_id);
-    }
-    if (memory.event_time < existing.firstSeenAt) existing.firstSeenAt = memory.event_time;
-    if (memory.event_time > existing.lastSeenAt) existing.lastSeenAt = memory.event_time;
-    if (existing.examples.length < 3) {
-      existing.examples.push({
-        memoryId: memory.id,
-        content: memory.content,
-        sourceRunId: memory.source_run_id,
-        sourceTaskId: memory.source_task_id,
-        eventTime: memory.event_time,
-      });
-    }
-    grouped.set(signature, existing);
-  }
-
-  const findings = [...grouped.values()]
-    .filter((finding) => finding.count >= threshold)
-    .sort((left, right) => right.count - left.count || right.lastSeenAt.localeCompare(left.lastSeenAt))
-    .slice(0, 25);
-
-  await attachToolEvents(findings);
-
+export function operabilityWorkItemMetadata(input: {
+  signature: OperabilityIssueSignature;
+  sourceMemoryIds: string[];
+}): Record<string, unknown> {
   return {
-    workspaceId: input.workspaceId,
-    threshold,
-    windowDays,
-    generatedAt: now.toISOString(),
-    findings,
+    operability_remediation: {
+      signature: operabilitySignatureKey(input.signature),
+      signature_parts: {
+        tool_slug: input.signature.toolSlug,
+        error_code: input.signature.errorCode,
+        agent_type: input.signature.agentType ?? null,
+      },
+      source_memory_ids: Array.from(new Set(input.sourceMemoryIds)),
+    },
   };
 }
 
-async function loadAgentTypes(agentIds: string[]) {
-  if (agentIds.length === 0) return new Map<string, string>();
+export function buildOperabilityRemediationInstructions(input: {
+  issues: OperabilityRemediationIssue[];
+  maxNewWorkItems?: number;
+}): string {
+  const maxNewWorkItems = input.maxNewWorkItems ?? 3;
+  const issuesJson = JSON.stringify(
+    input.issues.map((issue) => ({
+      signature: operabilitySignatureKey(issue.signature),
+      signatureParts: issue.signature,
+      occurrenceCount: issue.occurrenceCount,
+      sourceMemoryIds: issue.sourceMemoryIds,
+      examples: issue.examples ?? [],
+    })),
+    null,
+    2,
+  );
 
-  const { data, error } = await getServiceRoleSupabase().from("agent").select("id, type").in("id", agentIds);
-  if (error) throw normalizeSupabaseError("agent operability query", error);
-  return new Map(((data ?? []) as AgentRow[]).map((agent) => [agent.id, agent.type ?? "unknown_agent"]));
+  return [
+    "Review these recurring operability findings and decide whether each is a genuine defect or expected behavior.",
+    "For deliberate policy denials or intended restrictions, take no action.",
+    "For a missing grant to an existing catalog tool, use agent_tool_grant.create or agent_tool_grant.update with source handled by the tool and a reason that names the operability signature.",
+    "For implementation bugs, missing catalog tools, wrong argument handling, wrong default templates, or repeated DB rejections, create remediation plan/work-items for the coding agent.",
+    "Before creating work, query for an existing open work item with the same operability_remediation.signature metadata. If one exists, do not create a duplicate; escalate or comment instead.",
+    `Create at most ${maxNewWorkItems} new remediation work items in this run.`,
+    "Every remediation work item must include metadata.operability_remediation.signature and metadata.operability_remediation.source_memory_ids.",
+    "If agent_tool_grant.create or agent_tool_grant.update returns system_tool_grant_backoff, stop retrying that grant and escalate.",
+    "",
+    "Recurring findings:",
+    issuesJson,
+  ].join("\n");
 }
 
-async function attachToolEvents(findings: RecurringOperabilityFinding[]) {
-  const runIds = [...new Set(findings.flatMap((finding) => finding.sourceRunIds))];
-  if (runIds.length === 0) return;
+function metadataSignature(metadata: unknown): string | null {
+  const remediation = asRecord(asRecord(metadata).operability_remediation);
+  const signature = remediation.signature;
+  return typeof signature === "string" && signature.trim() ? signature.trim() : null;
+}
 
-  const { data, error } = await getServiceRoleSupabase()
-    .from("agent_tool_call_event" as never)
-    .select("id, run_id, tool_slug, status, error_code, error_message, approval_state, output_summary, started_at")
-    .in("run_id", runIds)
-    .order("started_at", { ascending: false })
-    .limit(100);
+export async function findOpenOperabilityWorkItems(input: {
+  workspaceId: string;
+  signature: OperabilityIssueSignature;
+}) {
+  const rows = await executeSupabaseRows<WorkItemLinkRow>(
+    "operability work_items query",
+    getServiceRoleSupabase()
+      .from("work_items")
+      .select("id,workspace_id,plan_id,title,state,metadata,updated_at")
+      .eq("workspace_id", input.workspaceId)
+      .order("updated_at", { ascending: false }),
+  );
+  const signature = operabilitySignatureKey(input.signature);
+  return rows.filter(
+    (row) => !TERMINAL_WORK_ITEM_STATES.has(row.state) && metadataSignature(row.metadata) === signature,
+  );
+}
 
-  if (error) throw normalizeSupabaseError("agent_tool_call_event operability query", error);
-  const events = (data ?? []) as ToolEventRow[];
-  for (const finding of findings) {
-    finding.toolEvents = events
-      .filter((event) => finding.sourceRunIds.includes(event.run_id ?? "") && event.tool_slug === finding.toolSlug)
-      .slice(0, 5)
-      .map((event) => ({
-        id: event.id,
-        runId: event.run_id,
-        toolSlug: event.tool_slug,
-        status: event.status,
-        errorCode: event.error_code,
-        errorMessage: event.error_message,
-        approvalState: event.approval_state,
-        outputSummary: event.output_summary,
-        startedAt: event.started_at,
-      }));
+function signatureFromMemory(memory: MemoryItemRow): OperabilityIssueSignature | null {
+  const tags = asRecord(memory.tags);
+  if (tags.kind !== "operability" || tags.failure !== "tool_call") return null;
+  const toolSlug = typeof tags.tool_slug === "string" ? tags.tool_slug : "";
+  const errorCode = typeof tags.error_code === "string" ? tags.error_code : "";
+  const agentType = typeof tags.agent_type === "string" ? tags.agent_type : null;
+  if (!toolSlug || !errorCode) return null;
+  return { toolSlug, errorCode, agentType };
+}
+
+export async function listOperabilityRemediationView(input: {
+  workspaceId: string;
+  threshold?: number;
+  limit?: number;
+}) {
+  const threshold = input.threshold ?? 2;
+  const limit = input.limit ?? 20;
+  const memories = await executeSupabaseRows<MemoryItemRow>(
+    "operability memory_items query",
+    getServiceRoleSupabase()
+      .from("memory_items")
+      .select("id,workspace_id,content,tags,event_time,created_at,is_deleted")
+      .eq("workspace_id", input.workspaceId)
+      .eq("is_deleted", false)
+      .order("event_time", { ascending: false })
+      .limit(500),
+  );
+
+  const grouped = new Map<
+    string,
+    { signature: OperabilityIssueSignature; sourceMemoryIds: string[]; examples: Array<Record<string, unknown>> }
+  >();
+  for (const memory of memories) {
+    const signature = signatureFromMemory(memory);
+    if (!signature) continue;
+    const key = operabilitySignatureKey(signature);
+    const group = grouped.get(key) ?? { signature, sourceMemoryIds: [], examples: [] };
+    group.sourceMemoryIds.push(memory.id);
+    if (group.examples.length < 3) {
+      group.examples.push({
+        memoryId: memory.id,
+        content: memory.content,
+        eventTime: memory.event_time ?? memory.created_at,
+      });
+    }
+    grouped.set(key, group);
   }
+
+  const recurringIssues = await Promise.all(
+    Array.from(grouped.values())
+      .filter((group) => group.sourceMemoryIds.length >= threshold)
+      .sort((left, right) => right.sourceMemoryIds.length - left.sourceMemoryIds.length)
+      .slice(0, limit)
+      .map(async (group) => ({
+        signature: operabilitySignatureKey(group.signature),
+        signatureParts: group.signature,
+        occurrenceCount: group.sourceMemoryIds.length,
+        sourceMemoryIds: group.sourceMemoryIds,
+        examples: group.examples,
+        openWorkItems: await findOpenOperabilityWorkItems({
+          workspaceId: input.workspaceId,
+          signature: group.signature,
+        }),
+      })),
+  );
+
+  const recentAutonomousGrants = await executeSupabaseRows<AgentToolGrantViewRow>(
+    "operability autonomous grants query",
+    getServiceRoleSupabase()
+      .from("agent_tool_grant")
+      .select("id,agent_id,tool_id,workspace_id,mode,source,reason,created_at,updated_at")
+      .eq("workspace_id", input.workspaceId)
+      .eq("source", "system")
+      .order("updated_at", { ascending: false })
+      .limit(25),
+  );
+
+  return {
+    threshold,
+    recurringIssues,
+    recentAutonomousGrants,
+  };
 }

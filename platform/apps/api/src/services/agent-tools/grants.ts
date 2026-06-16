@@ -11,8 +11,10 @@ import {
   AGENT_TOOL_BUNDLE_SELECT,
   deleteAgentToolGrantRows,
   getVisibleToolRow,
+  getVisibleToolRowBySlug,
   listVisibleToolRows,
   loadAgentToolBundleRow,
+  listAgentToolGrantRows,
   upsertAgentToolGrantRow,
 } from "../../repositories/agent-tools.js";
 import type { AgentToolBundleRow } from "../../repositories/agent-tools.js";
@@ -63,6 +65,87 @@ async function findVisibleToolByName(input: { toolName: string; workspaceId: str
     throw new ApiRouteError(409, "tool_disabled", "Tool is disabled for assignment");
   }
   return tool;
+}
+
+async function assertAgentInWorkspace(agentId: string, workspaceId: string) {
+  const rows = await executeSupabaseRows<{ id: string; workspace_id: string | null }>(
+    "agent query",
+    getServiceRoleSupabase().from("agent").select("id,workspace_id").eq("id", agentId).limit(1),
+  );
+  const agent = rows[0] ?? null;
+  if (!agent || agent.workspace_id !== workspaceId) {
+    throw new ApiRouteError(404, "agent_not_found", "Agent was not found in this workspace");
+  }
+}
+
+export async function setSystemAgentToolGrant(input: {
+  actorAgentId?: string | null;
+  agentId: string;
+  workspaceId: string;
+  toolId?: string | null;
+  toolSlug?: string | null;
+  mode: AgentToolGrantMode;
+  reason: string;
+  operation: "create" | "update";
+}) {
+  const reason = input.reason.trim();
+  if (!reason) {
+    throw new ApiRouteError(400, "missing_reason", "reason is required for agent_tool_grant changes");
+  }
+
+  await assertAgentInWorkspace(input.agentId, input.workspaceId);
+  const toolId = input.toolId?.trim() ?? "";
+  const toolSlug = input.toolSlug?.trim() ?? "";
+  if (!toolId && !toolSlug) {
+    throw new ApiRouteError(400, "invalid_tool_arguments", "toolId or toolSlug is required");
+  }
+
+  const tool = toolId
+    ? await getVisibleToolRow(toolId, input.workspaceId)
+    : await getVisibleToolRowBySlug(toolSlug, input.workspaceId);
+  if (!tool) {
+    throw new ApiRouteError(404, "tool_not_found", "Tool was not found");
+  }
+  if (!tool.enabled) {
+    throw new ApiRouteError(409, "tool_disabled", "Tool is disabled for assignment");
+  }
+
+  const existingGrant =
+    (await listAgentToolGrantRows({ agentId: input.agentId, workspaceId: input.workspaceId })).find(
+      (grant) => grant.tool_id === tool.id,
+    ) ?? null;
+  if (existingGrant?.source === "system" && existingGrant.mode === input.mode) {
+    throw new ApiRouteError(
+      409,
+      "system_tool_grant_backoff",
+      "This system grant was already applied; escalate instead of repeating the same grant",
+      { agentId: input.agentId, toolId: tool.id, mode: input.mode },
+    );
+  }
+  if (input.operation === "create" && existingGrant) {
+    throw new ApiRouteError(409, "agent_tool_grant_exists", "A grant row already exists for this agent and tool");
+  }
+  if (input.operation === "update" && !existingGrant) {
+    throw new ApiRouteError(404, "agent_tool_grant_not_found", "No grant row exists for this agent and tool");
+  }
+
+  const rows = await upsertAgentToolGrantRow({
+    userId: null,
+    agentId: input.agentId,
+    workspaceId: input.workspaceId,
+    toolId: tool.id,
+    mode: input.mode,
+    source: "system",
+    reason,
+  });
+  logAgentToolOverrideAudit({
+    action: input.mode,
+    userId: input.actorAgentId ?? "system",
+    agentId: input.agentId,
+    workspaceId: input.workspaceId,
+    toolName: toolName(tool),
+  });
+  return { grant: rows[0] ?? null, tool: toolFromRow(tool) };
 }
 
 export async function setAgentToolGrant(input: {

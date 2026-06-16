@@ -208,7 +208,7 @@ export async function listAgentToolGrantRows(input: {
 }
 
 export async function upsertAgentToolGrantRow(input: {
-  userId: string;
+  userId: string | null;
   agentId: string;
   workspaceId: string;
   toolId: string;
@@ -216,8 +216,8 @@ export async function upsertAgentToolGrantRow(input: {
   source: string;
   sourceToolTemplateId?: string | null;
   reason?: string | null;
-}) {
-  await executeSupabaseRows<AgentToolGrantRow>(
+}): Promise<AgentToolGrantRow[]> {
+  return executeSupabaseRows<AgentToolGrantRow>(
     "agent_tool_grant upsert",
     serviceRoleDb()
       .from("agent_tool_grant")

@@ -20,6 +20,7 @@ defmodule SymphonyElixir.LocalRelay.Handlers.HelperManaged do
       timeout_ms: Map.fetch!(context, :timeout_ms),
       on_message: Map.get(context, :on_message),
       tool_definitions: Map.get(context, :tool_definitions, []),
+      tool_execution_context: Map.get(context, :tool_execution_context, %{}),
       output: ""
     }
   end
@@ -135,7 +136,8 @@ defmodule SymphonyElixir.LocalRelay.Handlers.HelperManaged do
         ProtocolExtensions.tool_execution_request(
           state.correlation_id,
           tool_call,
-          tool_definition_for(state, Map.get(tool_call, "name"))
+          tool_definition_for(state, Map.get(tool_call, "name")),
+          state.tool_execution_context
         )
 
       case Registry.send_tool_execution_request(state.correlation_id, request) do

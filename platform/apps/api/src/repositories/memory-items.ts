@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { randomUUID } from "node:crypto";
 
 import type { Tables, TablesInsert } from "@kmgrassi/supabase-schema";
 import {
@@ -128,7 +127,6 @@ function toHybridSearchResult(row: MemoryHybridSearchRow): MemoryHybridSearchRes
 
 function memoryInsert(input: ParsedMemoryWriteRequest): TablesInsert<"memory_items"> {
   return {
-    id: randomUUID(),
     workspace_id: input.workspaceId,
     agent_id: input.agentId ?? null,
     scope: input.scope,

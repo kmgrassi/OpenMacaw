@@ -14,9 +14,13 @@ import { errorMessage, logEvent } from "../../logger.js";
 import { insertMemoryItem, listMemoryItemsForWorkspace } from "../../repositories/memory-items.js";
 import { executeSupabaseRows, getServiceRoleSupabase } from "../../supabase-client.js";
 
-const MAX_MEMORIES_PER_RUN = 5;
+const MAX_GENERAL_MEMORIES_PER_RUN = 5;
+const MAX_OPERABILITY_MEMORIES_PER_RUN = 2;
+const MAX_MEMORIES_PER_RUN = MAX_GENERAL_MEMORIES_PER_RUN + MAX_OPERABILITY_MEMORIES_PER_RUN;
 const MAX_MEMORY_CONTENT_LENGTH = 1024;
 const DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small";
+const TOOL_FAILURE_STATUSES = new Set(["error", "failed", "denied"]);
+const TOOL_FAILURE_APPROVAL_STATES = new Set(["denied", "rejected", "expired"]);
 
 const ReflectionCandidateSchema = z.object({
   content: z.string().trim().min(1).max(MAX_MEMORY_CONTENT_LENGTH),
@@ -57,6 +61,18 @@ type MessageRow = {
   content: string | null;
   payload: unknown;
   created_at: string;
+};
+
+type ToolCallEventRow = {
+  tool_slug: string;
+  status: string;
+  arguments: unknown;
+  result: unknown;
+  output_summary: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  approval_state: string | null;
+  started_at: string | null;
 };
 
 type CredentialRow = {
@@ -126,6 +142,57 @@ function formatTranscript(rows: MessageRow[]) {
       return `${role.toUpperCase()} [${row.created_at}]\n${extractContent(row)}`;
     })
     .join("\n\n---\n\n");
+}
+
+function shapeOnly(value: unknown, depth = 0): unknown {
+  if (depth >= 4) return "[nested]";
+  if (value === null) return "null";
+  if (Array.isArray(value)) {
+    if (value.length === 0) return [];
+    return [shapeOnly(value[0], depth + 1)];
+  }
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [key, shapeOnly(nested, depth + 1)]),
+    );
+  }
+  return typeof value;
+}
+
+function hasToolFailure(row: ToolCallEventRow) {
+  const status = row.status.toLowerCase();
+  const approvalState = row.approval_state?.toLowerCase() ?? "";
+  return (
+    TOOL_FAILURE_STATUSES.has(status) ||
+    TOOL_FAILURE_APPROVAL_STATES.has(approvalState) ||
+    Boolean(row.error_code) ||
+    Boolean(row.error_message)
+  );
+}
+
+function formatToolCallSummary(rows: ToolCallEventRow[]) {
+  if (rows.length === 0) return "No structured tool-call events were recorded for this run.";
+  return rows
+    .map((row, index) => {
+      const fields = [
+        `tool_slug: ${row.tool_slug}`,
+        `status: ${row.status}`,
+        row.approval_state ? `approval_state: ${row.approval_state}` : null,
+        row.error_code ? `error_code: ${row.error_code}` : null,
+        row.error_message ? `error_message: ${row.error_message}` : null,
+        row.output_summary ? `output_summary: ${row.output_summary}` : null,
+        `argument_shape: ${JSON.stringify(shapeOnly(row.arguments))}`,
+        `result_shape: ${JSON.stringify(shapeOnly(row.result))}`,
+      ].filter((field): field is string => Boolean(field));
+      return `TOOL CALL ${index + 1} [${row.started_at ?? "time_unknown"}]\n${fields.join("\n")}`;
+    })
+    .join("\n\n---\n\n");
+}
+
+function formatReflectionInput(input: { messages: MessageRow[]; toolCallEvents: ToolCallEventRow[] }) {
+  const transcript =
+    input.messages.length > 0 ? formatTranscript(input.messages) : "No chat transcript messages were recorded.";
+  return `CHAT TRANSCRIPT\n${transcript}\n\n===\n\nSTRUCTURED TOOL-CALL EVENTS\n${formatToolCallSummary(input.toolCallEvents)}`;
 }
 
 function extractJsonObject(value: unknown): unknown {
@@ -219,6 +286,18 @@ async function loadRunMessages(sourceRunId: string, workspaceId: string) {
       .eq("run_id", sourceRunId)
       .eq("is_deleted", false)
       .order("created_at", { ascending: true }),
+  );
+}
+
+async function loadRunToolCallEvents(sourceRunId: string, workspaceId: string) {
+  return await executeSupabaseRows<ToolCallEventRow>(
+    "learning reflection tool-call event query",
+    serviceSupabase()
+      .from("agent_tool_call_event" as never)
+      .select("tool_slug,status,arguments,result,output_summary,error_code,error_message,approval_state,started_at")
+      .eq("workspace_id", workspaceId)
+      .eq("run_id", sourceRunId)
+      .order("started_at", { ascending: true }),
   );
 }
 
@@ -319,9 +398,19 @@ async function resolveModelConfig(agent: AgentRow) {
   return { model, provider };
 }
 
-function parseReflectionCandidates(response: unknown) {
+function isOperabilityCandidate(candidate: ReflectionCandidate) {
+  return candidate.tags.kind === "operability" || candidate.tags.failure === "tool_call";
+}
+
+function parseReflectionCandidates(response: unknown, hasOperabilitySignal: boolean) {
   const parsed = ReflectionResponseSchema.parse(extractJsonObject(response));
-  return parsed.memories.slice(0, MAX_MEMORIES_PER_RUN);
+  if (!hasOperabilitySignal) return parsed.memories.slice(0, MAX_GENERAL_MEMORIES_PER_RUN);
+
+  const operability = parsed.memories.filter(isOperabilityCandidate).slice(0, MAX_OPERABILITY_MEMORIES_PER_RUN);
+  const general = parsed.memories
+    .filter((candidate) => !isOperabilityCandidate(candidate))
+    .slice(0, MAX_GENERAL_MEMORIES_PER_RUN);
+  return [...operability, ...general];
 }
 
 function memoryRequest(input: {
@@ -359,12 +448,13 @@ export async function reflectRunToMemories(input: {
     throw new ApiRouteError(409, "broker_run_workspace_missing", "Run is not assigned to a workspace");
   }
 
-  const [agent, messages, systemPrompt] = await Promise.all([
+  const [agent, messages, toolCallEvents, systemPrompt] = await Promise.all([
     loadAgent(run.agent_id, workspaceId),
     loadRunMessages(run.run_id, workspaceId),
+    loadRunToolCallEvents(run.run_id, workspaceId),
     readReflectionPrompt(),
   ]);
-  if (messages.length === 0) {
+  if (messages.length === 0 && toolCallEvents.length === 0) {
     logEvent({
       event: "learning_reflection_skipped",
       level: "warn",
@@ -423,8 +513,9 @@ export async function reflectRunToMemories(input: {
       apiKey,
       endpoint,
       systemPrompt,
-      transcript: formatTranscript(messages),
+      transcript: formatReflectionInput({ messages, toolCallEvents }),
     }),
+    toolCallEvents.some(hasToolFailure),
   );
 
   const embeddingModel = process.env.LEARNING_EMBEDDING_MODEL?.trim() || DEFAULT_EMBEDDING_MODEL;

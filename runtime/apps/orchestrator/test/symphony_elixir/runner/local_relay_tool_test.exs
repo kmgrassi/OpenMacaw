@@ -226,7 +226,17 @@ defmodule SymphonyElixir.Runner.LocalRelayToolTest do
            } =
              ProtocolExtensions.tool_execution_request(
                "correlation-1",
-               %{"id" => "call-1", "name" => "read_file", "arguments" => %{"path" => "README.md"}}
+               %{"id" => "call-1", "name" => "read_file", "arguments" => %{"path" => "README.md"}},
+               nil,
+               %{"workspace_id" => "workspace-tools"}
+             )
+
+    assert %{"context" => %{"workspace_id" => "workspace-tools"}} =
+             ProtocolExtensions.tool_execution_request(
+               "correlation-1",
+               %{"id" => "call-1", "name" => "read_file", "arguments" => %{"path" => "README.md"}},
+               nil,
+               %{"workspace_id" => "workspace-tools"}
              )
   end
 

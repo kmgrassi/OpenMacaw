@@ -222,7 +222,7 @@ func (r *Runner) chat(ctx context.Context, input runner.ChatCompletionInput, str
 		return err
 	}
 	defer resp.Body.Close()
-	definitionsByName := toolDefinitionsByName(input.ToolDefinitions)
+	definitionsByName := toolDefinitionsByName(input.ToolDefinitions, input.ProviderToolSpecs)
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return parseProviderError(resp)

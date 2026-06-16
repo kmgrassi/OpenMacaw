@@ -39,6 +39,7 @@ defmodule SymphonyElixir.Launcher.Router do
     json_decoder: Jason
   )
 
+  plug(:require_service_role_bearer_for_control_plane)
   plug(:match)
   plug(:dispatch)
 
@@ -48,6 +49,19 @@ defmodule SymphonyElixir.Launcher.Router do
       service: "launcher",
       lifecycle: Server.health_summary()
     })
+  end
+
+  defp require_service_role_bearer_for_control_plane(conn, _opts) do
+    case conn.request_path do
+      "/health" ->
+        conn
+
+      "/local-relay/ws" ->
+        conn
+
+      _other ->
+        SymphonyElixirWeb.Plugs.RequireServiceRoleBearer.call(conn, [])
+    end
   end
 
   get "/local-relay/ws" do

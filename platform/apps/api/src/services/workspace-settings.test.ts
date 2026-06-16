@@ -38,14 +38,14 @@ describe("readWorkspaceSettings", () => {
     vi.clearAllMocks();
   });
 
-  it("returns defaults when no row exists (memory enabled by default)", async () => {
+  it("returns defaults when no row exists (learning disabled by default)", async () => {
     setupMockDatabase();
 
     const settings = await readWorkspaceSettings(workspaceId);
 
     expect(settings).toEqual({
       workspaceId,
-      learningEnabled: true,
+      learningEnabled: false,
       trackerKind: "database",
       trackerCredentialId: null,
       updatedAt: null,
