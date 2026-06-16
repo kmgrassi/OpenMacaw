@@ -15,6 +15,7 @@ export type ChatMessage = {
   metadata?: unknown;
   toolCalls?: AgentMessageToolCall[];
   timestamp?: number;
+  runId?: string | null;
 };
 
 export type ChatMessagesPage = {
@@ -35,6 +36,7 @@ export function normalizeMessages(raw: AgentMessage[]): ChatMessage[] {
       metadata: msg.metadata,
       toolCalls: msg.toolCalls,
       timestamp,
+      runId: msg.runId,
     };
   });
 }
