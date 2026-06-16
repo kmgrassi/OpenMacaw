@@ -84,6 +84,7 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
           tool_executor: map_value(config, :tool_executor),
           max_iterations: positive_integer(map_value(config, :max_iterations), @default_max_iterations),
           on_message: map_value(config, :on_message),
+          agent_context: agent_context(config),
           metadata: map_value(config, :metadata) || %{}
         }
         |> reject_nil_values()
@@ -159,9 +160,28 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
     # absolute paths in shell.exec. repo.list / repo.read_file / repo.search
     # return paths relative to this directory; the model needs to know what
     # they're relative to.
-    case workspace_system_message(session) do
+    case system_message(session, work_item) do
       nil -> base
       content -> [%{"role" => "system", "content" => content} | base]
+    end
+  end
+
+  defp system_message(session, work_item) do
+    [
+      agent_context_section(session, work_item),
+      workspace_system_message(session)
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> case do
+      [] -> nil
+      sections -> Enum.join(sections, "\n\n")
+    end
+  end
+
+  defp agent_context_section(session, _work_item) do
+    case normalize_agent_context(Map.get(session, :agent_context)) do
+      nil -> nil
+      context -> "Agent instructions:\n#{context}"
     end
   end
 
@@ -190,6 +210,21 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
   end
 
   defp work_item_metadata(_work_item), do: %{}
+
+  defp agent_context(config) do
+    map_value(config, :agent_context) ||
+      map_value(config, :agentContext) ||
+      map_value(config, :context)
+  end
+
+  defp normalize_agent_context(context) when is_binary(context) do
+    case String.trim(context) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_agent_context(_context), do: nil
 
   defp put_work_item_runtime_context(session, work_item) do
     work_item_context = work_item_runtime_context(work_item)

@@ -59,6 +59,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
         trace_id: Map.get(config, "trace_id") || Map.get(config, :trace_id) || Process.get(:symphony_trace_id),
         on_message: Map.get(config, :on_message) || Map.get(config, "on_message"),
         metadata: %{
+          agent_context: agent_context(config),
           capability_requirements: capability_requirements(config),
           credential_ref: credential_ref(config),
           tool_definitions: tool_definitions(config),
@@ -393,6 +394,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
 
     [
       "Runtime context for this coding session is already available. Use these IDs when a tool schema asks for them; do not ask the user to provide them.",
+      agent_context_section(session, work_item),
       "agent_id: #{Map.get(context, "agent_id") || ""}",
       "workspace_id: #{Map.get(context, "workspace_id") || ""}",
       "user_id: #{Map.get(context, "user_id") || ""}",
@@ -408,6 +410,28 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   end
 
   defp local_workspace_context_line(_context), do: nil
+
+  defp agent_context(config) do
+    get_config(config, ["agent_context"]) ||
+      get_config(config, ["agentContext"]) ||
+      get_config(config, ["context"])
+  end
+
+  defp agent_context_section(session, _work_item) do
+    case normalize_agent_context(Map.get(session.metadata, :agent_context)) do
+      nil -> nil
+      context -> "Agent instructions:\n#{context}"
+    end
+  end
+
+  defp normalize_agent_context(context) when is_binary(context) do
+    case String.trim(context) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_agent_context(_context), do: nil
 
   defp runtime_context(session, work_item) do
     ToolExecutionContext.from_session(session, %{

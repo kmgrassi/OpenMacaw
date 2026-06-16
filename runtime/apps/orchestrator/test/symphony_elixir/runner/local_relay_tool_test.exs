@@ -29,6 +29,7 @@ defmodule SymphonyElixir.Runner.LocalRelayToolTest do
           "workspace_id" => "workspace-tools",
           "agent_id" => "agent-1",
           "model" => "qwen",
+          "agent_context" => "Always inspect repository files before answering.",
           "tool_definitions" => [read_file_tool()],
           "tool_calling_config" => %{"max_iterations" => 3}
         },
@@ -44,6 +45,7 @@ defmodule SymphonyElixir.Runner.LocalRelayToolTest do
     assert frame["tool_calling_config"]["max_iterations"] == 3
     assert frame["tool_calling_config"]["timeout_per_tool_ms"] == 30_000
     assert [%{"role" => "system", "content" => context_message}, %{"role" => "user", "content" => "Read the file"}] = frame["messages"]
+    assert context_message =~ "Agent instructions:\nAlways inspect repository files before answering."
     assert context_message =~ "workspace_id: workspace-tools"
     assert context_message =~ "agent_id: agent-1"
 
@@ -63,6 +65,39 @@ defmodule SymphonyElixir.Runner.LocalRelayToolTest do
                }
              }
            ] = frame["provider_tool_specs"]
+  end
+
+  test "dispatch frame does not promote work item descriptions to agent instructions" do
+    parent = self()
+    helper = start_completion_helper(parent)
+
+    Registry.register(%{
+      workspace_id: "workspace-tools",
+      machine_id: "machine-1",
+      pid: helper,
+      runners: [%{runner_kind: "openai_compatible", provider: "ollama", model: "qwen", capabilities: %{tool_calls: true}}]
+    })
+
+    {:ok, session} =
+      LocalRelay.start_session(
+        %{
+          "workspace_id" => "workspace-tools",
+          "agent_id" => "agent-1",
+          "model" => "qwen",
+          "tool_definitions" => [read_file_tool()]
+        },
+        nil
+      )
+
+    work_item = %{build_work_item() | description: "User-authored task body"}
+
+    assert {:ok, _result} = LocalRelay.run_turn(session, "Read the file", work_item)
+
+    assert_receive {:dispatch_frame, frame}
+    assert [%{"role" => "system", "content" => context_message}, %{"role" => "user", "content" => "Read the file"}] = frame["messages"]
+    refute context_message =~ "Agent instructions:"
+    refute context_message =~ "User-authored task body"
+    assert context_message =~ "workspace_id: workspace-tools"
   end
 
   test "cloud-managed tool request injects declared runtime context arguments" do

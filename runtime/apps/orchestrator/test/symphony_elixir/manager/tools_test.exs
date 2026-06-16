@@ -6,6 +6,12 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
   alias SymphonyElixir.Schema.ExecutionProfile
   alias SymphonyElixir.ToolRegistry
 
+  defmodule TestAgentInventory do
+    def get_agent("agent-with-context"), do: {:ok, %{id: "agent-with-context", context: "Queue-local agent guidance"}}
+    def get_agent("agent-without-context"), do: {:ok, %{id: "agent-without-context", context: "   "}}
+    def get_agent(_agent_id), do: {:error, :not_found}
+  end
+
   @expected_tools ~w(
     list_plans
     list_work_items
@@ -41,6 +47,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
       Application.delete_env(:symphony_elixir, :manager_tools_req_options)
       Application.delete_env(:symphony_elixir, :launcher_gateway_config_req_options)
       Application.delete_env(:symphony_elixir, :launcher_gateway_config)
+      Application.delete_env(:symphony_elixir, :agent_inventory_adapter)
     end)
 
     :ok
@@ -471,6 +478,39 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
 
     assert config["target_runner_kind"] == "openclaw"
     assert config.worker_host == "worker-1"
+  end
+
+  test "agent runner threads agent context into queued local runner configs" do
+    Application.put_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
+
+    config =
+      AgentRunner.build_runner_config_for_test(SymphonyElixir.Runner.LocalRelay, "worker-1",
+        execution_profile: %{
+          "role" => "coding",
+          "runner_kind" => "local_relay",
+          "provider" => "local",
+          "agent_id" => "agent-with-context"
+        }
+      )
+
+    assert config["agent_context"] == "Queue-local agent guidance"
+  end
+
+  test "agent runner preserves explicit queued local agent context overrides" do
+    Application.put_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
+
+    config =
+      AgentRunner.build_runner_config_for_test(SymphonyElixir.Runner.LocalModelCoding, "worker-1",
+        runner_config_override: %{"agent_context" => "Explicit override"},
+        execution_profile: %{
+          "role" => "coding",
+          "runner_kind" => "local_model_coding",
+          "provider" => "openai_compatible",
+          "agent_id" => "agent-with-context"
+        }
+      )
+
+    assert config["agent_context"] == "Explicit override"
   end
 
   test "escalate_to_human inserts an escalation and marks the work item escalated" do

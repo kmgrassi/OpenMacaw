@@ -14,6 +14,7 @@ defmodule SymphonyElixir.AgentRunner do
 
   alias SymphonyElixir.{
     BrokerLogAdapter,
+    AgentInventory,
     Config,
     ExecutionProfile,
     PromptBuilder,
@@ -186,6 +187,7 @@ defmodule SymphonyElixir.AgentRunner do
     runner_settings
     |> Map.merge(normalize_runner_config_override(runner_override))
     |> maybe_merge_execution_profile(profile)
+    |> maybe_put_agent_context(runner, profile)
     |> Map.put(:worker_host, worker_host)
   end
 
@@ -196,6 +198,44 @@ defmodule SymphonyElixir.AgentRunner do
   end
 
   defp maybe_merge_execution_profile(config, _profile), do: config
+
+  defp maybe_put_agent_context(config, runner, profile)
+       when runner in [SymphonyElixir.Runner.LocalRelay, SymphonyElixir.Runner.LocalModelCoding] and is_map(profile) do
+    if has_agent_context?(config) do
+      config
+    else
+      case agent_context(profile) do
+        nil -> config
+        context -> Map.put(config, "agent_context", context)
+      end
+    end
+  end
+
+  defp maybe_put_agent_context(config, _runner, _profile), do: config
+
+  defp has_agent_context?(config) do
+    Enum.any?(["agent_context", :agent_context, "agentContext", :agentContext], fn key ->
+      case Map.get(config, key) do
+        value when is_binary(value) -> String.trim(value) != ""
+        _ -> false
+      end
+    end)
+  end
+
+  defp agent_context(profile) do
+    with agent_id when is_binary(agent_id) and agent_id != "" <- Map.get(profile, "agent_id") || Map.get(profile, :agent_id),
+         {:ok, agent} <- agent_inventory().get_agent(agent_id),
+         context when is_binary(context) <- Map.get(agent, :context) || Map.get(agent, "context"),
+         trimmed when trimmed != "" <- String.trim(context) do
+      trimmed
+    else
+      _ -> nil
+    end
+  end
+
+  defp agent_inventory do
+    Application.get_env(:symphony_elixir, :agent_inventory_adapter, AgentInventory)
+  end
 
   defp log_execution_profile(profile, issue, opts, worker_host) do
     profile_fields = ExecutionProfile.log_fields(profile)

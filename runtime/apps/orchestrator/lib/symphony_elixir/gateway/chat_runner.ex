@@ -364,7 +364,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     with {:ok, profile} <- AgentExecutionProfile.resolve(scope.agent_id, scope.workspace_id),
          {:ok, session} <-
            Runner.LocalModelCoding.start_session(
-             local_model_coding_config(profile, on_message),
+             local_model_coding_config(profile, agent, on_message),
              workspace
            ),
          {:ok, result} <- Runner.LocalModelCoding.run_turn(session, prompt, work_item),
@@ -385,7 +385,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     end
   end
 
-  defp local_model_coding_config(profile, on_message) do
+  defp local_model_coding_config(profile, agent, on_message) do
     # Routing rules for local_model_coding agents typically carry no
     # credential (Ollama et al. don't need one). The openai_compatible
     # provider still requires base_url + bearer_token to be non-empty,
@@ -405,6 +405,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       model: Map.get(profile, :model),
       base_url: base_url,
       api_key: api_key,
+      agent_context: agent_context(agent),
       on_message: on_message,
       metadata:
         %{
@@ -436,7 +437,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     }
 
     with {:ok, profile} <- AgentExecutionProfile.resolve(scope.agent_id, scope.workspace_id),
-         {:ok, session} <- Runner.LocalRelay.start_session(local_relay_config(profile, scope, on_message), nil),
+         {:ok, session} <- Runner.LocalRelay.start_session(local_relay_config(profile, agent, scope, on_message), nil),
          {:ok, result} <- Runner.LocalRelay.run_turn(session, prompt, work_item),
          :ok <- Runner.LocalRelay.stop_session(session) do
       # Annotate the result with model + provider so the gateway socket
@@ -476,7 +477,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   # apply_patch (its structured patch format) and then include it.
   @local_relay_unsupported_tools ["apply_patch"]
 
-  defp local_relay_config(profile, scope, on_message) do
+  defp local_relay_config(profile, agent, scope, on_message) do
     # The helper owns the model turn; the runtime owns the tool-calling loop
     # (tool_calling_mode "cloud_managed" -> Runner.ToolCallingLoop). Most tools
     # still execute runtime-side, but CLI tools are marked execution_kind
@@ -489,6 +490,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       "session_id" => scope.session_key,
       "provider" => Map.get(profile, :provider) || "local",
       "model" => Map.get(profile, :model),
+      "agent_context" => agent_context(agent),
       # A provider naming a helper-advertisable runtime (openclaw et al.)
       # selects which registered helper runner serves the dispatch; nil
       # falls back to Runner.LocalRelay's "openai_compatible" default.
@@ -500,6 +502,17 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       "trace_id" => Process.get(:symphony_trace_id),
       "on_message" => on_message
     }
+  end
+
+  defp agent_context(agent) do
+    case Map.get(agent, :context) || Map.get(agent, "context") do
+      context when is_binary(context) ->
+        trimmed = String.trim(context)
+        if trimmed == "", do: nil, else: trimmed
+
+      _ ->
+        nil
+    end
   end
 
   # The tools the local model is offered, with CLI tools marked execution_kind
