@@ -13,6 +13,9 @@ the combined platform, runtime, and local helper repository.
 - The [end-to-end local runbook](../platform/docs/reference/end-to-end-local-runbook.md)
   is the first-run verification checklist: login, onboarding, and sending a
   first agent message.
+- The [manual testing inventory](../platform/docs/reference/manual-testing-inventory.md)
+  lists the broader human QA flows across setup, auth, onboarding, dashboard,
+  settings, plans, runtime, helper, diagnostics, and release smoke checks.
 - [Open source readiness scope](open-source-readiness-scope.md) defines the
   remaining work to make OpenMacaw understandable, runnable, auditable, and
   maintainable for external developers and self-hosters.

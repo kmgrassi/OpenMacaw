@@ -195,6 +195,9 @@ Durable design and process docs.
   and principles.
 - [reference/testing-strategy.md](reference/testing-strategy.md) — Platform
   testing strategy and expectations.
+- [reference/manual-testing-inventory.md](reference/manual-testing-inventory.md)
+  — Manual QA flow inventory across app setup, auth, onboarding, dashboard,
+  settings, plans, runtime, helper, diagnostics, and release smoke checks.
 - [reference/tool-crud-conventions.md](reference/tool-crud-conventions.md) —
   Agent tool naming and cross-repo update requirements for database-backed
   resources.
