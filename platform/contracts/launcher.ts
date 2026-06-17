@@ -71,6 +71,7 @@ export const LauncherOrchestratorSchema = z.object({
   agent_name: z.string().optional(),
   workspace_id: z.string().optional(),
   project_id: z.string().optional(),
+  restart_count: z.number().optional(),
 });
 
 export const LauncherOrchestratorResponseSchema = z.object({

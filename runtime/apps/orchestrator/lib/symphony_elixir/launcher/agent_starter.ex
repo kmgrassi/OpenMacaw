@@ -30,9 +30,18 @@ defmodule SymphonyElixir.Launcher.AgentStarter do
   @spec resolve_and_validate_agent_config(Agent.t(), map()) ::
           {:ok, map(), map() | nil} | {:error, term()}
   def resolve_and_validate_agent_config(%Agent{} = agent, launch_params) do
+    case resolve_and_validate_agent_config_with_metadata(agent, launch_params) do
+      {:ok, config, resolution, _metadata} -> {:ok, config, resolution}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @spec resolve_and_validate_agent_config_with_metadata(Agent.t(), map()) ::
+          {:ok, map(), map() | nil, map()} | {:error, term()}
+  def resolve_and_validate_agent_config_with_metadata(%Agent{} = agent, launch_params) do
     result =
       with {:ok, base, resolution} <- resolve_launch_config(agent, launch_params) do
-        merged =
+        {merged, credential_refresh} =
           base
           |> inject_stored_agent(agent)
           |> inject_stored_credentials(agent.id)
@@ -40,7 +49,7 @@ defmodule SymphonyElixir.Launcher.AgentStarter do
         with {:ok, merged, _profile} <- normalize_agent_execution_profile(merged) do
           case get_in(merged, ["tracker", "kind"]) do
             kind when is_binary(kind) and kind != "" ->
-              {:ok, merged, resolution}
+              {:ok, merged, resolution, %{credential_refresh: credential_refresh}}
 
             _ ->
               {:error,
@@ -259,47 +268,62 @@ defmodule SymphonyElixir.Launcher.AgentStarter do
 
   defp inject_stored_credentials(config, agent_id) when is_binary(agent_id) do
     case fetch_agent_credentials(agent_id) do
-      {:ok, credentials} when map_size(credentials) == 0 ->
-        config
+      {:ok, credentials, status} when map_size(credentials) == 0 ->
+        {config, status}
 
-      {:ok, credentials} ->
-        config
-        |> merge_credentials_map(credentials)
-        |> maybe_inject_linear_api_key(credentials)
+      {:ok, credentials, status} ->
+        merged =
+          config
+          |> merge_credentials_map(credentials)
+          |> maybe_inject_linear_api_key(credentials)
+
+        {merged, status}
 
       {:error, reason} ->
-        Logger.warning(
-          "Launcher could not list credentials for agent #{agent_id}: #{inspect(reason)}. Starting without stored credentials."
-        )
+        Logger.warning("Launcher could not list credentials for agent #{agent_id}: #{inspect(reason)}. Starting without stored credentials.")
 
-        config
+        {config, {:incomplete, reason}}
     end
   end
 
-  defp inject_stored_credentials(config, _agent_id), do: config
+  defp inject_stored_credentials(config, _agent_id), do: {config, :not_requested}
 
   defp fetch_agent_credentials(agent_id) do
-    with {:ok, credentials} when is_list(credentials) <- AgentInventory.list_credentials(agent_id) do
-      resolve_stored_credentials(credentials)
+    case AgentInventory.list_credentials(agent_id) do
+      {:ok, credentials} when is_list(credentials) ->
+        resolve_stored_credentials(credentials)
+
+      {:ok, value} ->
+        {:error, {:invalid_credentials_response, value}}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
+  defp resolve_stored_credentials([]), do: {:ok, %{}, :empty}
+
   defp resolve_stored_credentials(credentials) do
-    Enum.reduce_while(credentials, {:ok, %{}}, fn %StoredCredential{} = credential, {:ok, acc} ->
-      case SecretResolver.resolve(credential) do
-        {:ok, env_map} when is_map(env_map) ->
-          # AgentInventory returns newest credentials first, so keep existing
-          # values when env vars collide and only fill gaps from older rows.
-          {:cont, {:ok, Map.merge(env_map, acc)}}
+    {resolved, failures} =
+      Enum.reduce(credentials, {%{}, []}, fn %StoredCredential{} = credential, {acc, failures} ->
+        case SecretResolver.resolve(credential) do
+          {:ok, env_map} when is_map(env_map) ->
+            # AgentInventory returns newest credentials first, so keep existing
+            # values when env vars collide and only fill gaps from older rows.
+            {Map.merge(env_map, acc), failures}
 
-        {:error, reason} ->
-          Logger.warning(
-            "Launcher failed to resolve stored credential #{inspect(credential.id)} (env_var=#{inspect(credential.env_var)}): #{inspect(reason)}. Skipping."
-          )
+          {:error, reason} ->
+            Logger.warning("Launcher failed to resolve stored credential #{inspect(credential.id)} (env_var=#{inspect(credential.env_var)}): #{inspect(reason)}. Skipping.")
 
-          {:cont, {:ok, acc}}
-      end
-    end)
+            failure = %{id: credential.id, env_var: credential.env_var, reason: reason}
+            {acc, [failure | failures]}
+        end
+      end)
+
+    case failures do
+      [] -> {:ok, resolved, :complete}
+      failures -> {:ok, resolved, {:incomplete, {:credential_resolution_failed, Enum.reverse(failures)}}}
+    end
   end
 
   defp merge_credentials_map(config, credentials) do
