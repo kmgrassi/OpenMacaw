@@ -625,12 +625,26 @@ func allowedGitCommand(argv []string) error {
 	}
 	switch argv[0] {
 	case "git":
-		return nil
+		return allowedGitArgs(argv[1:])
 	case "gh":
 		return allowedGHCommand(argv[1:])
 	default:
 		return fmt.Errorf("unsupported_executable")
 	}
+}
+
+func allowedGitArgs(argv []string) error {
+	for _, arg := range argv {
+		switch {
+		case arg == "-C":
+			return fmt.Errorf("git_path_override_denied")
+		case strings.HasPrefix(arg, "--git-dir"):
+			return fmt.Errorf("git_path_override_denied")
+		case strings.HasPrefix(arg, "--work-tree"):
+			return fmt.Errorf("git_path_override_denied")
+		}
+	}
+	return nil
 }
 
 func allowedGHCommand(argv []string) error {
