@@ -5,6 +5,12 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import { WebSocket } from "ws";
+import {
+  waitForGatewayEvent,
+  waitForGatewayHello,
+  waitForGatewayResponse,
+  waitForSocketOpen,
+} from "./lib/gateway-ws.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -411,34 +417,9 @@ async function openGatewaySocket(parsed) {
   url.searchParams.set("session_key", parsed.sessionKey);
 
   const ws = new WebSocket(url, ["platform.v1", `bearer.${parsed.token}`]);
-  await waitForSocketOpen(ws, parsed.timeoutMs);
+  await waitForSocketOpen(ws, { timeoutMs: parsed.timeoutMs });
   await sendGatewayConnect(ws, parsed);
   return ws;
-}
-
-function waitForSocketOpen(ws, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(
-      () => reject(new Error("gateway websocket open timed out")),
-      timeoutMs,
-    );
-    ws.addEventListener(
-      "open",
-      () => {
-        clearTimeout(timeout);
-        resolve();
-      },
-      { once: true },
-    );
-    ws.addEventListener(
-      "error",
-      () => {
-        clearTimeout(timeout);
-        reject(new Error("gateway websocket failed to connect"));
-      },
-      { once: true },
-    );
-  });
 }
 
 async function sendGatewayConnect(ws, parsed) {
@@ -475,94 +456,30 @@ async function sendGatewayConnect(ws, parsed) {
 }
 
 function waitForHelloOrResponse(ws, requestId, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const cleanup = () => {
-      clearTimeout(timeout);
-      ws.removeEventListener("message", onMessage);
-      ws.removeEventListener("close", onClose);
-    };
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error("gateway connect timed out"));
-    }, timeoutMs);
-    const onClose = (event) => {
-      cleanup();
-      reject(
-        new Error(
-          `gateway closed during connect (${event.code}) ${event.reason}`,
-        ),
-      );
-    };
-    const onMessage = (event) => {
-      const frame = parseJson(String(event.data ?? ""));
-      if (frame?.type === "hello-ok") {
-        cleanup();
-        resolve(frame);
-      } else if (
-        frame?.type === "res" &&
-        frame.id === requestId &&
-        frame.ok === false
-      ) {
-        cleanup();
-        reject(new Error(frame.error?.message ?? "gateway connect rejected"));
-      }
-    };
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("close", onClose);
+  return waitForGatewayHello({
+    ws,
+    requestId,
+    timeoutMs,
+    parseFrame: parseJson,
   });
 }
 
 function waitForResponse(ws, requestId, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const cleanup = () => {
-      clearTimeout(timeout);
-      ws.removeEventListener("message", onMessage);
-      ws.removeEventListener("close", onClose);
-    };
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error("chat.send response timed out"));
-    }, timeoutMs);
-    const onClose = (event) => {
-      cleanup();
-      reject(
-        new Error(
-          `gateway closed before chat.send response (${event.code}) ${event.reason}`,
-        ),
-      );
-    };
-    const onMessage = (event) => {
-      const frame = parseJson(String(event.data ?? ""));
-      if (frame?.type !== "res" || frame.id !== requestId) return;
-      cleanup();
-      if (frame.ok) {
-        resolve(frame.payload ?? {});
-      } else {
-        reject(new Error(frame.error?.message ?? "chat.send rejected"));
-      }
-    };
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("close", onClose);
+  return waitForGatewayResponse({
+    ws,
+    requestId,
+    timeoutMs,
+    parseFrame: parseJson,
   });
 }
 
 function waitForChatCompletion(ws, observation, timeoutMs) {
-  return new Promise((resolve) => {
-    const cleanup = () => {
-      clearTimeout(timeout);
-      ws.removeEventListener("message", onMessage);
-      ws.removeEventListener("close", onClose);
-    };
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve({ status: "dispatch_started", error: null });
-    }, timeoutMs);
-    const onClose = () => {
-      cleanup();
-      resolve({ status: "dispatch_started", error: null });
-    };
-    const onMessage = (event) => {
-      const frame = parseJson(String(event.data ?? ""));
+  return waitForGatewayEvent({
+    ws,
+    timeoutMs,
+    parseFrame: parseJson,
+    fallbackResult: () => ({ status: "dispatch_started", error: null }),
+    onFrameResult: (frame) => {
       if (frame?.type !== "event") return;
       const payload = frame.payload ?? {};
       observation.events.push({
@@ -574,27 +491,25 @@ function waitForChatCompletion(ws, observation, timeoutMs) {
 
       if (frame.event !== "chat") return;
       if (payload.state === "final") {
-        cleanup();
-        resolve({ status: "completed", error: null });
-      } else if (payload.state === "error") {
-        cleanup();
-        resolve({
+        return { status: "completed", error: null };
+      }
+      if (payload.state === "error") {
+        return {
           status: "error",
           error: {
             code: payload.errorCode ?? null,
             message: payload.errorMessage ?? "runtime reported an error",
           },
-        });
-      } else if (payload.state === "aborted") {
-        cleanup();
-        resolve({
+        };
+      }
+      if (payload.state === "aborted") {
+        return {
           status: "error",
           error: { code: "aborted", message: "runtime aborted the chat turn" },
-        });
+        };
       }
-    };
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("close", onClose);
+      return undefined;
+    },
   });
 }
 

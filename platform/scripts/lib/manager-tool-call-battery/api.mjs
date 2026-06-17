@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
 import {
+  waitForGatewayEvent as waitForGatewayEventFrame,
+  waitForGatewayHello as waitForGatewayHelloFrame,
+  waitForGatewayResponse as waitForGatewayResponseFrame,
+  waitForSocketOpen as waitForSocketReady,
+} from "../gateway-ws.mjs";
+import {
   isUuid,
   normalizeUrl,
   parseResponse,
@@ -10,26 +16,38 @@ import {
   sleep,
 } from "./utils.mjs";
 
-export async function loadResolvedTools({ agentId, workspaceId, postgrestGet }) {
+export async function loadResolvedTools({
+  agentId,
+  workspaceId,
+  postgrestGet,
+}) {
   const [agent, grants, globalTools, workspaceTools] = await Promise.all([
-    postgrestGet("agent", { select: "id,workspace_id", id: `eq.${agentId}`, limit: "1" }),
+    postgrestGet("agent", {
+      select: "id,workspace_id",
+      id: `eq.${agentId}`,
+      limit: "1",
+    }),
     postgrestGet("agent_tool_grant", {
       select: "id,agent_id,workspace_id,tool_id,mode,source",
       agent_id: `eq.${agentId}`,
       workspace_id: `eq.${workspaceId}`,
     }),
     postgrestGet("tool", {
-      select: "id,workspace_id,slug,name,description,function_name,execution_kind,runner_kind,enabled",
+      select:
+        "id,workspace_id,slug,name,description,function_name,execution_kind,runner_kind,enabled",
       workspace_id: "is.null",
     }),
     postgrestGet("tool", {
-      select: "id,workspace_id,slug,name,description,function_name,execution_kind,runner_kind,enabled",
+      select:
+        "id,workspace_id,slug,name,description,function_name,execution_kind,runner_kind,enabled",
       workspace_id: `eq.${workspaceId}`,
     }),
   ]);
   if (agent.length === 0) throw new Error(`Agent not found: ${agentId}`);
 
-  const toolsById = new Map([...globalTools, ...workspaceTools].map((tool) => [tool.id, tool]));
+  const toolsById = new Map(
+    [...globalTools, ...workspaceTools].map((tool) => [tool.id, tool]),
+  );
   return grants
     .filter((grant) => grant.mode !== "exclude")
     .map((grant) => toolsById.get(grant.tool_id))
@@ -58,8 +76,12 @@ export async function updateEvalRun(runId, patch, postgrestPatch) {
 }
 
 export async function persistEvalRunCase(input) {
-  const passedAssertions = input.assertionResults.filter((assertion) => assertion.status === "passed").length;
-  const failedAssertions = input.assertionResults.filter((assertion) => assertion.status === "failed").length;
+  const passedAssertions = input.assertionResults.filter(
+    (assertion) => assertion.status === "passed",
+  ).length;
+  const failedAssertions = input.assertionResults.filter(
+    (assertion) => assertion.status === "failed",
+  ).length;
   const runCaseRows = await input.postgrestInsert("agent_eval_run_case", {
     run_id: input.runId,
     case_id: input.caseId,
@@ -75,7 +97,10 @@ export async function persistEvalRunCase(input) {
     first_tool_call_id: input.toolCalls[0]?.id ?? null,
     started_at: input.startedAt,
     completed_at: input.completedAt,
-    duration_ms: Math.max(0, Date.parse(input.completedAt) - Date.parse(input.startedAt)),
+    duration_ms: Math.max(
+      0,
+      Date.parse(input.completedAt) - Date.parse(input.startedAt),
+    ),
   });
   const runCase = runCaseRows[0];
   if (!runCase?.id) return null;
@@ -144,31 +169,49 @@ export async function persistEvalRunCase(input) {
 export async function resolveAccessToken(args) {
   if (args.token) return args.token;
 
-  const supabaseUrl = requireValue(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_DEV_URL, "SUPABASE_URL");
+  const supabaseUrl = requireValue(
+    process.env.SUPABASE_URL || process.env.VITE_SUPABASE_DEV_URL,
+    "SUPABASE_URL",
+  );
   const envName = (process.env.VITE_SUPABASE_ENV || "dev").trim();
   const anonKey =
     envName === "prod"
-      ? process.env.VITE_SUPABASE_PROD_ANON_KEY || process.env.VITE_SUPABASE_DEV_ANON_KEY
-      : process.env.VITE_SUPABASE_DEV_ANON_KEY || process.env.VITE_SUPABASE_PROD_ANON_KEY;
+      ? process.env.VITE_SUPABASE_PROD_ANON_KEY ||
+        process.env.VITE_SUPABASE_DEV_ANON_KEY
+      : process.env.VITE_SUPABASE_DEV_ANON_KEY ||
+        process.env.VITE_SUPABASE_PROD_ANON_KEY;
   const email =
     process.env.OPENMACAW_TEST_EMAIL ||
-    (envName === "prod" ? process.env.VITE_PROD_LOGIN_EMAIL : process.env.VITE_DEV_LOGIN_EMAIL);
+    (envName === "prod"
+      ? process.env.VITE_PROD_LOGIN_EMAIL
+      : process.env.VITE_DEV_LOGIN_EMAIL);
   const password =
     process.env.OPENMACAW_TEST_PASSWORD ||
-    (envName === "prod" ? process.env.VITE_PROD_LOGIN_PASSWORD : process.env.VITE_DEV_LOGIN_PASSWORD);
+    (envName === "prod"
+      ? process.env.VITE_PROD_LOGIN_PASSWORD
+      : process.env.VITE_DEV_LOGIN_PASSWORD);
 
   requireValue(anonKey, "VITE_SUPABASE_DEV_ANON_KEY or --api-token");
-  requireValue(email, "VITE_DEV_LOGIN_EMAIL/OPENMACAW_TEST_EMAIL or --api-token");
-  requireValue(password, "VITE_DEV_LOGIN_PASSWORD/OPENMACAW_TEST_PASSWORD or --api-token");
+  requireValue(
+    email,
+    "VITE_DEV_LOGIN_EMAIL/OPENMACAW_TEST_EMAIL or --api-token",
+  );
+  requireValue(
+    password,
+    "VITE_DEV_LOGIN_PASSWORD/OPENMACAW_TEST_PASSWORD or --api-token",
+  );
 
-  const response = await fetch(`${normalizeUrl(supabaseUrl)}/auth/v1/token?grant_type=password`, {
-    method: "POST",
-    headers: {
-      apikey: anonKey,
-      "content-type": "application/json",
+  const response = await fetch(
+    `${normalizeUrl(supabaseUrl)}/auth/v1/token?grant_type=password`,
+    {
+      method: "POST",
+      headers: {
+        apikey: anonKey,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
     },
-    body: JSON.stringify({ email, password }),
-  });
+  );
   const body = await parseResponse(response);
   if (!response.ok || !body.access_token) {
     throw new Error(`Supabase sign-in failed (${response.status})`);
@@ -185,7 +228,12 @@ export async function sendBrowserGatewayMessage(input) {
 
   const ws = await openBrowserGatewaySocket(input, events);
   try {
-    const responsePromise = waitForGatewayResponse(ws, requestId, input.timeoutMs, events);
+    const responsePromise = waitForGatewayResponse(
+      ws,
+      requestId,
+      input.timeoutMs,
+      events,
+    );
     const eventPromise = waitForGatewayEvent(ws, input.timeoutMs, events);
 
     ws.send(
@@ -246,7 +294,11 @@ export async function waitForToolEvidence(input) {
 
   while (Date.now() < deadline) {
     latest = await loadToolEvidence(input, input.postgrestGet);
-    if (input.expectedToolSlugs.every((slug) => latest.observedToolSlugs.includes(slug))) {
+    if (
+      input.expectedToolSlugs.every((slug) =>
+        latest.observedToolSlugs.includes(slug),
+      )
+    ) {
       return latest;
     }
     await sleep(2_000);
@@ -255,7 +307,10 @@ export async function waitForToolEvidence(input) {
   return latest;
 }
 
-export async function loadToolEvidence({ agentId, workspaceId, startedAt }, postgrestGet) {
+export async function loadToolEvidence(
+  { agentId, workspaceId, startedAt },
+  postgrestGet,
+) {
   const messages = await postgrestGet("message", {
     select: "id,role,created_at,run_id,content",
     agent_id: `eq.${agentId}`,
@@ -289,7 +344,9 @@ export async function loadToolEvidence({ agentId, workspaceId, startedAt }, post
       output: safeJson(toolCall.output),
     };
   });
-  const observedToolSlugs = Array.from(new Set(toolCalls.map((call) => call.toolSlug).filter(Boolean))).sort();
+  const observedToolSlugs = Array.from(
+    new Set(toolCalls.map((call) => call.toolSlug).filter(Boolean)),
+  ).sort();
 
   return {
     observedToolSlugs,
@@ -299,14 +356,20 @@ export async function loadToolEvidence({ agentId, workspaceId, startedAt }, post
       role: message.role,
       createdAt: message.created_at,
       runId: message.run_id,
-      contentPreview: typeof message.content === "string" ? message.content.slice(0, 500) : "",
+      contentPreview:
+        typeof message.content === "string"
+          ? message.content.slice(0, 500)
+          : "",
     })),
   };
 }
 
 export async function postgrestGet(table, params) {
   const supabaseUrl = requireValue(process.env.SUPABASE_URL, "SUPABASE_URL");
-  const serviceRoleKey = requireValue(process.env.SUPABASE_SERVICE_ROLE_KEY, "SUPABASE_SERVICE_ROLE_KEY");
+  const serviceRoleKey = requireValue(
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    "SUPABASE_SERVICE_ROLE_KEY",
+  );
   const url = new URL(`${normalizeUrl(supabaseUrl)}/rest/v1/${table}`);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
@@ -318,31 +381,46 @@ export async function postgrestGet(table, params) {
     },
   });
   const body = await parseResponse(response);
-  if (!response.ok) throw new Error(`PostgREST ${table} failed (${response.status}): ${JSON.stringify(body)}`);
+  if (!response.ok)
+    throw new Error(
+      `PostgREST ${table} failed (${response.status}): ${JSON.stringify(body)}`,
+    );
   return body;
 }
 
 export async function postgrestInsert(table, value) {
   const supabaseUrl = requireValue(process.env.SUPABASE_URL, "SUPABASE_URL");
-  const serviceRoleKey = requireValue(process.env.SUPABASE_SERVICE_ROLE_KEY, "SUPABASE_SERVICE_ROLE_KEY");
-  const response = await fetch(`${normalizeUrl(supabaseUrl)}/rest/v1/${table}`, {
-    method: "POST",
-    headers: {
-      apikey: serviceRoleKey,
-      authorization: `Bearer ${serviceRoleKey}`,
-      "content-type": "application/json",
-      prefer: "return=representation",
+  const serviceRoleKey = requireValue(
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    "SUPABASE_SERVICE_ROLE_KEY",
+  );
+  const response = await fetch(
+    `${normalizeUrl(supabaseUrl)}/rest/v1/${table}`,
+    {
+      method: "POST",
+      headers: {
+        apikey: serviceRoleKey,
+        authorization: `Bearer ${serviceRoleKey}`,
+        "content-type": "application/json",
+        prefer: "return=representation",
+      },
+      body: JSON.stringify(value),
     },
-    body: JSON.stringify(value),
-  });
+  );
   const body = await parseResponse(response);
-  if (!response.ok) throw new Error(`PostGREST ${table} insert failed (${response.status}): ${JSON.stringify(body)}`);
+  if (!response.ok)
+    throw new Error(
+      `PostGREST ${table} insert failed (${response.status}): ${JSON.stringify(body)}`,
+    );
   return Array.isArray(body) ? body : [];
 }
 
 export async function postgrestPatch(table, params, value) {
   const supabaseUrl = requireValue(process.env.SUPABASE_URL, "SUPABASE_URL");
-  const serviceRoleKey = requireValue(process.env.SUPABASE_SERVICE_ROLE_KEY, "SUPABASE_SERVICE_ROLE_KEY");
+  const serviceRoleKey = requireValue(
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    "SUPABASE_SERVICE_ROLE_KEY",
+  );
   const url = new URL(`${normalizeUrl(supabaseUrl)}/rest/v1/${table}`);
   for (const [key, paramValue] of Object.entries(params)) {
     url.searchParams.set(key, paramValue);
@@ -357,22 +435,30 @@ export async function postgrestPatch(table, params, value) {
     body: JSON.stringify(value),
   });
   const body = await parseResponse(response);
-  if (!response.ok) throw new Error(`PostGREST ${table} patch failed (${response.status}): ${JSON.stringify(body)}`);
+  if (!response.ok)
+    throw new Error(
+      `PostGREST ${table} patch failed (${response.status}): ${JSON.stringify(body)}`,
+    );
   return body;
 }
 
 async function prepareRuntime(input) {
-  const response = await fetch(`${input.apiBaseUrl}/api/agents/${encodeURIComponent(input.agentId)}/start`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${input.token}`,
-      "content-type": "application/json",
+  const response = await fetch(
+    `${input.apiBaseUrl}/api/agents/${encodeURIComponent(input.agentId)}/start`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${input.token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ workspaceId: input.workspaceId }),
     },
-    body: JSON.stringify({ workspaceId: input.workspaceId }),
-  });
+  );
   const parsed = await parseResponse(response);
   if (!response.ok) {
-    throw new Error(`Runtime prepare failed (${response.status}): ${JSON.stringify(parsed)}`);
+    throw new Error(
+      `Runtime prepare failed (${response.status}): ${JSON.stringify(parsed)}`,
+    );
   }
   return parsed;
 }
@@ -391,38 +477,17 @@ async function openBrowserGatewaySocket(input, events) {
 }
 
 function waitForSocketOpen(ws, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error("gateway websocket open timed out"));
-    }, timeoutMs);
-    const cleanup = () => {
-      clearTimeout(timeout);
-      ws.removeEventListener("open", onOpen);
-      ws.removeEventListener("error", onError);
-      ws.removeEventListener("close", onClose);
-    };
-    const onOpen = () => {
-      cleanup();
-      resolve();
-    };
-    const onError = () => {
-      cleanup();
-      reject(new Error("gateway websocket failed to connect"));
-    };
-    const onClose = (event) => {
-      cleanup();
-      reject(new Error(`gateway websocket closed before open (${event.code}) ${event.reason}`));
-    };
-    ws.addEventListener("open", onOpen, { once: true });
-    ws.addEventListener("error", onError, { once: true });
-    ws.addEventListener("close", onClose, { once: true });
-  });
+  return waitForSocketReady(ws, { timeoutMs });
 }
 
 async function sendBrowserGatewayConnect(ws, input, events) {
   const connectId = `battery-connect-${randomUUID()}`;
-  const responsePromise = waitForGatewayHello(ws, connectId, input.timeoutMs, events);
+  const responsePromise = waitForGatewayHello(
+    ws,
+    connectId,
+    input.timeoutMs,
+    events,
+  );
   ws.send(
     JSON.stringify({
       type: "req",
@@ -450,103 +515,59 @@ async function sendBrowserGatewayConnect(ws, input, events) {
 }
 
 function waitForGatewayHello(ws, requestId, timeoutMs, events) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error("gateway connect timed out"));
-    }, timeoutMs);
-    const cleanup = () => {
-      clearTimeout(timeout);
-      ws.removeEventListener("message", onMessage);
-      ws.removeEventListener("close", onClose);
-    };
-    const onClose = (event) => {
-      cleanup();
-      reject(new Error(`gateway closed during connect (${event.code}) ${event.reason}`));
-    };
-    const onMessage = (event) => {
-      const frame = safeJson(String(event.data ?? ""));
-      rememberGatewayFrame(events, frame);
-      if (frame?.type === "hello-ok") {
-        cleanup();
-        resolve(frame);
-        return;
-      }
-      if (frame?.type === "res" && frame.id === requestId && frame.ok === false) {
-        cleanup();
-        reject(new Error(frame.error?.message ?? "gateway connect rejected"));
-      }
-    };
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("close", onClose);
+  return waitForGatewayHelloFrame({
+    ws,
+    requestId,
+    timeoutMs,
+    parseFrame: safeJson,
+    onFrame: (frame) => rememberGatewayFrame(events, frame),
   });
 }
 
 function waitForGatewayResponse(ws, requestId, timeoutMs, events) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error("chat.send response timed out"));
-    }, timeoutMs);
-    const cleanup = () => {
-      clearTimeout(timeout);
-      ws.removeEventListener("message", onMessage);
-      ws.removeEventListener("close", onClose);
-    };
-    const onClose = (event) => {
-      cleanup();
-      reject(new Error(`gateway closed before chat.send response (${event.code}) ${event.reason}`));
-    };
-    const onMessage = (event) => {
-      const frame = safeJson(String(event.data ?? ""));
-      rememberGatewayFrame(events, frame);
-      if (frame?.type !== "res" || frame.id !== requestId) return;
-      cleanup();
-      if (frame.ok === false) {
-        reject(new Error(frame.error?.message ?? "chat.send rejected"));
-        return;
-      }
-      resolve(frame.payload ?? {});
-    };
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("close", onClose);
+  return waitForGatewayResponseFrame({
+    ws,
+    requestId,
+    timeoutMs,
+    parseFrame: safeJson,
+    onFrame: (frame) => rememberGatewayFrame(events, frame),
   });
 }
 
 function waitForGatewayEvent(ws, timeoutMs, events) {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve({ status: "message_accepted", errorCode: null, errorMessage: null });
-    }, timeoutMs);
-    const cleanup = () => {
-      clearTimeout(timeout);
-      ws.removeEventListener("message", onMessage);
-      ws.removeEventListener("close", onClose);
-    };
-    const onClose = () => {
-      cleanup();
-      resolve({ status: "message_accepted", errorCode: null, errorMessage: null });
-    };
-    const onMessage = (event) => {
-      const frame = safeJson(String(event.data ?? ""));
-      rememberGatewayFrame(events, frame);
-      if (frame?.type !== "event") return;
-      const payload = frame.payload && typeof frame.payload === "object" ? frame.payload : {};
-      const errorCode = typeof payload.errorCode === "string" ? payload.errorCode : null;
-      const errorMessage = typeof payload.errorMessage === "string" ? payload.errorMessage : null;
+  return waitForGatewayEventFrame({
+    ws,
+    timeoutMs,
+    parseFrame: safeJson,
+    onFrame: (frame) => rememberGatewayFrame(events, frame),
+    fallbackResult: () => ({
+      status: "message_accepted",
+      errorCode: null,
+      errorMessage: null,
+    }),
+    onFrameResult: (frame) => {
+      if (frame?.type !== "event") return undefined;
+      const payload =
+        frame.payload && typeof frame.payload === "object" ? frame.payload : {};
+      const errorCode =
+        typeof payload.errorCode === "string" ? payload.errorCode : null;
+      const errorMessage =
+        typeof payload.errorMessage === "string" ? payload.errorMessage : null;
       const eventName = typeof frame.event === "string" ? frame.event : null;
-      if (errorCode || errorMessage || eventName === "chat.completed" || eventName === "run.completed") {
-        cleanup();
-        resolve({
-          status: errorCode || errorMessage ? "failed" : "completed",
-          errorCode,
-          errorMessage,
-        });
+      if (
+        !errorCode &&
+        !errorMessage &&
+        eventName !== "chat.completed" &&
+        eventName !== "run.completed"
+      ) {
+        return undefined;
       }
-    };
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("close", onClose);
+      return {
+        status: errorCode || errorMessage ? "failed" : "completed",
+        errorCode,
+        errorMessage,
+      };
+    },
   });
 }
 
@@ -558,11 +579,15 @@ function rememberGatewayFrame(events, frame) {
     event: typeof frame.event === "string" ? frame.event : null,
     ok: typeof frame.ok === "boolean" ? frame.ok : null,
     payloadKeys:
-      frame.payload && typeof frame.payload === "object" && !Array.isArray(frame.payload)
+      frame.payload &&
+      typeof frame.payload === "object" &&
+      !Array.isArray(frame.payload)
         ? Object.keys(frame.payload).sort()
         : [],
     payload:
-      frame.payload && typeof frame.payload === "object" && !Array.isArray(frame.payload)
+      frame.payload &&
+      typeof frame.payload === "object" &&
+      !Array.isArray(frame.payload)
         ? sanitizeForArtifact(frame.payload)
         : null,
     error: frame.error ?? null,
