@@ -438,6 +438,44 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
     assert tool_system =~ "Available tools:"
   end
 
+  test "replays persisted chat history before the current local coding prompt" do
+    workspace = workspace_fixture()
+
+    SymphonyElixir.Runner.ManagerTestSupport.configure_history_adapter([
+      %{"role" => "user", "content" => "current persisted prompt", "run_id" => "run-current", "created_at" => "2026-05-12T10:01:00Z"},
+      %{"role" => "assistant", "content" => "previous answer", "run_id" => "run-old", "created_at" => "2026-05-12T10:00:01Z"},
+      %{"role" => "user", "content" => "previous prompt", "run_id" => "run-old", "created_at" => "2026-05-12T10:00:00Z"}
+    ])
+
+    Application.put_env(:symphony_elixir, :local_model_coding_turns, [
+      provider_turn("Done.", [])
+    ])
+
+    runner_config =
+      config()
+      |> Map.put("message_recorder_scope", %{
+        agent_id: "agent-1",
+        workspace_id: "workspace-1",
+        session_key: "agent:agent-1:main",
+        session_thread_id: "thread-1",
+        user_id: "user-1"
+      })
+
+    work_item = %{work_item() | metadata: %{"run_id" => "run-current"}}
+
+    assert {:ok, session} = LocalModelCoding.start_session(runner_config, workspace)
+    assert {:ok, result} = LocalModelCoding.run_turn(session, "new prompt", work_item)
+    assert result["output_text"] == "Done."
+
+    assert_receive {:provider_turn, _profile,
+                    [
+                      %{"role" => "system"},
+                      %{"role" => "user", "content" => "previous prompt"},
+                      %{"role" => "assistant", "content" => "previous answer"},
+                      %{"role" => "user", "content" => "new prompt", "metadata" => %{"work_item_id" => "work-item-1"}}
+                    ], _tools}
+  end
+
   test "stops when the tool-call iteration limit is exceeded" do
     workspace = workspace_fixture()
 

@@ -11,6 +11,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
 
   alias SymphonyElixir.LocalRelay.{ProtocolExtensions, Registry, Session}
   alias SymphonyElixir.LocalRelay.Handlers.HelperManaged
+  alias SymphonyElixir.MessageHistory
   alias SymphonyElixir.Runner.Observability
   alias SymphonyElixir.Runner.ToolCallingLoop
   alias SymphonyElixir.ToolExecutionContext
@@ -56,8 +57,10 @@ defmodule SymphonyElixir.Runner.LocalRelay do
         provider: provider(config),
         model: model(config),
         timeout_ms: timeout_ms(config),
+        history_window: history_window(config),
         trace_id: Map.get(config, "trace_id") || Map.get(config, :trace_id) || Process.get(:symphony_trace_id),
         on_message: Map.get(config, :on_message) || Map.get(config, "on_message"),
+        message_recorder_scope: message_recorder_scope(config),
         metadata: %{
           agent_context: agent_context(config),
           capability_requirements: capability_requirements(config),
@@ -236,7 +239,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
         "provider" => session.provider,
         "model" => session.model,
         "prompt" => prompt,
-        "messages" => initial_messages(session, prompt, work_item),
+        "messages" => initial_messages(session, prompt, work_item, correlation_id),
         "work_item" => work_item_context(work_item),
         "capability_requirements" => session.metadata.capability_requirements,
         "credential_ref" => session.metadata.credential_ref
@@ -302,6 +305,18 @@ defmodule SymphonyElixir.Runner.LocalRelay do
       value when is_integer(value) and value > 0 -> value
       _ -> @default_timeout_ms
     end
+  end
+
+  defp history_window(config) do
+    case get_config(config, ["history_window"]) || get_config(config, ["historyWindow"]) do
+      value when is_integer(value) and value >= 0 -> value
+      _ -> MessageHistory.default_limit()
+    end
+  end
+
+  defp message_recorder_scope(config) do
+    get_config(config, ["message_recorder_scope"]) ||
+      get_config(config, ["messageRecorderScope"])
   end
 
   defp capability_requirements(config) do
@@ -379,14 +394,25 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   defp work_item_run_id(work_item), do: metadata_value(work_item, "run_id")
   defp work_item_session_id(work_item), do: metadata_value(work_item, "session_id")
 
-  defp initial_messages(session, prompt, work_item) do
-    [
+  defp initial_messages(session, prompt, work_item, correlation_id) do
+    history = fetch_chat_history(session, work_item_run_id(work_item) || correlation_id)
+
+    system_messages = [
       %{
         "role" => "system",
         "content" => runtime_context_message(session, work_item)
-      },
-      %{"role" => "user", "content" => prompt}
+      }
     ]
+
+    system_messages ++ history ++ [%{"role" => "user", "content" => prompt}]
+  end
+
+  defp fetch_chat_history(session, current_run_id) do
+    MessageHistory.fetch(
+      Map.get(session, :message_recorder_scope),
+      limit: Map.get(session, :history_window, MessageHistory.default_limit()),
+      exclude_run_id: current_run_id
+    )
   end
 
   defp runtime_context_message(session, work_item) do

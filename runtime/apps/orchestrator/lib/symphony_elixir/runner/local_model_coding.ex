@@ -13,6 +13,7 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
 
   require Logger
 
+  alias SymphonyElixir.MessageHistory
   alias SymphonyElixir.ToolRegistry
   alias SymphonyElixir.Runner.AgentConfig
   alias SymphonyElixir.Runner.Contract
@@ -83,7 +84,9 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
           provider_tool_name_map: provider_tool_name_map(config),
           tool_executor: map_value(config, :tool_executor),
           max_iterations: positive_integer(map_value(config, :max_iterations), @default_max_iterations),
+          history_window: non_negative_integer(map_value(config, :history_window), MessageHistory.default_limit()),
           on_message: map_value(config, :on_message),
+          message_recorder_scope: map_value(config, :message_recorder_scope),
           agent_context: agent_context(config),
           metadata: map_value(config, :metadata) || %{}
         }
@@ -134,6 +137,8 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
   def requires_workspace?, do: true
 
   defp initial_messages(prompt, work_item, session) do
+    history = fetch_chat_history(session, work_item)
+
     prompt_messages = [
       %{
         "role" => "user",
@@ -149,10 +154,10 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
             "role" => "system",
             "content" => ToolSpec.prompt_based_system_message(session.tool_definitions)
           }
-          | prompt_messages
+          | history ++ prompt_messages
         ]
       else
-        prompt_messages
+        history ++ prompt_messages
       end
 
     # Prepend a system message that names the workspace path so the model
@@ -165,6 +170,23 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
       content -> [%{"role" => "system", "content" => content} | base]
     end
   end
+
+  defp fetch_chat_history(session, work_item) do
+    MessageHistory.fetch(
+      Map.get(session, :message_recorder_scope),
+      limit: Map.get(session, :history_window, MessageHistory.default_limit()),
+      exclude_run_id: work_item_run_id(work_item)
+    )
+  end
+
+  defp work_item_run_id(%{metadata: metadata}) when is_map(metadata) do
+    case map_value(metadata, :run_id) do
+      value when is_binary(value) and value != "" -> value
+      _ -> nil
+    end
+  end
+
+  defp work_item_run_id(_work_item), do: nil
 
   defp system_message(session, work_item) do
     [
@@ -432,6 +454,8 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
 
   defp positive_integer(value, _default) when is_integer(value) and value > 0, do: value
   defp positive_integer(_value, default), do: default
+  defp non_negative_integer(value, _default) when is_integer(value) and value >= 0, do: value
+  defp non_negative_integer(_value, default), do: default
 
   defp map_value(map, key) when is_map(map), do: Map.get(map, key) || Map.get(map, to_string(key))
   defp map_value(_map, _key), do: nil
