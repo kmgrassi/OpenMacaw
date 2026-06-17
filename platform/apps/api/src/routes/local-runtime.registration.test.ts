@@ -119,7 +119,7 @@ describe("local runtime route registration", () => {
   });
 
   it("does not list revoked local runtime machines even when routing rules remain", async () => {
-    const db = {
+    const db = withOwnedWorkspace({
       routing_rule: [
         {
           id: "revoked-rule-1",
@@ -173,7 +173,7 @@ describe("local runtime route registration", () => {
         },
       ],
       agent: [],
-    };
+    });
     vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
 
     const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {

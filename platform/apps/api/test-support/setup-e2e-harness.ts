@@ -64,6 +64,7 @@ type SetupTestDatabase = {
   credentials: Array<Record<string, unknown>>;
   routingRules: Array<Record<string, unknown>>;
   routingRuleMatches: Array<Record<string, unknown>>;
+  routingRuleFallbacks: Array<Record<string, unknown>>;
   gatewayConfigs: Array<Record<string, unknown>>;
   gatewayConfigVersions: Array<Record<string, unknown>>;
   gatewayConfigStates: Array<Record<string, unknown>>;
@@ -195,6 +196,7 @@ function createTestDatabase(): SetupTestDatabase {
     credentials: [],
     routingRules: [],
     routingRuleMatches: [],
+    routingRuleFallbacks: [],
     gatewayConfigs: [],
     gatewayConfigVersions: [],
     gatewayConfigStates: [],
@@ -429,6 +431,17 @@ async function startSupabaseServer(db: SetupTestDatabase): Promise<ServerBundle>
         if (matches) db.routingRuleMatches.splice(index, 1);
       }
       postgrestJson(req, res, 200, []);
+      return;
+    }
+
+    if (url.pathname === "/rest/v1/routing_rule_fallback" && req.method === "GET") {
+      const workspaceId = parseEqFilter(url.searchParams.get("workspace_id"));
+      const ruleIds = parseInFilter(url.searchParams.get("routing_rule_id"));
+      let rows = db.routingRuleFallbacks;
+      if (workspaceId) rows = rows.filter((fallback) => fallback.workspace_id === workspaceId);
+      if (ruleIds) rows = rows.filter((fallback) => ruleIds.includes(String(fallback.routing_rule_id)));
+      rows = sortByPosition(rows, url);
+      postgrestJson(req, res, 200, applyLimit(rows, url));
       return;
     }
 
@@ -870,6 +883,11 @@ function parseEqFilter(value: string | null) {
 function sortByCreatedAt<T extends Record<string, unknown>>(rows: T[], url: URL) {
   if (url.searchParams.get("order") !== "created_at.asc") return rows;
   return [...rows].sort((left, right) => String(left.created_at ?? "").localeCompare(String(right.created_at ?? "")));
+}
+
+function sortByPosition<T extends Record<string, unknown>>(rows: T[], url: URL) {
+  if (url.searchParams.get("order") !== "position.asc") return rows;
+  return [...rows].sort((left, right) => Number(left.position ?? 0) - Number(right.position ?? 0));
 }
 
 function restoreEnv(previousEnv: Record<string, string | undefined>) {

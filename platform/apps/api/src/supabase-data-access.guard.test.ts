@@ -23,6 +23,12 @@ function productionSourceFiles(dir: string): string[] {
 //   - services/local-runtime-machines.ts: query string for the orchestrator's
 //     /api/v1/local-runtime/health diagnostics probe.
 const URLSEARCHPARAMS_ALLOWLIST = new Set(["services/oauth/openai-codex.ts", "services/local-runtime-machines.ts"]);
+const POSTGREST_OPERATOR_FILTER_ALLOWLIST = new Set([
+  // repositories/provider-cutovers.ts: keyset pagination uses Supabase's
+  // `.or(...)` API, whose public typed-client contract accepts a PostgREST
+  // filter string for grouped OR conditions.
+  "repositories/provider-cutovers.ts",
+]);
 
 describe("Supabase data-access guardrails", () => {
   const files = productionSourceFiles(sourceRoot);
@@ -37,7 +43,9 @@ describe("Supabase data-access guardrails", () => {
         contents.includes("new URLSearchParams") && !URLSEARCHPARAMS_ALLOWLIST.has(relativePath)
           ? "URLSearchParams database filters"
           : null,
-        /eq\.\$\{|in\.\(/.test(contents) ? "PostgREST operator string filters" : null,
+        /eq\.\$\{|in\.\(/.test(contents) && !POSTGREST_OPERATOR_FILTER_ALLOWLIST.has(relativePath)
+          ? "PostgREST operator string filters"
+          : null,
       ].filter(Boolean);
 
       return matches.map((match) => `${relativePath}: ${match}`);

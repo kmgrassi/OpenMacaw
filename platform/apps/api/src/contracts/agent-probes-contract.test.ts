@@ -170,6 +170,7 @@ describe("agent probe contracts", () => {
             name: "Read file",
             description: "Read a workspace file.",
             parameters: { type: "object" },
+            examples: [],
             executionKind: "filesystem_read",
             runnerKind: "local_model_coding",
             enabled: true,

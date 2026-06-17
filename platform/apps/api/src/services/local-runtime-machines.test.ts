@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
@@ -577,6 +577,7 @@ describe("listLocalRuntimesForWorkspace", () => {
 describe("testLocalRuntimeDispatchForWorkspace", () => {
   const workspaceId = "workspace-1";
   const launcherRequest = vi.fn();
+  let previousServiceRoleKey: string | undefined;
 
   function dispatchTables({
     assignedAgentId = null,
@@ -671,8 +672,18 @@ describe("testLocalRuntimeDispatchForWorkspace", () => {
   }
 
   beforeEach(() => {
+    previousServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
     vi.resetAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  afterEach(() => {
+    if (previousServiceRoleKey === undefined) {
+      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    } else {
+      process.env.SUPABASE_SERVICE_ROLE_KEY = previousServiceRoleKey;
+    }
   });
 
   it("falls back to the shared local orchestrator target when no agent is assigned", async () => {
