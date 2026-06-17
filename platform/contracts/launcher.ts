@@ -78,6 +78,10 @@ export const LauncherOrchestratorResponseSchema = z.object({
   data: LauncherOrchestratorSchema,
 });
 
+export const LauncherOrchestratorListResponseSchema = z.object({
+  data: z.array(LauncherOrchestratorSchema),
+});
+
 export type LauncherHealthResponse = z.infer<
   typeof LauncherHealthResponseSchema
 >;
@@ -98,4 +102,7 @@ export type LauncherStoredCredentialListResponse = z.infer<
 export type LauncherOrchestrator = z.infer<typeof LauncherOrchestratorSchema>;
 export type LauncherOrchestratorResponse = z.infer<
   typeof LauncherOrchestratorResponseSchema
+>;
+export type LauncherOrchestratorListResponse = z.infer<
+  typeof LauncherOrchestratorListResponseSchema
 >;
