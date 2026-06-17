@@ -5,6 +5,7 @@ import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AgentControlMessageRow } from "../../../../contracts/agent-control.js";
+import type { LauncherOrchestrator } from "../../../../contracts/launcher.js";
 import type { WorkerBridgeSessionRow } from "../../../../contracts/worker-bridge.js";
 import type { LauncherClient } from "../services/launcher.js";
 import { registerProxyRoutes } from "./proxy.js";
@@ -39,6 +40,22 @@ vi.mock("../services/runtime-prepare.js", () => ({
   assertRuntimePrepareSupported: vi.fn(),
 }));
 
+vi.mock("../services/runtime-dispatch-context.js", () => ({
+  attachRuntimeDispatchContext: vi.fn((body: unknown, context: unknown) => {
+    const source = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+    const dispatchContext =
+      context && typeof context === "object" && !Array.isArray(context) ? (context as Record<string, unknown>) : {};
+    return {
+      ...source,
+      execution_profile: dispatchContext.executionProfile,
+      workspace_policy: dispatchContext.workspacePolicy,
+      execution_target: dispatchContext.executionTarget,
+      tool_assignments: dispatchContext.toolAssignments,
+    };
+  }),
+  buildRuntimeDispatchContext: vi.fn(),
+}));
+
 vi.mock("../services/agent-tools/access.js", () => ({
   assertAgentAccess: vi.fn(),
 }));
@@ -55,6 +72,9 @@ const {
   updateAgentControlMessageDispatchStatus,
 } = vi.mocked(await import("../services/agent-control.js"));
 const { assertRuntimePrepareSupported } = vi.mocked(await import("../services/runtime-prepare.js"));
+const { attachRuntimeDispatchContext, buildRuntimeDispatchContext } = vi.mocked(
+  await import("../services/runtime-dispatch-context.js"),
+);
 const { assertAgentAccess } = vi.mocked(await import("../services/agent-tools/access.js"));
 const { assertCredentialReferenceBelongsToWorkspace } = vi.mocked(await import("./stored-agent-credentials/authz.js"));
 
@@ -108,11 +128,27 @@ function workerBridgeSessionRow(overrides: Partial<WorkerBridgeSessionRow> = {})
   };
 }
 
+function orchestratorRow(overrides: Partial<LauncherOrchestrator> = {}): LauncherOrchestrator {
+  return {
+    id: "orch-1",
+    port: 4101,
+    config: {},
+    started_at: "2026-04-26T09:00:00.000Z",
+    status: "running",
+    reused: false,
+    agent_id: targetAgentId,
+    workspace_id: workspaceId,
+    ...overrides,
+  };
+}
+
 describe("agent control routes", () => {
   let server: Server | undefined;
   let baseUrl = "";
   const launcherClient = {
     startAgent: vi.fn(),
+    listOrchestrators: vi.fn(),
+    stopOrchestrator: vi.fn(),
   } as unknown as LauncherClient;
 
   beforeEach(async () => {
@@ -143,8 +179,29 @@ describe("agent control routes", () => {
       workspaceId,
       localRuntime: false,
     });
+    buildRuntimeDispatchContext.mockResolvedValue({
+      executionProfile: { runnerKind: "llm_tool_runner" },
+      workspacePolicy: { allowNetworking: true },
+      executionTarget: { kind: "local_helper" },
+      toolAssignments: [{ name: "git.run" }],
+    } as never);
+    attachRuntimeDispatchContext.mockImplementation((body: unknown, context: unknown) => {
+      const source = body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
+      const dispatchContext =
+        context && typeof context === "object" && !Array.isArray(context) ? (context as Record<string, unknown>) : {};
+      return {
+        ...source,
+        execution_profile: dispatchContext.executionProfile,
+        workspace_policy: dispatchContext.workspacePolicy,
+        execution_target: dispatchContext.executionTarget,
+        tool_assignments: dispatchContext.toolAssignments,
+      };
+    });
     assertAgentAccess.mockResolvedValue({ agent: { id: targetAgentId }, workspaceId } as never);
     assertCredentialReferenceBelongsToWorkspace.mockResolvedValue("credential-1");
+    launcherClient.startAgent = vi.fn();
+    launcherClient.listOrchestrators = vi.fn();
+    launcherClient.stopOrchestrator = vi.fn();
 
     const app = express();
     app.use(express.json());
@@ -260,6 +317,117 @@ describe("agent control routes", () => {
         dispatchStatus: "dispatched",
       },
     });
+  });
+
+  it("recovers a stuck runtime by stopping the current orchestrator and starting a fresh one", async () => {
+    launcherClient.listOrchestrators = vi.fn().mockResolvedValue({
+      data: [
+        orchestratorRow({ id: "orch-current" }),
+        orchestratorRow({ id: "orch-other-agent", agent_id: "other-agent" }),
+      ],
+    });
+    launcherClient.stopOrchestrator = vi.fn().mockResolvedValue({
+      status: 200,
+      data: { data: orchestratorRow({ id: "orch-current", status: "stopped" }) },
+    });
+    launcherClient.startAgent = vi.fn().mockResolvedValue({
+      status: 201,
+      data: { data: orchestratorRow({ id: "orch-fresh", reused: false }) },
+    });
+
+    const response = await fetch(`${baseUrl}/api/agents/${targetAgentId}/runtime/recover`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId,
+        mode: "restart_runtime",
+        reason: "manual local model test recovery",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "ok",
+      agentId: targetAgentId,
+      workspaceId,
+      mode: "restart_runtime",
+      stoppedCount: 1,
+      stopped: [{ id: "orch-current", status: "stopped" }],
+      restarted: { id: "orch-fresh", reused: false },
+    });
+    expect(launcherClient.stopOrchestrator).toHaveBeenCalledWith("orch-current");
+    expect(buildRuntimeDispatchContext).toHaveBeenCalledWith({
+      accessToken: "test-token",
+      requesterUserId: userId,
+      agentId: targetAgentId,
+      requestBody: expect.objectContaining({
+        workspaceId,
+        recovery: expect.objectContaining({
+          mode: "restart_runtime",
+          stopped_orchestrator_ids: ["orch-current"],
+        }),
+      }),
+    });
+    expect(attachRuntimeDispatchContext).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceId,
+        recovery: expect.objectContaining({
+          mode: "restart_runtime",
+          stopped_orchestrator_ids: ["orch-current"],
+        }),
+      }),
+      expect.objectContaining({
+        executionProfile: { runnerKind: "llm_tool_runner" },
+        toolAssignments: [{ name: "git.run" }],
+      }),
+    );
+    expect(launcherClient.startAgent).toHaveBeenCalledWith(
+      targetAgentId,
+      expect.objectContaining({
+        workspaceId,
+        execution_profile: expect.objectContaining({
+          runnerKind: "llm_tool_runner",
+        }),
+        tool_assignments: [{ name: "git.run" }],
+        recovery: expect.objectContaining({
+          mode: "restart_runtime",
+          stopped_orchestrator_ids: ["orch-current"],
+        }),
+      }),
+    );
+  });
+
+  it("reports a recovery failure when a matching orchestrator cannot be stopped", async () => {
+    launcherClient.listOrchestrators = vi.fn().mockResolvedValue({
+      data: [orchestratorRow({ id: "orch-current" })],
+    });
+    launcherClient.stopOrchestrator = vi.fn().mockRejectedValue(new Error("launcher unavailable"));
+
+    const response = await fetch(`${baseUrl}/api/agents/${targetAgentId}/runtime/recover`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId,
+        mode: "restart_runtime",
+      }),
+    });
+
+    expect(response.status).toBe(502);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "runtime_recovery_stop_failed",
+        details: {
+          stopErrors: [{ id: "orch-current", error: "launcher unavailable" }],
+        },
+      },
+    });
+    expect(launcherClient.startAgent).not.toHaveBeenCalled();
   });
 
   it("maps worker bridge session rows to camelCase responses", async () => {

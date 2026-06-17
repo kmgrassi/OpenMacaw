@@ -2,6 +2,7 @@ import {
   LauncherAgentListResponseSchema,
   LauncherAgentResponseSchema,
   LauncherHealthResponseSchema,
+  LauncherOrchestratorListResponseSchema,
   LauncherOrchestratorResponseSchema,
   LauncherStoredCredentialListResponseSchema,
 } from "../../../../contracts/launcher.js";
@@ -365,6 +366,23 @@ export function createLauncherClient({
         path: `/agents/${encodeURIComponent(id)}/start`,
         schema: LauncherOrchestratorResponseSchema,
         body,
+      });
+    },
+
+    async listOrchestrators() {
+      const result = await request({
+        method: "GET",
+        path: "/orchestrators",
+        schema: LauncherOrchestratorListResponseSchema,
+      });
+      return result.data;
+    },
+
+    async stopOrchestrator(id: string) {
+      return request({
+        method: "DELETE",
+        path: `/orchestrators/${encodeURIComponent(id)}`,
+        schema: LauncherOrchestratorResponseSchema,
       });
     },
 

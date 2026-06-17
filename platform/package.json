@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "./scripts/dev.sh",
     "agent:send-message": "node scripts/agent-send-message.mjs",
+    "agent:runtime:recover": "node scripts/agent-runtime-recover.mjs",
     "doctor": "node scripts/doctor.mjs",
     "trace:agent": "node scripts/trace-agent.mjs",
     "support:bundle": "node scripts/support-bundle.mjs",

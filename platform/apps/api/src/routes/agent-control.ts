@@ -39,6 +39,12 @@ import { assertCredentialReferenceBelongsToWorkspace } from "./stored-agent-cred
 const MESSAGE_PAGE_LIMIT = 20;
 const MESSAGE_PAGE_FETCH_LIMIT = MESSAGE_PAGE_LIMIT + 1;
 
+const RecoverAgentRuntimeRequestSchema = z.object({
+  workspaceId: z.string().min(1),
+  mode: z.enum(["restart_runtime", "stop_runtime", "full_recover"]).default("restart_runtime"),
+  reason: z.string().trim().min(1).max(500).optional(),
+});
+
 const MessageCursorSchema = z.object({
   createdAt: z.string().min(1),
   id: z.string().min(1),
@@ -212,6 +218,96 @@ async function createStructuredAgentMessage(req: Request, res: Response) {
       code: "agent_message_create_failed",
       message: "Could not persist agent message",
     });
+  }
+}
+
+async function recoverAgentRuntime(req: Request, res: Response, launcherClient: LauncherClient) {
+  const parsed = RecoverAgentRuntimeRequestSchema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    return res.status(400).json(
+      errorPayload("invalid_request", "workspaceId and a valid recovery mode are required", {
+        issues: parsed.error.issues,
+      }),
+    );
+  }
+
+  try {
+    const accessToken = requireAccessToken(req);
+    const userId = requireVerifiedUser(req);
+    const agentId = requireRouteParam(req, "id");
+    const { workspaceId } = await assertAgentAccess({
+      accessToken,
+      userId,
+      agentId,
+      workspaceId: parsed.data.workspaceId,
+    });
+
+    const orchestrators = await launcherClient.listOrchestrators();
+    const matchingOrchestrators = orchestrators.data.filter(
+      (orchestrator) => orchestrator.agent_id === agentId && orchestrator.workspace_id === workspaceId,
+    );
+
+    const stopped = [];
+    const stopErrors = [];
+    for (const orchestrator of matchingOrchestrators) {
+      try {
+        const result = await launcherClient.stopOrchestrator(orchestrator.id);
+        stopped.push(result.data.data);
+      } catch (error) {
+        stopErrors.push({
+          id: orchestrator.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (stopErrors.length > 0) {
+      return res.status(502).json(
+        errorPayload("runtime_recovery_stop_failed", "Could not stop every matching runtime", {
+          stopped,
+          stopErrors,
+        }),
+      );
+    }
+
+    const shouldRestart = parsed.data.mode === "restart_runtime" || parsed.data.mode === "full_recover";
+    let restarted = null;
+    if (shouldRestart) {
+      const restartBody = {
+        workspaceId,
+        recovery: {
+          mode: parsed.data.mode,
+          reason: parsed.data.reason ?? null,
+          stopped_orchestrator_ids: stopped.map((orchestrator) => orchestrator.id),
+        },
+      };
+      const dispatchContext = await buildRuntimeDispatchContext({
+        accessToken,
+        requesterUserId: userId,
+        agentId,
+        requestBody: restartBody,
+      });
+      restarted = await launcherClient.startAgent(agentId, attachRuntimeDispatchContext(restartBody, dispatchContext));
+    }
+
+    return res.status(200).json({
+      status: "ok",
+      agentId,
+      workspaceId,
+      mode: parsed.data.mode,
+      stoppedCount: stopped.length,
+      stopped,
+      restarted: restarted?.data.data ?? null,
+    });
+  } catch (error) {
+    if (!(error instanceof Error && error.name.startsWith("Launcher"))) {
+      return handleApiRouteError(res, error, {
+        status: 502,
+        code: "runtime_recovery_failed",
+        message: "Runtime recovery failed",
+      });
+    }
+    return handleLauncherError(res, error);
   }
 }
 
@@ -616,6 +712,10 @@ export function registerAgentControlRoutes(app: Express, launcherClient: Launche
       }
       return handleLauncherError(res, error);
     }
+  });
+
+  app.post("/api/agents/:id/runtime/recover", async (req: Request, res: Response) => {
+    return await recoverAgentRuntime(req, res, launcherClient);
   });
 
   app.post("/api/agents/:id/messages", async (req: Request, res: Response) => {
