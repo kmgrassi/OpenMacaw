@@ -350,7 +350,8 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       title: agent.name || "Coding Session",
       description: agent.context,
       source: "gateway",
-      runner_type: "local_model_coding"
+      runner_type: "local_model_coding",
+      metadata: %{"run_id" => run_id, "session_id" => scope.session_key}
     }
 
     # The agent's tool_policy carries the user-chosen workspace_root for
@@ -364,7 +365,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     with {:ok, profile} <- AgentExecutionProfile.resolve(scope.agent_id, scope.workspace_id),
          {:ok, session} <-
            Runner.LocalModelCoding.start_session(
-             local_model_coding_config(profile, agent, on_message),
+             local_model_coding_config(profile, agent, scope, on_message),
              workspace
            ),
          {:ok, result} <- Runner.LocalModelCoding.run_turn(session, prompt, work_item),
@@ -385,7 +386,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     end
   end
 
-  defp local_model_coding_config(profile, agent, on_message) do
+  defp local_model_coding_config(profile, agent, scope, on_message) do
     # Routing rules for local_model_coding agents typically carry no
     # credential (Ollama et al. don't need one). The openai_compatible
     # provider still requires base_url + bearer_token to be non-empty,
@@ -406,6 +407,8 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       base_url: base_url,
       api_key: api_key,
       agent_context: agent_context(agent),
+      history_window: history_window(scope),
+      message_recorder_scope: scope,
       on_message: on_message,
       metadata:
         %{
@@ -499,10 +502,14 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       "workspace_root" => local_workspace_root(profile),
       "tool_definitions" => local_relay_tool_definitions(profile),
       "tool_calling_mode" => "cloud_managed",
+      "history_window" => history_window(scope),
+      "message_recorder_scope" => scope,
       "trace_id" => Process.get(:symphony_trace_id),
       "on_message" => on_message
     }
   end
+
+  defp history_window(scope), do: Map.get(scope, :history_window) || Map.get(scope, "history_window")
 
   defp agent_context(agent) do
     case Map.get(agent, :context) || Map.get(agent, "context") do

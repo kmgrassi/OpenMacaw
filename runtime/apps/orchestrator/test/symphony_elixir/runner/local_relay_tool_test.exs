@@ -100,6 +100,55 @@ defmodule SymphonyElixir.Runner.LocalRelayToolTest do
     assert context_message =~ "workspace_id: workspace-tools"
   end
 
+  test "dispatch frame replays persisted chat history before the current prompt" do
+    SymphonyElixir.Runner.ManagerTestSupport.configure_history_adapter([
+      %{"role" => "user", "content" => "current persisted prompt", "run_id" => "run-current", "created_at" => "2026-05-12T10:01:00Z"},
+      %{"role" => "assistant", "content" => "previous answer", "run_id" => "run-old", "created_at" => "2026-05-12T10:00:01Z"},
+      %{"role" => "user", "content" => "previous prompt", "run_id" => "run-old", "created_at" => "2026-05-12T10:00:00Z"}
+    ])
+
+    parent = self()
+    helper = start_completion_helper(parent)
+
+    Registry.register(%{
+      workspace_id: "workspace-tools",
+      machine_id: "machine-1",
+      pid: helper,
+      runners: [%{runner_kind: "openai_compatible", provider: "ollama", model: "qwen", capabilities: %{tool_calls: true}}]
+    })
+
+    {:ok, session} =
+      LocalRelay.start_session(
+        %{
+          "workspace_id" => "workspace-tools",
+          "agent_id" => "agent-1",
+          "model" => "qwen",
+          "message_recorder_scope" => %{
+            agent_id: "agent-1",
+            workspace_id: "workspace-tools",
+            session_key: "agent:agent-1:main",
+            session_thread_id: "thread-1",
+            user_id: "user-1"
+          },
+          "tool_definitions" => [read_file_tool()]
+        },
+        nil
+      )
+
+    work_item = %{build_work_item() | metadata: %{"run_id" => "run-current", "session_id" => "agent:agent-1:main"}}
+
+    assert {:ok, _result} = LocalRelay.run_turn(session, "new prompt", work_item)
+
+    assert_receive {:dispatch_frame, frame}
+
+    assert [
+             %{"role" => "system"},
+             %{"role" => "user", "content" => "previous prompt"},
+             %{"role" => "assistant", "content" => "previous answer"},
+             %{"role" => "user", "content" => "new prompt"}
+           ] = frame["messages"]
+  end
+
   test "cloud-managed tool request injects declared runtime context arguments" do
     parent = self()
     helper = start_plans_tool_request_helper(parent)
