@@ -275,6 +275,7 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert frame["run_id"] == "run-relay"
     assert frame["model"] == "qwen-chat"
     assert [%{"role" => "system", "content" => system_message} | _] = frame["messages"]
+    assert system_message =~ "Agent instructions:\nChat through the local relay"
     assert system_message =~ "local_workspace_root: /Users/dev/repos/openmacaw"
     assert [%{"name" => _name} | _rest] = frame["tool_definitions"]
 

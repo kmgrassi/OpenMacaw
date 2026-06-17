@@ -118,6 +118,62 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
     assert_receive {:runner_event, %{event: :turn_completed, message: "Done."}}
   end
 
+  test "includes agent context in the local model system message" do
+    workspace = workspace_fixture()
+
+    Application.put_env(:symphony_elixir, :local_model_coding_turns, [
+      provider_turn("Acknowledged.", [])
+    ])
+
+    assert {:ok, session} =
+             LocalModelCoding.start_session(
+               config(agent_context: "Prefer small, reviewed patches."),
+               workspace
+             )
+
+    assert {:ok, result} = LocalModelCoding.run_turn(session, "Inspect", work_item())
+    assert result["output_text"] == "Acknowledged."
+
+    assert_receive {:provider_turn, _profile,
+                    [
+                      %{"role" => "system", "content" => system_message},
+                      %{"role" => "user", "content" => "Inspect"}
+                    ], _tools}
+
+    assert system_message =~ "Agent instructions:\nPrefer small, reviewed patches."
+    assert system_message =~ "operating in workspace directory: " <> workspace
+  end
+
+  test "does not promote work item descriptions to agent instructions" do
+    workspace = workspace_fixture()
+
+    Application.put_env(:symphony_elixir, :local_model_coding_turns, [
+      provider_turn("Acknowledged.", [])
+    ])
+
+    assert {:ok, session} = LocalModelCoding.start_session(config(), workspace)
+
+    work_item = %WorkItem{
+      id: "work-item-1",
+      title: "Queued task",
+      description: "User-authored task body",
+      source: "test"
+    }
+
+    assert {:ok, result} = LocalModelCoding.run_turn(session, "Inspect", work_item)
+    assert result["output_text"] == "Acknowledged."
+
+    assert_receive {:provider_turn, _profile,
+                    [
+                      %{"role" => "system", "content" => system_message},
+                      %{"role" => "user", "content" => "Inspect"}
+                    ], _tools}
+
+    refute system_message =~ "Agent instructions:"
+    refute system_message =~ "User-authored task body"
+    assert system_message =~ "operating in workspace directory: " <> workspace
+  end
+
   test "appends unsupported tool errors without executing a tool" do
     workspace = workspace_fixture()
 
@@ -475,6 +531,7 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
       },
       "provider_module" => FakeProvider,
       "max_iterations" => Keyword.get(opts, :max_iterations, 4),
+      "agent_context" => Keyword.get(opts, :agent_context),
       "metadata" => Keyword.get(opts, :metadata, %{}),
       "on_message" => fn event -> send(self(), {:runner_event, event}) end
     }
