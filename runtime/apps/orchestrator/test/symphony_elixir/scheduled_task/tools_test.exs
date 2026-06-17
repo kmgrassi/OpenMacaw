@@ -127,7 +127,7 @@ defmodule SymphonyElixir.ScheduledTask.ToolsTest do
                %{
                  "workspace_id" => "workspace-1",
                  "agent_id" => "agent-1",
-                 repository: TestRepository
+                 "repository" => TestRepository
                },
                ["scheduled_task.create"]
              )
@@ -224,7 +224,7 @@ defmodule SymphonyElixir.ScheduledTask.ToolsTest do
              ToolRegistry.execute(
                "scheduled_task.list",
                %{},
-               %{workspace_id: "workspace-1", repository: TestRepository},
+               %{"workspace_id" => "workspace-1", "repository" => TestRepository},
                ToolRegistry.bundle(:coding)
              )
   end
@@ -234,7 +234,7 @@ defmodule SymphonyElixir.ScheduledTask.ToolsTest do
              ToolRegistry.execute(
                "scheduled_task.list",
                %{"workspace_id" => "workspace-2"},
-               %{workspace_id: "workspace-1", repository: TestRepository},
+               %{"workspace_id" => "workspace-1", "repository" => TestRepository},
                ToolRegistry.bundle(:coding)
              )
 

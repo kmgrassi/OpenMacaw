@@ -33,6 +33,7 @@ defmodule SymphonyElixir.ScheduledTask.Tools.Generic do
           |> Keyword.new()
           |> put_context_default(:workspace_id, context_value(context, :workspace_id))
           |> put_context_default(:agent_id, context_value(context, :agent_id))
+          |> put_context_option(:repository, context_value(context, :repository))
 
         Tools.execute(@tool_name, arguments, opts)
       end
@@ -49,6 +50,9 @@ defmodule SymphonyElixir.ScheduledTask.Tools.Generic do
       end
 
       defp put_context_default(opts, _key, _value), do: opts
+
+      defp put_context_option(opts, key, value) when not is_nil(value), do: Keyword.put_new(opts, key, value)
+      defp put_context_option(opts, _key, _value), do: opts
     end
   end
 end
