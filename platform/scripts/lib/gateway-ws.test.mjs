@@ -77,6 +77,26 @@ test("waitForGatewayResponse rejects request errors with the gateway message", a
   await assert.rejects(promise, /denied/);
 });
 
+test("waitForGatewayResponse rejects malformed success frames without ok:true", async () => {
+  const ws = new FakeSocket();
+  const promise = waitForGatewayResponse({
+    ws,
+    requestId: "req-3",
+    timeoutMs: 100,
+    parseFrame,
+  });
+
+  ws.emit("message", {
+    data: JSON.stringify({
+      type: "res",
+      id: "req-3",
+      payload: {},
+    }),
+  });
+
+  await assert.rejects(promise, /malformed response/);
+});
+
 test("waitForGatewayEvent resolves terminal results and falls back on close", async () => {
   const completedSocket = new FakeSocket();
   const completedPromise = waitForGatewayEvent({

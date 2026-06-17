@@ -103,6 +103,7 @@ export function waitForGatewayResponse({
   closeMessage = (event) =>
     `gateway closed before chat.send response (${event.code}) ${event.reason}`,
   rejectedMessage = "chat.send rejected",
+  malformedMessage = "chat.send returned a malformed response",
 }) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -128,6 +129,10 @@ export function waitForGatewayResponse({
       cleanup();
       if (frame.ok === false) {
         reject(new Error(frame.error?.message ?? rejectedMessage));
+        return;
+      }
+      if (frame.ok !== true) {
+        reject(new Error(malformedMessage));
         return;
       }
 
