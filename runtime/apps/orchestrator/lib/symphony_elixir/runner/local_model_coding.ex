@@ -14,6 +14,7 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
   require Logger
 
   alias SymphonyElixir.MessageHistory
+  alias SymphonyElixir.Planner.ToolNameMapping
   alias SymphonyElixir.ToolRegistry
   alias SymphonyElixir.Runner.AgentConfig
   alias SymphonyElixir.Runner.Contract
@@ -177,6 +178,7 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
       limit: Map.get(session, :history_window, MessageHistory.default_limit()),
       exclude_run_id: work_item_run_id(work_item)
     )
+    |> rewrite_history_tool_calls(session)
   end
 
   defp work_item_run_id(%{metadata: metadata}) when is_map(metadata) do
@@ -187,6 +189,27 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
   end
 
   defp work_item_run_id(_work_item), do: nil
+
+  defp rewrite_history_tool_calls(history, session) when is_list(history) do
+    provider_tool_name_map = Map.get(session, :provider_tool_name_map, %{})
+
+    Enum.map(history, fn
+      %{"role" => "assistant", "tool_calls" => tool_calls} = message when is_list(tool_calls) ->
+        Map.put(message, "tool_calls", Enum.map(tool_calls, &rewrite_history_tool_call(&1, provider_tool_name_map)))
+
+      message ->
+        message
+    end)
+  end
+
+  defp rewrite_history_tool_calls(_history, _session), do: []
+
+  defp rewrite_history_tool_call(%{"function" => %{"name" => runtime_name}} = call, provider_tool_name_map)
+       when is_binary(runtime_name) do
+    put_in(call, ["function", "name"], ToolNameMapping.provider_name(runtime_name, provider_tool_name_map))
+  end
+
+  defp rewrite_history_tool_call(call, _provider_tool_name_map), do: call
 
   defp system_message(session, work_item) do
     [

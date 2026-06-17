@@ -407,6 +407,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       base_url: base_url,
       api_key: api_key,
       agent_context: agent_context(agent),
+      history_window: history_window(scope),
       message_recorder_scope: scope,
       on_message: on_message,
       metadata:
@@ -501,11 +502,14 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       "workspace_root" => local_workspace_root(profile),
       "tool_definitions" => local_relay_tool_definitions(profile),
       "tool_calling_mode" => "cloud_managed",
+      "history_window" => history_window(scope),
       "message_recorder_scope" => scope,
       "trace_id" => Process.get(:symphony_trace_id),
       "on_message" => on_message
     }
   end
+
+  defp history_window(scope), do: Map.get(scope, :history_window) || Map.get(scope, "history_window")
 
   defp agent_context(agent) do
     case Map.get(agent, :context) || Map.get(agent, "context") do

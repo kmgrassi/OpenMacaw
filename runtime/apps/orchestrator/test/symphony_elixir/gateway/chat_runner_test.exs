@@ -245,6 +245,11 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
   test "local_relay agents run gateway chat turns through the relay tool-calling loop" do
     setup_local_relay_routing()
 
+    SymphonyElixir.Runner.ManagerTestSupport.configure_history_adapter([
+      %{"role" => "assistant", "content" => "should not replay", "run_id" => "run-old", "created_at" => "2026-05-12T10:00:01Z"},
+      %{"role" => "user", "content" => "old scheduled prompt", "run_id" => "run-old", "created_at" => "2026-05-12T10:00:00Z"}
+    ])
+
     test_pid = self()
 
     helper =
@@ -263,7 +268,7 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
       runners: [%{runner_kind: "openai_compatible", provider: "local", model: "qwen-chat", capabilities: %{tool_calls: true}}]
     })
 
-    assert :ok = ChatRunner.run(relay_agent(), relay_scope(), "hello relay", "run-relay", self())
+    assert :ok = ChatRunner.run(relay_agent(), Map.put(relay_scope(), :history_window, 0), "hello relay", "run-relay", self())
 
     assert_receive {:relay_dispatch_frame, frame}
     assert frame["runner_kind"] == "local_relay"
@@ -277,6 +282,7 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert [%{"role" => "system", "content" => system_message} | _] = frame["messages"]
     assert system_message =~ "Agent instructions:\nChat through the local relay"
     assert system_message =~ "local_workspace_root: /Users/dev/repos/openmacaw"
+    refute Enum.any?(frame["messages"], &(Map.get(&1, "content") == "should not replay"))
     assert [%{"name" => _name} | _rest] = frame["tool_definitions"]
 
     # Workspace-local tools are offered to the local model and marked for
