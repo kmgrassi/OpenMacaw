@@ -89,7 +89,7 @@ defmodule SymphonyElixir.ToolRegistryTest do
       assert result == %{
                output: %{
                  arguments: %{"message" => "hello"},
-                 context: %{request_id: "req_123"}
+                 context: %{"request_id" => "req_123"}
                },
                usage: nil,
                metadata: %{tool: "echo"}

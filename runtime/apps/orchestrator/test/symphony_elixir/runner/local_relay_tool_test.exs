@@ -428,7 +428,10 @@ defmodule SymphonyElixir.Runner.LocalRelayToolTest do
                 "output" => "contents"
               })
 
-              Registry.complete(correlation_id, %{"output_text" => "done"})
+              receive do
+                {:local_relay_frame, _continuation} ->
+                  Registry.complete(correlation_id, %{"output_text" => "done"})
+              end
           end
       end
     end)
@@ -458,7 +461,10 @@ defmodule SymphonyElixir.Runner.LocalRelayToolTest do
                 "output" => "[]"
               })
 
-              Registry.complete(correlation_id, %{"output_text" => "done"})
+              receive do
+                {:local_relay_frame, _continuation} ->
+                  Registry.complete(correlation_id, %{"output_text" => "done"})
+              end
           end
       end
     end)

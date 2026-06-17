@@ -38,6 +38,12 @@ defmodule SymphonyElixir.ToolExecutionContextTest do
            }
   end
 
+  test "normalizes repository context to the canonical string key only" do
+    assert ToolExecutionContext.normalize(%{repository: "kmgrassi/openmacaw"}) == %{
+             "repository" => "kmgrassi/openmacaw"
+           }
+  end
+
   test "builds context from session, metadata, execution profile, and extra values" do
     session = %{
       metadata: %{"workspace_id" => "workspace-from-metadata", "agent_id" => "agent-1"},

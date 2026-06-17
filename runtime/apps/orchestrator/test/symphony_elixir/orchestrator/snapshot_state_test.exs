@@ -26,7 +26,11 @@ defmodule SymphonyElixir.Orchestrator.SnapshotStateTest do
   test "orchestrator snapshot does not query launcher workspace capacity" do
     parent = self()
     pid = start_orchestrator!(__MODULE__, :SnapshotWithoutLauncherReentry)
-    Process.sleep(20)
+
+    :sys.replace_state(pid, fn state ->
+      if is_reference(state.tick_timer_ref), do: Process.cancel_timer(state.tick_timer_ref)
+      %{state | tick_timer_ref: nil, tick_token: nil, next_poll_due_at_ms: nil}
+    end)
 
     launcher =
       spawn(fn ->
@@ -34,8 +38,9 @@ defmodule SymphonyElixir.Orchestrator.SnapshotStateTest do
         send(parent, :launcher_registered)
 
         receive do
-          {:"$gen_call", _from, request} ->
+          {:"$gen_call", from, request} ->
             send(parent, {:unexpected_launcher_call, request})
+            GenServer.reply(from, {:ok, 0})
 
             receive do
               :stop -> :ok
@@ -46,14 +51,16 @@ defmodule SymphonyElixir.Orchestrator.SnapshotStateTest do
         end
       end)
 
+    on_exit(fn ->
+      if Process.alive?(launcher), do: send(launcher, :stop)
+    end)
+
     assert_receive :launcher_registered, 1_000
 
     snapshot = Orchestrator.snapshot(pid, 100)
 
     assert is_map(snapshot)
     refute_received {:unexpected_launcher_call, _request}
-
-    send(launcher, :stop)
   end
 
   test "orchestrator snapshot reflects last codex update and session id" do

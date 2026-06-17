@@ -39,6 +39,8 @@ defmodule SymphonyElixir.TestSupport do
         ]
 
       setup do
+        {:ok, _started} = Application.ensure_all_started(:symphony_elixir)
+
         workflow_root = tmp_dir!("symphony-elixir-workflow")
         workflow_file = Path.join(workflow_root, "WORKFLOW.md")
         write_workflow_file!(workflow_file)
