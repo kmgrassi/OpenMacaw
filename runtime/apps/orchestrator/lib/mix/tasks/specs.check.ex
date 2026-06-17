@@ -10,6 +10,7 @@ defmodule Mix.Tasks.Specs.Check do
 
   @switches [paths: :keep, exemptions_file: :string]
   @default_paths ["lib"]
+  @default_exemptions_file "config/specs_exemptions.txt"
 
   @impl Mix.Task
   def run(args) do
@@ -18,11 +19,7 @@ defmodule Mix.Tasks.Specs.Check do
     paths = Keyword.get_values(opts, :paths)
     scanned_paths = if paths == [], do: @default_paths, else: paths
 
-    exemptions =
-      case Keyword.get(opts, :exemptions_file) do
-        nil -> MapSet.new()
-        path -> load_exemptions(path)
-      end
+    exemptions = load_exemptions(Keyword.get(opts, :exemptions_file, @default_exemptions_file))
 
     findings = SpecsCheck.missing_public_specs(scanned_paths, exemptions: exemptions)
 
