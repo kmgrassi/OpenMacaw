@@ -87,6 +87,26 @@ defmodule SymphonyElixirWeb.GatewaySocket.RunLifecycleTest do
     assert aborted["payload"]["sessionKey"] == session_key
   end
 
+  test "aborting a run immediately clears the active run lock" do
+    scope = %{
+      agent_id: "11111111-1111-4111-8111-111111111111",
+      workspace_id: "22222222-2222-4222-8222-222222222222",
+      user_id: "33333333-3333-4333-8333-333333333333",
+      session_key: default_session_key()
+    }
+
+    {:ok, _session} = SessionStore.ensure_session(scope)
+
+    {:ok, sleeper} =
+      Task.Supervisor.start_child(SymphonyElixir.TaskSupervisor, fn -> Process.sleep(5_000) end)
+
+    {:ok, %{run: _run}} = SessionStore.start_run(scope, "run-abort", self())
+    {:ok, _attached} = SessionStore.attach_run("run-abort", sleeper)
+
+    assert {:ok, _session} = SessionStore.abort_run(scope.session_key, "run-abort")
+    assert {:ok, %{run: _run}} = SessionStore.start_run(scope, "run-next", self())
+  end
+
   test "completing an unresolved run still pushes a terminal final frame" do
     session_key = default_session_key()
 

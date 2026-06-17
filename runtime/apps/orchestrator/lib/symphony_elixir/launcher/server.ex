@@ -248,14 +248,11 @@ defmodule SymphonyElixir.Launcher.Server do
 
   @impl true
   def handle_call({:start_agent, agent_id, launch_params}, _from, state) do
-    # Resolve the already-running orchestrator BEFORE reading gateway_config so
-    # repeat `POST /agents/:id/start` calls stay idempotent and don't depend on
-    # Supabase availability.
     with {:ok, %Agent{} = agent} <- AgentInventory.get_agent(agent_id),
          {:ok, handoff} <- PlanHandoff.validate_launch(agent, launch_params) do
       case find_orchestrator_by_agent_id(state.orchestrators, agent_id) do
         {_id, entry} ->
-          {:reply, {:ok, serialize_entry(entry, true)}, state}
+          refresh_or_reuse_agent_orchestrator(agent, entry, state, handoff, launch_params)
 
         nil ->
           start_new_agent_orchestrator(agent, state, handoff, launch_params)
@@ -387,6 +384,117 @@ defmodule SymphonyElixir.Launcher.Server do
           )
 
         {:reply, error, %{state | latest_failure: fields}}
+    end
+  end
+
+  defp refresh_or_reuse_agent_orchestrator(%Agent{} = agent, entry, state, handoff, launch_params) do
+    case AgentStarter.resolve_and_validate_agent_config(agent, launch_params) do
+      {:ok, config, resolution} ->
+        config = AgentStarter.inject_plan_handoff(config, handoff)
+
+        if equivalent_runtime_config?(entry.config, config) do
+          {:reply, {:ok, serialize_entry(entry, true)}, state}
+        else
+          restart_agent_orchestrator(agent, entry, state, config, resolution)
+        end
+
+      {:error, reason} ->
+        RuntimeLog.log(:warning, :agent_start_config_refresh_failed_reusing_runtime, %{
+          agent_id: agent.id,
+          workspace_id: agent.workspace_id,
+          run_id: entry.id,
+          port: entry.port,
+          reason: inspect(reason),
+          retryable: true
+        })
+
+        {:reply, {:ok, serialize_entry(entry, true)}, state}
+    end
+  end
+
+  defp restart_agent_orchestrator(%Agent{} = agent, entry, state, config, resolution) do
+    started_at = System.monotonic_time(:millisecond)
+    trace_id = trace_id_from_config(config)
+    {:ok, profile} = ExecutionProfile.normalize_from_config(config)
+
+    RuntimeLog.log(
+      :info,
+      :agent_restart_requested_for_config_change,
+      %{
+        trace_id: trace_id,
+        agent_id: agent.id,
+        workspace_id: agent.workspace_id,
+        run_id: entry.id,
+        port: entry.port,
+        launcher_path: "agents",
+        desired_state: :running,
+        actual_state: :restarting
+      }
+      |> Map.merge(ExecutionProfile.log_fields(profile))
+    )
+
+    do_stop_orchestrator(entry)
+
+    case do_start_orchestrator(state, entry.id, entry.port, config) do
+      {:ok, pid} ->
+        ref = Process.monitor(pid)
+
+        updated_entry = %{
+          entry
+          | pid: pid,
+            ref: ref,
+            config: config,
+            started_at: DateTime.utc_now(),
+            status: :running,
+            type: Agent.kind(agent),
+            agent_name: agent.name,
+            workspace_id: agent.workspace_id,
+            project_id: agent.project_id,
+            restart_count: Map.get(entry, :restart_count, 0) + 1
+        }
+
+        new_state = %{state | orchestrators: Map.put(state.orchestrators, entry.id, updated_entry)}
+        StateManager.persist(new_state)
+        EngineInstanceSync.record_state(updated_entry, :running)
+        record_gateway_apply(resolution, :ok, entry.id)
+
+        RuntimeLog.log(
+          :info,
+          :agent_restarted_for_config_change,
+          runtime_log_fields(
+            updated_entry,
+            LifecycleLog.completion_fields(updated_entry, started_at, %{trace_id: trace_id})
+            |> Map.merge(ExecutionProfile.log_fields(profile))
+          )
+        )
+
+        {:reply, {:ok, serialize_entry(updated_entry, false)}, new_state}
+
+      {:error, reason} = error ->
+        record_gateway_apply(resolution, :error, entry.id, error: format_error(reason))
+        EngineInstanceSync.update_status(entry, :failed)
+
+        fields =
+          LifecycleLog.log_failure(
+            :error,
+            :agent_start_failed,
+            %{
+              trace_id: trace_id,
+              agent_id: agent.id,
+              workspace_id: agent.workspace_id,
+              run_id: entry.id,
+              port: entry.port,
+              desired_state: :running,
+              actual_state: :failed
+            },
+            started_at,
+            reason,
+            operation: :restart_for_config_change
+          )
+
+        new_state = %{state | orchestrators: Map.delete(state.orchestrators, entry.id), latest_failure: fields}
+        StateManager.persist(new_state)
+        {:reply, error, new_state}
     end
   end
 
@@ -628,6 +736,34 @@ defmodule SymphonyElixir.Launcher.Server do
   defp format_datetime(value), do: Time.to_iso8601(value) || to_string(value)
 
   defp reconcile_engine_instance_async(state), do: EngineInstanceSync.reconcile_async(state.orchestrators)
+
+  defp equivalent_runtime_config?(left, right) do
+    comparable_runtime_config(left) == comparable_runtime_config(right)
+  end
+
+  defp comparable_runtime_config(config) when is_map(config) do
+    config
+    |> normalize_config_value()
+    |> drop_runtime_config_volatiles()
+  end
+
+  defp comparable_runtime_config(config), do: config
+
+  defp normalize_config_value(value) when is_map(value) do
+    Map.new(value, fn {key, nested} -> {to_string(key), normalize_config_value(nested)} end)
+  end
+
+  defp normalize_config_value(value) when is_list(value), do: Enum.map(value, &normalize_config_value/1)
+  defp normalize_config_value(value), do: value
+
+  defp drop_runtime_config_volatiles(config) when is_map(config) do
+    config
+    |> Map.delete("trace_id")
+    |> update_in(["runtime"], fn
+      runtime when is_map(runtime) -> Map.delete(runtime, "trace_id")
+      runtime -> runtime
+    end)
+  end
 
   defp schedule_heartbeat(%{heartbeat_ms: ms} = state) when is_integer(ms) and ms > 0 do
     if state.heartbeat_ref, do: Process.cancel_timer(state.heartbeat_ref)

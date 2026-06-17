@@ -844,6 +844,72 @@ defmodule SymphonyElixir.Launcher.ServerTest do
       assert second.id == first.id
       assert second.reused == true
     end
+
+    test "refreshes a running agent orchestrator when resolved config changes" do
+      Application.put_env(:symphony_elixir, :test_gateway_config_rows, %{
+        {"agent", "agent-1"} => %Resolved{
+          scope_type: "agent",
+          scope_id: "agent-1",
+          config_hash: "hash-1",
+          version: 1,
+          config_json: %{
+            "tracker" => %{"kind" => "memory"},
+            "execution_profile" => %{
+              "runner_kind" => "manager",
+              "provider" => "local",
+              "model" => "qwen3-coder:30b"
+            }
+          }
+        }
+      })
+
+      Application.put_env(:symphony_elixir, :test_agent_inventory_agents, [
+        %Agent{id: "agent-1", name: "Builder", workspace_id: "workspace-1"}
+      ])
+
+      assert {:ok, first} = Server.start_agent("agent-1")
+      assert get_in(first.config, ["stored_agent", "tool_policy"]) == %{}
+      assert_receive {:gateway_config_state, "agent", "agent-1", :ok, first_opts}
+      assert Keyword.get(first_opts, :last_applied_hash) == "hash-1"
+
+      Application.put_env(:symphony_elixir, :test_agent_inventory_agents, [
+        %Agent{
+          id: "agent-1",
+          name: "Builder",
+          workspace_id: "workspace-1",
+          tool_policy: %{"allowed_tools" => ["git.run", "repo.read_file"]}
+        }
+      ])
+
+      Application.put_env(:symphony_elixir, :test_gateway_config_rows, %{
+        {"agent", "agent-1"} => %Resolved{
+          scope_type: "agent",
+          scope_id: "agent-1",
+          config_hash: "hash-2",
+          version: 2,
+          config_json: %{
+            "tracker" => %{"kind" => "memory"},
+            "execution_profile" => %{
+              "runner_kind" => "manager",
+              "provider" => "local",
+              "model" => "qwen3-coder:30b"
+            }
+          }
+        }
+      })
+
+      assert {:ok, second} = Server.start_agent("agent-1")
+
+      assert second.id == first.id
+      assert second.port == first.port
+      assert second.reused == false
+      assert second.restart_count == 1
+      assert get_in(second.config, ["stored_agent", "tool_policy", "allowed_tools"]) == ["git.run", "repo.read_file"]
+
+      assert_receive {:gateway_config_state, "agent", "agent-1", :ok, second_opts}
+      assert Keyword.get(second_opts, :last_applied_hash) == "hash-2"
+      assert Keyword.get(second_opts, :last_applied_version) == 2
+    end
   end
 
   defp await_engine_instance_upsert(attempts \\ 5)

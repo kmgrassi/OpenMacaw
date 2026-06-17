@@ -269,6 +269,7 @@ defmodule SymphonyElixir.Gateway.SessionStore do
       %{task_pid: task_pid} = run ->
         if is_pid(task_pid), do: Process.exit(task_pid, :kill)
         session = Map.get(state.sessions, run.session_key)
+        state = state |> demonitor_run(run) |> remove_run(run.id)
         {:reply, {:ok, session}, state}
     end
   end
