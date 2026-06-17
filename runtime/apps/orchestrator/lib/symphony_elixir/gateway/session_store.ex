@@ -269,6 +269,7 @@ defmodule SymphonyElixir.Gateway.SessionStore do
       %{task_pid: task_pid} = run ->
         if is_pid(task_pid), do: Process.exit(task_pid, :kill)
         session = Map.get(state.sessions, run.session_key)
+        notify_run_aborted(run)
         state = state |> demonitor_run(run) |> remove_run(run.id)
         {:reply, {:ok, session}, state}
     end
@@ -307,13 +308,7 @@ defmodule SymphonyElixir.Gateway.SessionStore do
 
           run ->
             if is_pid(run.task_pid), do: Process.exit(run.task_pid, :kill)
-            # Killing the task and demonitor-flushing means no :DOWN and no
-            # subsequent completion will reach the owner socket, so tell it
-            # the run is over here. Otherwise the client's send lifecycle
-            # never unwinds and its composer spins forever.
-            if is_pid(run.owner_pid),
-              do: send(run.owner_pid, {:gateway_runner_aborted, session_key, run_id})
-
+            notify_run_aborted(run)
             acc |> demonitor_run(run) |> remove_run(run_id)
         end
       end)
@@ -503,6 +498,15 @@ defmodule SymphonyElixir.Gateway.SessionStore do
   end
 
   defp demonitor_run(state, _run), do: state
+
+  # Killing the task and demonitor-flushing means no :DOWN and no subsequent
+  # completion will reach the owner socket, so tell it the run is over here.
+  defp notify_run_aborted(%{owner_pid: owner_pid, session_key: session_key, id: run_id})
+       when is_pid(owner_pid) do
+    send(owner_pid, {:gateway_runner_aborted, session_key, run_id})
+  end
+
+  defp notify_run_aborted(_run), do: :ok
 
   defp remove_run(state, run_id), do: %{state | runs: Map.delete(state.runs, run_id)}
 

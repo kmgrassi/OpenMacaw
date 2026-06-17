@@ -388,14 +388,28 @@ defmodule SymphonyElixir.Launcher.Server do
   end
 
   defp refresh_or_reuse_agent_orchestrator(%Agent{} = agent, entry, state, handoff, launch_params) do
-    case AgentStarter.resolve_and_validate_agent_config(agent, launch_params) do
-      {:ok, config, resolution} ->
+    case AgentStarter.resolve_and_validate_agent_config_with_metadata(agent, launch_params) do
+      {:ok, config, resolution, metadata} ->
         config = AgentStarter.inject_plan_handoff(config, handoff)
 
-        if equivalent_runtime_config?(entry.config, config) do
-          {:reply, {:ok, serialize_entry(entry, true)}, state}
-        else
-          restart_agent_orchestrator(agent, entry, state, config, resolution)
+        cond do
+          incomplete_credential_refresh?(metadata) and config_has_resolved_credentials?(entry.config) ->
+            RuntimeLog.log(:warning, :agent_start_credential_refresh_incomplete_reusing_runtime, %{
+              agent_id: agent.id,
+              workspace_id: agent.workspace_id,
+              run_id: entry.id,
+              port: entry.port,
+              reason: inspect(Map.get(metadata, :credential_refresh)),
+              retryable: true
+            })
+
+            {:reply, {:ok, serialize_entry(entry, true)}, state}
+
+          equivalent_runtime_config?(entry.config, config) ->
+            {:reply, {:ok, serialize_entry(entry, true)}, state}
+
+          true ->
+            restart_agent_orchestrator(agent, entry, state, config, resolution)
         end
 
       {:error, reason} ->
@@ -739,6 +753,31 @@ defmodule SymphonyElixir.Launcher.Server do
 
   defp equivalent_runtime_config?(left, right) do
     comparable_runtime_config(left) == comparable_runtime_config(right)
+  end
+
+  defp incomplete_credential_refresh?(%{credential_refresh: {:incomplete, _reason}}), do: true
+  defp incomplete_credential_refresh?(_metadata), do: false
+
+  defp config_has_resolved_credentials?(config) when is_map(config) do
+    config = normalize_config_value(config)
+
+    config_has_credentials_map?(config) or config_has_tracker_api_key?(config)
+  end
+
+  defp config_has_resolved_credentials?(_config), do: false
+
+  defp config_has_credentials_map?(config) do
+    case Map.get(config, "credentials") do
+      credentials when is_map(credentials) -> map_size(credentials) > 0
+      _ -> false
+    end
+  end
+
+  defp config_has_tracker_api_key?(config) do
+    case get_in(config, ["tracker", "api_key"]) do
+      value when is_binary(value) -> value != ""
+      _ -> false
+    end
   end
 
   defp comparable_runtime_config(config) when is_map(config) do

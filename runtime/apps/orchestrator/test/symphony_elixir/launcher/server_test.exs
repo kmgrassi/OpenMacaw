@@ -845,6 +845,52 @@ defmodule SymphonyElixir.Launcher.ServerTest do
       assert second.reused == true
     end
 
+    test "reuses a credentialed orchestrator when stored credential refresh is incomplete" do
+      Application.put_env(:symphony_elixir, :test_agent_inventory_agents, [
+        %Agent{id: "agent-1", name: "Builder", workspace_id: "workspace-1"}
+      ])
+
+      Application.put_env(:symphony_elixir, :test_agent_inventory_credentials, [
+        %StoredCredential{
+          id: "cred-openai",
+          agent_id: "agent-1",
+          provider: "openai",
+          label: "OpenAI",
+          env_var: "OPENAI_API_KEY",
+          secret_value: "sk-existing",
+          has_secret: true
+        }
+      ])
+
+      assert {:ok, first} = Server.start_agent("agent-1")
+      assert get_in(first.config, ["credentials", "OPENAI_API_KEY"]) == "sk-existing"
+
+      Application.put_env(:symphony_elixir, :test_agent_inventory_credentials, [
+        %StoredCredential{
+          id: "cred-openai",
+          agent_id: "agent-1",
+          provider: "openai",
+          label: "OpenAI",
+          env_var: "OPENAI_API_KEY",
+          secret_ref: "secret/openai",
+          has_secret: true
+        }
+      ])
+
+      Application.put_env(:symphony_elixir, :worker_bridge_secret_ref_resolver, fn _secret_ref, _aliases ->
+        {:error, :temporarily_unavailable}
+      end)
+
+      on_exit(fn -> Application.delete_env(:symphony_elixir, :worker_bridge_secret_ref_resolver) end)
+
+      assert {:ok, second} = Server.start_agent("agent-1")
+
+      assert second.id == first.id
+      assert second.reused == true
+      assert second.restart_count == 0
+      assert get_in(second.config, ["credentials", "OPENAI_API_KEY"]) == "sk-existing"
+    end
+
     test "refreshes a running agent orchestrator when resolved config changes" do
       Application.put_env(:symphony_elixir, :test_gateway_config_rows, %{
         {"agent", "agent-1"} => %Resolved{
