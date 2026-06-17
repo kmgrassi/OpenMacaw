@@ -286,6 +286,41 @@ func TestGitRunRejectsPathOverrideFlags(t *testing.T) {
 	}
 }
 
+func TestGitRunRejectsWorktreeConfigOverrides(t *testing.T) {
+	executor, err := NewExecutor(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+
+	testCases := []struct {
+		name    string
+		command string
+	}{
+		{name: "git config mutation", command: "git config core.worktree /tmp"},
+		{name: "git config injection", command: "git -c core.worktree=/tmp status"},
+		{name: "git config env injection", command: "git --config-env=core.worktree=WORKTREE status"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := executor.Execute(context.Background(), runner.ToolCallRequest{
+				ToolCallID: "call-1",
+				Name:       "git.run",
+				Arguments: map[string]any{
+					"command": testCase.command,
+				},
+			})
+			if result.Success {
+				t.Fatalf("result.Success = true, output = %#v", result.Output)
+			}
+			output := result.Output.(map[string]any)
+			if output["reason"] != "git_path_override_denied" {
+				t.Fatalf("reason = %#v", output["reason"])
+			}
+		})
+	}
+}
+
 func TestGitRunRejectsCWDOutsideWorkspaceRoot(t *testing.T) {
 	executor, err := NewExecutor(t.TempDir())
 	if err != nil {

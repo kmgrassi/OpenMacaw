@@ -634,7 +634,8 @@ func allowedGitCommand(argv []string) error {
 }
 
 func allowedGitArgs(argv []string) error {
-	for _, arg := range argv {
+	for index := 0; index < len(argv); index++ {
+		arg := argv[index]
 		switch {
 		case arg == "-C":
 			return fmt.Errorf("git_path_override_denied")
@@ -642,9 +643,61 @@ func allowedGitArgs(argv []string) error {
 			return fmt.Errorf("git_path_override_denied")
 		case strings.HasPrefix(arg, "--work-tree"):
 			return fmt.Errorf("git_path_override_denied")
+		case arg == "-c":
+			if index+1 < len(argv) && configOverridesWorkTree(argv[index+1]) {
+				return fmt.Errorf("git_path_override_denied")
+			}
+		case strings.HasPrefix(arg, "--config-env="):
+			if configEnvOverridesWorkTree(strings.TrimPrefix(arg, "--config-env=")) {
+				return fmt.Errorf("git_path_override_denied")
+			}
+		case arg == "--config-env":
+			if index+1 < len(argv) && configEnvOverridesWorkTree(argv[index+1]) {
+				return fmt.Errorf("git_path_override_denied")
+			}
 		}
 	}
+	if gitConfigTargetsWorkTree(argv) {
+		return fmt.Errorf("git_path_override_denied")
+	}
 	return nil
+}
+
+func configOverridesWorkTree(value string) bool {
+	key, _, ok := strings.Cut(value, "=")
+	return ok && strings.EqualFold(strings.TrimSpace(key), "core.worktree")
+}
+
+func configEnvOverridesWorkTree(value string) bool {
+	key, _, ok := strings.Cut(value, "=")
+	return ok && strings.EqualFold(strings.TrimSpace(key), "core.worktree")
+}
+
+func gitConfigTargetsWorkTree(argv []string) bool {
+	subcommandIndex := -1
+	for index, arg := range argv {
+		if arg == "--" {
+			break
+		}
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		subcommandIndex = index
+		break
+	}
+	if subcommandIndex == -1 || argv[subcommandIndex] != "config" {
+		return false
+	}
+	for _, arg := range argv[subcommandIndex+1:] {
+		if arg == "--" {
+			continue
+		}
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		return strings.EqualFold(strings.TrimSpace(arg), "core.worktree")
+	}
+	return false
 }
 
 func allowedGHCommand(argv []string) error {
