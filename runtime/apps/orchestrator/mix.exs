@@ -43,6 +43,7 @@ defmodule SymphonyElixir.MixProject do
         "test/support/app_server_support.ex",
         "test/support/database_tools_case.ex",
         "test/support/launcher_router_support.ex",
+        "test/support/launcher_server_case.exs",
         "test/support/manager_scheduler_test_support.exs",
         "test/support/runner_manager_support.ex",
         "test/support/core_test_support.ex",
