@@ -32,7 +32,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
       end
     else
       model_client = model_client(config)
-      tool_specs = config |> tool_specs() |> mark_helper_cli_tools(model_client)
+      tool_specs = config |> tool_specs(model_client) |> mark_helper_cli_tools(model_client)
       allowed_tools = ToolRegistry.definition_names(tool_specs)
       provider_tool_name_map = ToolNameMapping.runtime_to_provider(allowed_tools)
 
@@ -223,8 +223,18 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   defp decode_arguments(arguments) when is_map(arguments), do: arguments
   defp decode_arguments(_arguments), do: %{}
 
-  defp tool_specs(config) do
-    ToolRegistry.effective_definitions(config, ToolRegistry.bundle(tool_bundle(config)))
+  defp tool_specs(config, model_client) do
+    ToolRegistry.effective_definitions(config, fallback_tool_names(config, model_client))
+  end
+
+  defp fallback_tool_names(config, ModelClient.LocalRelay) do
+    tool_bundle(config)
+    |> ToolRegistry.bundle()
+    |> Enum.reject(&(&1 in @local_helper_cli_tools))
+  end
+
+  defp fallback_tool_names(config, _model_client) do
+    ToolRegistry.bundle(tool_bundle(config))
   end
 
   # Mark CLI tools as helper-executed for local-relay managers so they run on
