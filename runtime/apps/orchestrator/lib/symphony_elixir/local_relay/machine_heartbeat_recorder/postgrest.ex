@@ -43,12 +43,12 @@ defmodule SymphonyElixir.LocalRelay.MachineHeartbeatRecorder.PostgREST do
   def record_disconnect(machine_id) when is_binary(machine_id) do
     # On disconnect, clear advertised_runner_kinds so a stale row never
     # claims to advertise something the helper isn't currently serving.
-    %{"last_seen_at" => Time.now_iso8601(), "advertised_runner_kinds" => []}
+    %{"last_seen_at" => Time.now_iso8601(), "advertised_runner_kinds" => [], "status" => "offline"}
     |> dispatch_update(machine_id, :record_disconnect)
   end
 
   defp base_sets(fields, advertised_runner_kinds) do
-    sets = %{"last_seen_at" => Time.now_iso8601()}
+    sets = %{"last_seen_at" => Time.now_iso8601(), "status" => "online"}
 
     sets =
       case Map.get(fields, :helper_version) do
