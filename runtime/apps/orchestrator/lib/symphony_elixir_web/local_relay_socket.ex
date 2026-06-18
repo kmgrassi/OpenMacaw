@@ -94,7 +94,7 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
   def handle_info({:local_relay_evicted, reason}, %{registered?: true} = state) do
     Logger.info("local_relay_connection_evicted reason=#{reason} workspace_id=#{state.workspace_id} machine_id=#{state.machine_id}")
 
-    cleanup_registered_connection(state)
+    cleanup_registered_connection(state, persist_disconnect?: reason != :server_draining)
     {:stop, {:shutdown, reason}, %{state | registered?: false, heartbeat_timer_ref: nil}}
   end
 
@@ -402,11 +402,16 @@ defmodule SymphonyElixirWeb.LocalRelaySocket do
     {:push, [reply], state}
   end
 
-  defp cleanup_registered_connection(%{workspace_id: workspace_id, machine_id: machine_id}) do
+  defp cleanup_registered_connection(state, opts \\ [])
+
+  defp cleanup_registered_connection(%{workspace_id: workspace_id, machine_id: machine_id}, opts) do
     case Presence.offline(workspace_id, machine_id, self()) do
       :ok ->
         :ok = Registry.unregister(workspace_id, machine_id, self())
-        :ok = MachineHeartbeatRecorder.record_disconnect(machine_id)
+
+        if Keyword.get(opts, :persist_disconnect?, true) do
+          :ok = MachineHeartbeatRecorder.record_disconnect(machine_id)
+        end
 
       :stale ->
         :ok

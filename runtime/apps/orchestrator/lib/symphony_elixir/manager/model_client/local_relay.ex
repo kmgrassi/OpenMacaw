@@ -9,7 +9,7 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
 
   @behaviour SymphonyElixir.Manager.ModelClient
 
-  alias SymphonyElixir.LocalRelay.{ProtocolExtensions, Registry, Session}
+  alias SymphonyElixir.LocalRelay.{ProtocolExtensions, Readiness, Session}
   alias SymphonyElixir.LocalRelay.Handlers.RuntimeManaged
   alias SymphonyElixir.Planner.ToolNameMapping
   alias SymphonyElixir.Runner.Observability
@@ -37,7 +37,7 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
     Observability.log_model_call_started(context)
 
     result =
-      with {:ok, helper} <- Registry.lookup(session.workspace_id, target_runner_kind),
+      with {:ok, helper} <- Readiness.lookup(session.workspace_id, target_runner_kind),
            :ok <- ensure_model_available(session, helper),
            :ok <- ensure_capabilities(session, helper) do
         run_session(request, session, correlation_id, :dispatch)

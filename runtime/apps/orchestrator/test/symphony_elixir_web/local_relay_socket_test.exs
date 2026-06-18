@@ -236,6 +236,20 @@ defmodule SymphonyElixirWeb.LocalRelaySocketTest do
     assert {:error, :local_runtime_offline} = Registry.lookup(@workspace_id, "openai_compatible")
   end
 
+  test "server-draining eviction preserves persisted heartbeat for reconnect wait" do
+    {:ok, state} = init_socket()
+    {:push, [_reply], state} = LocalRelaySocket.handle_in({encode(register_frame()), []}, state)
+    assert_received {:record_register, @machine_id, _fields}
+
+    assert {:stop, {:shutdown, :server_draining}, stopped_state} =
+             LocalRelaySocket.handle_info({:local_relay_evicted, :server_draining}, state)
+
+    refute stopped_state.registered?
+    assert {:error, :not_found} = Presence.get(@workspace_id, @machine_id)
+    assert {:error, :local_runtime_offline} = Registry.lookup(@workspace_id, "openai_compatible")
+    refute_received {:record_disconnect, @machine_id}
+  end
+
   test "invalid tokens fail registration and do not mark helper online" do
     {:ok, state} = init_socket()
     frame = register_frame(%{auth: %{token: "wrong-token"}})

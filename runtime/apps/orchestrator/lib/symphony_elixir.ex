@@ -59,6 +59,14 @@ defmodule SymphonyElixir.Application do
     )
   end
 
+  @impl true
+  def prep_stop(state) do
+    _ = SymphonyElixir.LocalRelay.Registry.drain_all(:server_draining)
+    state
+  catch
+    :exit, _reason -> state
+  end
+
   defp maybe_api_tracker do
     case SymphonyElixir.Config.settings() do
       {:ok, %{tracker: %{kind: "api"}}} -> [SymphonyElixir.Tracker.API]

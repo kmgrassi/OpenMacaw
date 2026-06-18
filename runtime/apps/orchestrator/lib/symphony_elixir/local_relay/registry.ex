@@ -18,6 +18,8 @@ defmodule SymphonyElixir.LocalRelay.Registry do
           optional(:metadata) => map()
         }
 
+  @type lookup_result :: {:ok, map()} | {:error, :local_runtime_offline}
+
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, %{}, Keyword.put_new(opts, :name, __MODULE__))
@@ -43,7 +45,7 @@ defmodule SymphonyElixir.LocalRelay.Registry do
     GenServer.call(__MODULE__, {:unregister, workspace_id, machine_id, pid})
   end
 
-  @spec lookup(String.t(), String.t()) :: {:ok, map()} | {:error, :local_runtime_offline}
+  @spec lookup(String.t(), String.t()) :: lookup_result()
   def lookup(workspace_id, runner_kind) do
     GenServer.call(__MODULE__, {:lookup, workspace_id, runner_kind})
   end
@@ -99,6 +101,18 @@ defmodule SymphonyElixir.LocalRelay.Registry do
   @spec cancel(String.t()) :: :ok | {:error, :local_runner_protocol_error}
   def cancel(correlation_id) do
     GenServer.call(__MODULE__, {:cancel, correlation_id})
+  end
+
+  @doc """
+  Evict every connected helper from this BEAM node.
+
+  This is used during rolling deploy shutdown so local-runtime-helper clients
+  reconnect to a still-serving task instead of staying attached to a draining
+  task while browser chat traffic lands elsewhere.
+  """
+  @spec drain_all(atom()) :: :ok
+  def drain_all(reason \\ :server_draining) when is_atom(reason) do
+    GenServer.call(__MODULE__, {:drain_all, reason})
   end
 
   @doc false
@@ -290,6 +304,22 @@ defmodule SymphonyElixir.LocalRelay.Registry do
 
   def handle_call(:reset, _from, state) do
     Enum.each(state.helpers, fn {_id, helper} -> Process.demonitor(helper.monitor, [:flush]) end)
+    {:reply, :ok, %{helpers: %{}, by_key: %{}, pending: %{}}}
+  end
+
+  def handle_call({:drain_all, reason}, _from, state) do
+    Enum.each(state.helpers, fn {_id, helper} ->
+      send(helper.pid, {:local_relay_evicted, reason})
+      Process.demonitor(helper.monitor, [:flush])
+    end)
+
+    Enum.each(state.pending, fn {correlation_id, pending} ->
+      send(
+        pending.caller,
+        {:local_relay_error, correlation_id, %{"error_code" => "local_runtime_offline", "reason" => inspect(reason)}}
+      )
+    end)
+
     {:reply, :ok, %{helpers: %{}, by_key: %{}, pending: %{}}}
   end
 
