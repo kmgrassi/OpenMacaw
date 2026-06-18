@@ -23,7 +23,12 @@ defmodule SymphonyElixirWeb.GatewaySocket.RunLifecycleTest do
     assert_receive {:gateway_runner_down, ^session_key, "run-down", reason}
     assert reason in [:killed, :noproc]
 
-    :timer.sleep(20)
+    assert_eventually(fn ->
+      state = :sys.get_state(SessionStore)
+      assert state.runs["run-down"] == nil
+      assert state.monitors == %{}
+    end)
+
     {:ok, %{run: _run}} = SessionStore.start_run(scope, "run-next", self())
   end
 

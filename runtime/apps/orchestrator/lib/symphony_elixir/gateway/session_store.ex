@@ -433,7 +433,8 @@ defmodule SymphonyElixir.Gateway.SessionStore do
               send(owner_pid, {:gateway_runner_down, run.session_key, run_id, shutdown_reason})
             end
 
-            {:noreply, %{state | runs: Map.delete(state.runs, run_id)}}
+            state = state |> demonitor_run_and_owner(run) |> remove_run(run_id)
+            {:noreply, state}
         end
     end
   end
