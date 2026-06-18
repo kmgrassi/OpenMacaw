@@ -3,6 +3,7 @@ import type { DefaultAgentRole, SetupRequest, SetupUpdateRequest } from "../../.
 import {
   DEFAULT_PLANNING_TOOL_SLUGS,
   AGENT_TOOL_GRANT_TOOL_SLUGS,
+  DEFAULT_MANAGER_TOOL_SLUGS,
   GIT_COMMAND_TOOL_SLUG,
   ROUTER_TOOL_SLUGS,
   SCHEDULED_TASK_TOOL_SLUGS,
@@ -22,7 +23,7 @@ export function managerToolPolicyDefaults(): ToolPolicy {
   return ToolPolicySchema.parse({
     manager: {
       cadence_ms: 60_000,
-      tools: [GIT_COMMAND_TOOL_SLUG, ...SCHEDULED_TASK_TOOL_SLUGS],
+      tools: DEFAULT_MANAGER_TOOL_SLUGS,
     },
   });
 }

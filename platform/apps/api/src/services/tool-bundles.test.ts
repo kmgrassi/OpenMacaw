@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_TOOL_GRANT_TOOL_SLUGS,
   GIT_COMMAND_TOOL_SLUG,
+  DEFAULT_CODING_TOOL_SLUGS,
+  DEFAULT_MANAGER_TOOL_SLUGS,
   SCHEDULED_TASK_TOOL_SLUGS,
   toolProfileForAgentType,
   toolSlugsForToolProfile,
@@ -35,24 +37,12 @@ describe("tool bundles", () => {
     ]);
   });
 
-  it("grants scheduled-task tools to default coding and manager profiles", () => {
-    expect(toolSlugsForToolProfile({ toolProfile: "coding" })).toEqual([
-      "repo.read_file",
-      "repo.list",
-      "repo.search",
-      "repo.read_symbols",
-      "plan.create",
-      "task.create",
-      "task.update",
-      "plans.read",
-      "plan.read",
-      "plan.delete",
-      "task.read",
-      ...SCHEDULED_TASK_TOOL_SLUGS,
-    ]);
+  it("grants manager agents every default coding tool plus git.run", () => {
+    expect(toolSlugsForToolProfile({ toolProfile: "coding" })).toEqual(DEFAULT_CODING_TOOL_SLUGS);
+    expect(toolSlugsForToolProfile({ toolProfile: "manager" })).toEqual(DEFAULT_MANAGER_TOOL_SLUGS);
     expect(toolSlugsForToolProfile({ toolProfile: "manager" })).toEqual([
       GIT_COMMAND_TOOL_SLUG,
-      ...SCHEDULED_TASK_TOOL_SLUGS,
+      ...DEFAULT_CODING_TOOL_SLUGS,
     ]);
   });
 

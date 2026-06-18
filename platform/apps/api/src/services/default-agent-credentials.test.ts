@@ -8,7 +8,7 @@ import {
 } from "./setup.js";
 import { getServiceRoleSupabase, getSupabaseForAccessToken, getUserScopedSupabase } from "../supabase-client.js";
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
-import { GIT_COMMAND_TOOL_SLUG, SCHEDULED_TASK_TOOL_SLUGS } from "./tool-bundles.js";
+import { DEFAULT_MANAGER_TOOL_SLUGS } from "./tool-bundles.js";
 
 vi.mock("../supabase-client.js", () => ({
   executeLoggedSupabaseRows: vi.fn(
@@ -322,7 +322,7 @@ describe("applyDefaultAgentCredentials", () => {
     });
     expect(db.agent.find((agent) => agent.id === managerAgentId)?.tool_policy).toMatchObject({
       manager: {
-        tools: [GIT_COMMAND_TOOL_SLUG, ...SCHEDULED_TASK_TOOL_SLUGS],
+        tools: DEFAULT_MANAGER_TOOL_SLUGS,
       },
     });
     expect(db.gateway_config.find((row) => row.scope_id === managerAgentId)?.config_json).toMatchObject({
