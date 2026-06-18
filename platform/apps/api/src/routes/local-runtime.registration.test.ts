@@ -27,6 +27,34 @@ describe("local runtime route registration", () => {
     await closeServer();
   });
 
+  it("rejects local runtime token rotation for non-admin workspace members", async () => {
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(
+      createMockSupabaseClient({
+        workspaces: [{ id: workspaceId, owner_user_id: "other-owner" }],
+        workspace_members: [
+          { workspace_id: workspaceId, user_id: "11111111-1111-4111-8111-111111111111", role: "member" },
+        ],
+      }) as never,
+    );
+
+    const response = await fetch(
+      `${baseUrl}/api/local-runtime/runtimes/machine-1/rotate-token?workspaceId=${workspaceId}`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-token",
+        },
+      },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "workspace_admin_required",
+      },
+    });
+  });
+
   it("lists a freshly heartbeating helper as online when persisted status is still offline", async () => {
     const db = withOwnedWorkspace({
       routing_rule: [

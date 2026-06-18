@@ -33,6 +33,64 @@ describe("local runtime route assignments", () => {
     await closeServer();
   });
 
+  it("rejects local runtime assignment for non-admin workspace members", async () => {
+    const db = {
+      workspaces: [{ id: workspaceId, owner_user_id: "other-owner" }],
+      workspace_members: [{ workspace_id: workspaceId, user_id: userId, role: "member" }],
+      routing_rule: [
+        {
+          id: "local-rule-1",
+          workspace_id: workspaceId,
+          name: "local:qwen3-coder:30b",
+          runner_kind: "local_relay",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+        },
+      ],
+      routing_rule_match: [
+        {
+          id: "local-machine-match",
+          workspace_id: workspaceId,
+          rule_id: "local-rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
+      ] as Array<Record<string, unknown>>,
+      agent: [
+        {
+          id: "coding-agent-1",
+          name: "Coding",
+          workspace_id: workspaceId,
+          type: "coding",
+          model_settings: {},
+          tool_policy: {},
+        },
+      ],
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+    vi.mocked(getUserScopedSupabase).mockReturnValue(createMockSupabaseClient(db) as never);
+
+    const response = await fetch(
+      `${baseUrl}/api/local-runtime/runtimes/runners/local-rule-1/assign?workspaceId=${workspaceId}`,
+      {
+        method: "POST",
+        headers: {
+          authorization: "Bearer test-token",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ agentId: "coding-agent-1" }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "workspace_admin_required",
+      },
+    });
+  });
+
   it("assigns a local model to a manager agent without runner-kind filtering", async () => {
     const db = {
       routing_rule: [

@@ -20,6 +20,7 @@ import {
   testLocalRuntimeDispatchForWorkspace,
   type LauncherRequest,
 } from "../services/local-runtime-machines.js";
+import { assertWorkspaceAdminAccess } from "../services/workspace-access.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
 import { assertDevRouteAccess } from "./dev-route-guard.js";
 
@@ -64,6 +65,11 @@ async function requireWorkspaceAccess(userId: string, workspaceId: string) {
   }
 }
 
+async function requireWorkspaceAdminAccess(userId: string, workspaceId: string) {
+  await requireWorkspaceAccess(userId, workspaceId);
+  await assertWorkspaceAdminAccess(userId, workspaceId);
+}
+
 function assertDevOnlyLocalProbe(_req: Request) {
   // Arbitrary endpoint probing only makes sense when the API server and the
   // model host share the same machine during local development. In production,
@@ -90,7 +96,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
         }
 
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         const response = await assignLocalModelToAgent({
           workspaceId,
           machineId: body.machineId,
@@ -121,7 +127,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
         }
 
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         const response = await registerLocalRuntimeForWorkspace({
           workspaceId,
           userId,
@@ -144,7 +150,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
       requireAuth: true,
       async handler({ req, res, userId }) {
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         return res.status(200).json(await listLocalRuntimesForWorkspace(workspaceId));
       },
       onError: (res, error) =>
@@ -165,7 +171,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
       async handler({ req, res, body, userId }) {
         assertDevOnlyLocalProbe(req);
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         return res.status(200).json(await probeLocalModel(body));
       },
       onError: (res, error) =>
@@ -183,7 +189,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
       requireAuth: true,
       async handler({ req, res, userId }) {
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         return res
           .status(200)
           .json(await getLocalRuntimeConfigForWorkspace(workspaceId, requireRouteParam(req, "machineId")));
@@ -204,7 +210,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
       async handler({ req, res, userId }) {
         const rawLimit = typeof req.query.limit === "string" ? Number.parseInt(req.query.limit, 10) : 50;
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         return res
           .status(200)
           .json(
@@ -230,7 +236,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
       requireAuth: true,
       async handler({ req, res, userId }) {
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         return res
           .status(200)
           .json(
@@ -256,7 +262,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
       requireAuth: true,
       async handler({ req, res, userId }) {
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         return res
           .status(201)
           .json(await rotateLocalRuntimeTokenForWorkspace(workspaceId, requireRouteParam(req, "machineId")));
@@ -278,7 +284,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
       requireAuth: true,
       async handler({ req, res, userId }) {
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         return res
           .status(200)
           .json(await probeRegisteredLocalRuntimeForWorkspace(workspaceId, requireRouteParam(req, "runnerId")));
@@ -298,7 +304,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
       requireAuth: true,
       async handler({ req, res, userId }) {
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         await deleteLocalRuntimeForWorkspace(workspaceId, requireRouteParam(req, "machineId"));
         return res.status(204).end();
       },
@@ -326,7 +332,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
         }
 
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         const response = await assignLocalModelToAgent({
           workspaceId,
           localRuntimeId: requireRouteParam(req, "runnerId"),
@@ -354,7 +360,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
         }
 
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAccess(userId, workspaceId);
+        await requireWorkspaceAdminAccess(userId, workspaceId);
         await unassignLocalModelFromAgent({
           workspaceId,
           ruleId: requireRouteParam(req, "runnerId"),
