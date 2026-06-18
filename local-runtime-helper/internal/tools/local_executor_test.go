@@ -342,7 +342,7 @@ func TestGitRunRejectsCommandsOutsidePolicy(t *testing.T) {
 	}
 }
 
-func TestGitRunAllowsPathOverrideFlags(t *testing.T) {
+func TestGitRunRejectsPathOverrideFlags(t *testing.T) {
 	executor, err := NewExecutor(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewExecutor() error = %v", err)
@@ -366,15 +366,18 @@ func TestGitRunAllowsPathOverrideFlags(t *testing.T) {
 					"command": testCase.command,
 				},
 			})
+			if result.Success {
+				t.Fatalf("result.Success = true, output = %#v", result.Output)
+			}
 			output := result.Output.(map[string]any)
-			if output["blocked"] == true {
-				t.Fatalf("command was policy-blocked: %#v", output)
+			if output["reason"] != "git_path_override_denied" {
+				t.Fatalf("reason = %#v", output["reason"])
 			}
 		})
 	}
 }
 
-func TestGitRunAllowsWorktreeConfigOverrides(t *testing.T) {
+func TestGitRunRejectsWorktreeConfigOverrides(t *testing.T) {
 	executor, err := NewExecutor(t.TempDir())
 	if err != nil {
 		t.Fatalf("NewExecutor() error = %v", err)
@@ -398,9 +401,12 @@ func TestGitRunAllowsWorktreeConfigOverrides(t *testing.T) {
 					"command": testCase.command,
 				},
 			})
+			if result.Success {
+				t.Fatalf("result.Success = true, output = %#v", result.Output)
+			}
 			output := result.Output.(map[string]any)
-			if output["blocked"] == true {
-				t.Fatalf("command was policy-blocked: %#v", output)
+			if output["reason"] != "git_path_override_denied" {
+				t.Fatalf("reason = %#v", output["reason"])
 			}
 		})
 	}

@@ -21,6 +21,36 @@ defmodule SymphonyElixir.CloudExecutor.PublicRepository do
     branch describe diff grep log ls-files remote rev-parse show status
   )
 
+  # Read-only execution still needs argument-level containment for commands
+  # whose options can spawn subprocesses or mutate the cloned workspace.
+  @deny_flags %{
+    "find" => ~w(-exec -execdir -ok -okdir -delete -fprint -fprint0 -fprintf -fls),
+    "grep" => ~w(--exec --output --files-with-matches=/dev/stdin),
+    "rg" => ~w(--pre --pre-glob --hostname-bin -O --output),
+    "sed" => ~w(-i --in-place),
+    "cat" => [],
+    "head" => [],
+    "tail" => [],
+    "ls" => [],
+    "pwd" => [],
+    "wc" => []
+  }
+
+  @git_deny_flags %{
+    "branch" => ~w(--edit-description -d -D -m -M --delete --rename --create-reflog),
+    "describe" => [],
+    "diff" => ~w(--ext-diff --textconv --output),
+    "grep" => ~w(--open-files-in-pager -O --ext-grep),
+    "log" => ~w(--ext-diff --textconv --output),
+    "ls-files" => [],
+    "remote" => ~w(add remove rm set-url rename prune update),
+    "rev-parse" => [],
+    "show" => ~w(--ext-diff --textconv --output),
+    "status" => []
+  }
+
+  @global_deny_prefixes ~w(--exec --exec-path --filter --upload-pack --receive-pack --eval)
+
   @type request :: map()
   @type result :: {:ok, map()} | {:error, map()}
 
@@ -353,16 +383,18 @@ defmodule SymphonyElixir.CloudExecutor.PublicRepository do
   defp validate_read_only_argv([program | _args]), do: {:error, error("command_not_allowed", program)}
 
   defp validate_command_args(program, args) do
-    validate_argv_tokens(program, args)
+    deny = Map.get(@deny_flags, program, [])
+    validate_argv_tokens(program, args, deny)
   end
 
   defp validate_git_args(subcommand, args) do
-    validate_argv_tokens("git " <> subcommand, args)
+    deny = Map.get(@git_deny_flags, subcommand, [])
+    validate_argv_tokens("git " <> subcommand, args, deny)
   end
 
-  defp validate_argv_tokens(_context, []), do: :ok
+  defp validate_argv_tokens(_context, [], _deny), do: :ok
 
-  defp validate_argv_tokens(context, [token | rest]) do
+  defp validate_argv_tokens(context, [token | rest], deny) do
     cond do
       not is_binary(token) ->
         {:error, error("invalid_command", "argv entries must be strings")}
@@ -370,9 +402,22 @@ defmodule SymphonyElixir.CloudExecutor.PublicRepository do
       String.contains?(token, <<0>>) ->
         {:error, error("invalid_command", "argv entries must not contain null bytes")}
 
+      denied_token?(token, deny) or denied_global?(token) ->
+        {:error, error("command_not_allowed", "argument not permitted for #{context}: #{token}")}
+
       true ->
-        validate_argv_tokens(context, rest)
+        validate_argv_tokens(context, rest, deny)
     end
+  end
+
+  defp denied_token?(token, deny) when is_list(deny) do
+    Enum.any?(deny, fn entry -> token == entry or String.starts_with?(token, entry <> "=") end)
+  end
+
+  defp denied_global?(token) do
+    Enum.any?(@global_deny_prefixes, fn prefix ->
+      token == prefix or String.starts_with?(token, prefix <> "=")
+    end)
   end
 
   defp argv_list(argv) when is_list(argv) and argv != [] do
