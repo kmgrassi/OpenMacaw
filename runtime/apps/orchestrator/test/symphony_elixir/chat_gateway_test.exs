@@ -197,6 +197,9 @@ defmodule SymphonyElixir.ChatGatewayTest do
                session_thread_id: "thread-1"
              )
 
+    refute_receive {:message_log_user_message, ^scope, "thread-1", "Retry", _opts}
+    refute Enum.any?(SessionStore.get_messages("session-1"), &(&1["content"] == "Retry"))
+
     assert {:ok, session} = SessionStore.complete_run("run-1", assistant_fallback: "Still completes")
 
     assert Enum.any?(
