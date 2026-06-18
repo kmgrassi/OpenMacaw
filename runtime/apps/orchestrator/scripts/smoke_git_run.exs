@@ -60,9 +60,9 @@ defmodule SmokeGitRun do
         run_case(label, cmd, expect: expect, root: root)
       end)
 
-    IO.puts("\n=== Denied gh ops (authorize-layer block) ===")
+    IO.puts("\n=== gh ops (authorize passes; gh CLI may fail if not installed/authed) ===")
 
-    denied_results =
+    gh_results =
       [
         {"gh repo delete", "gh repo delete owner/repo --yes"},
         {"gh secret list", "gh secret list"},
@@ -78,12 +78,7 @@ defmodule SmokeGitRun do
         {"gh api -X DELETE", "gh api -X DELETE /repos/owner/name"},
         {"gh api graphql", "gh api graphql -f query=query{viewer{login}}"}
       ]
-      |> Enum.map(fn {label, cmd} -> run_case(label, cmd, expect: :blocked, root: root) end)
-
-    IO.puts("\n=== Allowed gh ops (authorize passes; gh CLI may fail if not installed/authed) ===")
-
-    allowed_gh_results =
-      [
+      |> Kernel.++([
         {"gh auth status", "gh auth status"},
         {"gh pr list", "gh pr list --state open --limit 1"},
         {"gh pr comment (write — not actually called against real repo)", "gh pr comment 1 --body smoke"},
@@ -91,7 +86,7 @@ defmodule SmokeGitRun do
         {"gh pr merge", "gh pr merge 1 --squash"},
         {"gh issue create", "gh issue create --title smoke --body smoke"},
         {"gh run rerun", "gh run rerun 1"}
-      ]
+      ])
       |> Enum.map(fn {label, cmd} -> run_case(label, cmd, expect: :exec_fail_ok, root: root) end)
 
     IO.puts("\n=== Non-git executables blocked ===")
@@ -106,7 +101,7 @@ defmodule SmokeGitRun do
 
     File.rm_rf(root)
 
-    all = results ++ denied_results ++ allowed_gh_results ++ nonexec_results
+    all = results ++ gh_results ++ nonexec_results
     passed = Enum.count(all, & &1)
     total = length(all)
 

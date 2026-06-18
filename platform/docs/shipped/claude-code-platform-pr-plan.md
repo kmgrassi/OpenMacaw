@@ -103,8 +103,7 @@ Runtime-facing shape:
   "adapter_config": {
     "permission_mode": "acceptEdits",
     "tools": ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-    "allowed_tools": ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-    "disallowed_tools": ["Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)"]
+    "allowed_tools": ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
   }
 }
 ```
@@ -139,7 +138,7 @@ platform presets:
 
 Important Claude behavior: `allowedTools` auto-approves matching tools but does
 not remove unlisted tools from Claude's context. Use `tools` to restrict
-available built-ins and `disallowedTools` to block sensitive patterns.
+available built-ins.
 
 ## Browser Smoke
 

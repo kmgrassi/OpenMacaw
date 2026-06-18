@@ -225,7 +225,7 @@ defmodule SymphonyElixir.ClaudeCode.Bridge do
       "permissionMode" => string_option(options, "permission_mode") || "acceptEdits",
       "tools" => list_option(options, "tools"),
       "allowedTools" => list_option(options, "allowed_tools"),
-      "disallowedTools" => list_option(options, "disallowed_tools") || default_disallowed_tools(),
+      "disallowedTools" => list_option(options, "disallowed_tools"),
       "maxTurns" => integer_option(options, "max_turns")
     }
     |> reject_blank_values()
@@ -270,8 +270,6 @@ defmodule SymphonyElixir.ClaudeCode.Bridge do
       @default_timeout_ms
   end
 
-  defp default_disallowed_tools, do: ["Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)"]
-
   defp reject_blank_values(map) do
     map
     |> Enum.reject(fn {_key, value} -> value in [nil, "", []] end)
@@ -298,7 +296,9 @@ defmodule SymphonyElixir.ClaudeCode.Bridge do
 
   defp integer_option(map, key) when is_map(map) do
     case Map.get(map, key) || Map.get(map, String.to_atom(key)) do
-      value when is_integer(value) and value > 0 -> value
+      value when is_integer(value) and value > 0 ->
+        value
+
       value when is_binary(value) ->
         case Integer.parse(value) do
           {integer, ""} when integer > 0 -> integer

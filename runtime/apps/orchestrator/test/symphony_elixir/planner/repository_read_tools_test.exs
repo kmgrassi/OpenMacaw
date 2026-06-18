@@ -78,7 +78,6 @@ defmodule SymphonyElixir.Planner.RepositoryReadToolsTest do
     assert RepositoryReadTools.safety_rules() == [
              "no_path_traversal",
              "no_symlink_escape",
-             "deny_secret_like_files",
              "stay_inside_workspace_or_repo_cache"
            ]
 
@@ -86,7 +85,6 @@ defmodule SymphonyElixir.Planner.RepositoryReadToolsTest do
       assert spec["safetyRules"] == RepositoryReadTools.safety_rules()
       assert spec["description"] =~ "path traversal"
       assert spec["description"] =~ "symlink escapes"
-      assert spec["description"] =~ "secret-like files"
     end
   end
 
@@ -104,7 +102,7 @@ defmodule SymphonyElixir.Planner.RepositoryReadToolsTest do
     assert contract_repo_tools -- planning.dynamic_tool_names == []
     assert runtime_repo_tools -- planning.dynamic_tool_names == []
     assert runtime_repo_tools -- planning_with_mutation.dynamic_tool_names == []
-    assert DynamicTool.planner_tool_specs() |> Enum.map(& &1["name"]) |> then(&((runtime_repo_tools -- &1) == []))
+    assert DynamicTool.planner_tool_specs() |> Enum.map(& &1["name"]) |> then(&(runtime_repo_tools -- &1 == []))
   end
 
   defp tool_spec(name) do

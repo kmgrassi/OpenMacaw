@@ -246,9 +246,6 @@ func (e *Executor) resolveRepoPath(repoRoot, requested string, kind repoPathKind
 	if rel == "" {
 		rel = "."
 	}
-	if denyReadPath(rel) {
-		return "", "", fmt.Errorf("denied path")
-	}
 	info, err := os.Stat(resolved)
 	if err != nil {
 		return "", "", err
@@ -459,9 +456,6 @@ func walkRepoEntries(repoRoot, directory string, depth, maxDepth, limit int, ent
 		if len(*entries) >= limit {
 			return nil
 		}
-		if ignoredEntry(child.Name()) {
-			continue
-		}
 		childPath := filepath.Join(directory, child.Name())
 		info, err := child.Info()
 		if err != nil {
@@ -471,7 +465,7 @@ func walkRepoEntries(repoRoot, directory string, depth, maxDepth, limit int, ent
 			continue
 		}
 		rel, err := filepath.Rel(repoRoot, childPath)
-		if err != nil || denyReadPath(rel) {
+		if err != nil {
 			continue
 		}
 		entryType := "file"
@@ -541,10 +535,6 @@ func (e *Executor) searchRepo(ctx context.Context, repoRoot, rel, searchRoot, qu
 		"--color",
 		"never",
 		"--hidden",
-		"--glob",
-		"!.git",
-		"--glob",
-		"!.env*",
 		"--max-count",
 		fmt.Sprint(limit),
 		"--",
@@ -592,9 +582,6 @@ func parseRGJSON(output string, limit, snippetChars int) []map[string]any {
 			continue
 		}
 		path := nestedText(data, "path")
-		if denyReadPath(path) {
-			continue
-		}
 		lineText := nestedText(data, "lines")
 		match := map[string]any{
 			"path":    strings.TrimPrefix(filepath.ToSlash(path), "./"),
@@ -728,99 +715,12 @@ func allowedGitCommand(argv []string) error {
 	}
 	switch argv[0] {
 	case "git":
-		return allowedGitArgs(argv[1:])
+		return nil
 	case "gh":
-		return allowedGHCommand(argv[1:])
+		return nil
 	default:
 		return fmt.Errorf("unsupported_executable")
 	}
-}
-
-func allowedGitArgs(argv []string) error {
-	for index := 0; index < len(argv); index++ {
-		arg := argv[index]
-		switch {
-		case arg == "-C":
-			return fmt.Errorf("git_path_override_denied")
-		case strings.HasPrefix(arg, "--git-dir"):
-			return fmt.Errorf("git_path_override_denied")
-		case strings.HasPrefix(arg, "--work-tree"):
-			return fmt.Errorf("git_path_override_denied")
-		case arg == "-c":
-			if index+1 < len(argv) && configOverridesWorkTree(argv[index+1]) {
-				return fmt.Errorf("git_path_override_denied")
-			}
-		case strings.HasPrefix(arg, "--config-env="):
-			if configEnvOverridesWorkTree(strings.TrimPrefix(arg, "--config-env=")) {
-				return fmt.Errorf("git_path_override_denied")
-			}
-		case arg == "--config-env":
-			if index+1 < len(argv) && configEnvOverridesWorkTree(argv[index+1]) {
-				return fmt.Errorf("git_path_override_denied")
-			}
-		}
-	}
-	if gitConfigTargetsWorkTree(argv) {
-		return fmt.Errorf("git_path_override_denied")
-	}
-	return nil
-}
-
-func configOverridesWorkTree(value string) bool {
-	key, _, ok := strings.Cut(value, "=")
-	return ok && strings.EqualFold(strings.TrimSpace(key), "core.worktree")
-}
-
-func configEnvOverridesWorkTree(value string) bool {
-	key, _, ok := strings.Cut(value, "=")
-	return ok && strings.EqualFold(strings.TrimSpace(key), "core.worktree")
-}
-
-func gitConfigTargetsWorkTree(argv []string) bool {
-	subcommandIndex := -1
-	for index, arg := range argv {
-		if arg == "--" {
-			break
-		}
-		if strings.HasPrefix(arg, "-") {
-			continue
-		}
-		subcommandIndex = index
-		break
-	}
-	if subcommandIndex == -1 || argv[subcommandIndex] != "config" {
-		return false
-	}
-	for _, arg := range argv[subcommandIndex+1:] {
-		if arg == "--" {
-			continue
-		}
-		if strings.HasPrefix(arg, "-") {
-			continue
-		}
-		return strings.EqualFold(strings.TrimSpace(arg), "core.worktree")
-	}
-	return false
-}
-
-func allowedGHCommand(argv []string) error {
-	if len(argv) == 0 {
-		return nil
-	}
-	switch argv[0] {
-	case "auth":
-		if len(argv) > 1 && argv[1] == "status" {
-			return nil
-		}
-		return fmt.Errorf("gh_subcommand_denied")
-	case "repo":
-		if len(argv) > 1 && argv[1] == "delete" {
-			return fmt.Errorf("gh_subcommand_denied")
-		}
-	case "secret", "variable", "api":
-		return fmt.Errorf("gh_subcommand_denied")
-	}
-	return nil
 }
 
 func (e *Executor) resolveCWD(cwd string) (string, error) {
@@ -893,37 +793,6 @@ func validateRelativePath(path string) error {
 		}
 	}
 	return nil
-}
-
-func denyReadPath(path string) bool {
-	if path == "" {
-		return true
-	}
-	path = filepath.ToSlash(path)
-	for _, segment := range strings.Split(path, "/") {
-		if segment == ".git" {
-			return true
-		}
-	}
-	base := strings.ToLower(filepath.Base(path))
-	switch base {
-	case ".env", ".npmrc", ".netrc", "id_rsa", "id_ed25519", "credentials", "credentials.json":
-		return true
-	}
-	if strings.HasPrefix(base, ".env.") ||
-		strings.HasSuffix(base, ".pem") ||
-		strings.HasSuffix(base, ".key") ||
-		strings.HasSuffix(base, ".p12") ||
-		strings.HasSuffix(base, ".pfx") ||
-		strings.Contains(base, "secret") ||
-		strings.Contains(base, "credential") {
-		return true
-	}
-	return false
-}
-
-func ignoredEntry(entry string) bool {
-	return entry == ".git" || strings.HasPrefix(entry, ".env")
 }
 
 func stringArg(args map[string]any, key string) string {

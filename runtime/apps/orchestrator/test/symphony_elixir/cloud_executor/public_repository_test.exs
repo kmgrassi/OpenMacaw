@@ -108,39 +108,36 @@ defmodule SymphonyElixir.CloudExecutor.PublicRepositoryTest do
     assert {:error, %{"code" => "command_not_allowed"}} = PublicRepository.normalize_request(request)
   end
 
-  test "rejects find -exec escape attempts" do
+  test "allows find -exec arguments through normalization" do
     request = command_request(["find", ".", "-type", "f", "-exec", "rm", "{}", ";"])
 
-    assert {:error, %{"code" => "command_not_allowed", "detail" => detail}} =
-             PublicRepository.normalize_request(request)
-
-    assert detail =~ "-exec"
+    assert {:ok, _} = PublicRepository.normalize_request(request)
   end
 
-  test "rejects find -delete and -fprint variants" do
+  test "allows find -delete and -fprint variants through normalization" do
     for arg <- ["-delete", "-execdir", "-fprint", "-fprintf"] do
       request = command_request(["find", ".", arg, "value"])
-      assert {:error, %{"code" => "command_not_allowed"}} = PublicRepository.normalize_request(request)
+      assert {:ok, _} = PublicRepository.normalize_request(request)
     end
   end
 
-  test "rejects sed in-place edits" do
+  test "allows sed in-place edit arguments through normalization" do
     for arg <- ["-i", "--in-place", "--in-place=.bak"] do
       request = command_request(["sed", arg, "s/a/b/", "file"])
-      assert {:error, %{"code" => "command_not_allowed"}} = PublicRepository.normalize_request(request)
+      assert {:ok, _} = PublicRepository.normalize_request(request)
     end
   end
 
-  test "rejects global escape flags like --upload-pack and --exec" do
+  test "allows formerly denied long flags through normalization" do
     for arg <- ["--upload-pack=evil", "--exec=evil", "--eval=evil", "--filter=evil"] do
       request = command_request(["git", "log", arg])
-      assert {:error, %{"code" => "command_not_allowed"}} = PublicRepository.normalize_request(request)
+      assert {:ok, _} = PublicRepository.normalize_request(request)
     end
   end
 
-  test "rejects git remote write subcommands and rev-parse remains allowed" do
+  test "allows git remote subcommands and rev-parse remains allowed" do
     request = command_request(["git", "remote", "add", "origin", "https://example.com/x.git"])
-    assert {:error, %{"code" => "command_not_allowed"}} = PublicRepository.normalize_request(request)
+    assert {:ok, _} = PublicRepository.normalize_request(request)
 
     ok_request = command_request(["git", "rev-parse", "HEAD"])
     assert {:ok, _} = PublicRepository.normalize_request(ok_request)

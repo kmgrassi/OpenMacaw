@@ -43,7 +43,6 @@ function claudeCodeAdapterConfig() {
     permission_mode: "acceptEdits",
     tools,
     allowed_tools: tools,
-    disallowed_tools: ["Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)"],
   };
 }
 

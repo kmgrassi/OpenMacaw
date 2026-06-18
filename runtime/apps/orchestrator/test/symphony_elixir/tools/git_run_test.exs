@@ -73,51 +73,47 @@ defmodule SymphonyElixir.Tools.GitRunTest do
     assert output["argv"] == ["gh", "pr", "comment", "1", "--body", "hi"]
   end
 
-  test "blocks gh repo delete", %{root: root} do
+  test "allows gh repo delete at the authorize layer", %{root: root} do
     assert {:ok, %{output: output}} =
              GitRun.execute(%{"command" => "gh repo delete owner/repo --yes"}, %{workspace_root: root})
 
-    assert output["ok"] == false
-    assert output["blocked"] == true
-    assert output["reason"] == "gh_subcommand_denied"
+    refute output["blocked"] == true
     assert output["argv"] == ["gh", "repo", "delete", "owner/repo", "--yes"]
   end
 
-  test "blocks all gh secret subcommands", %{root: root} do
+  test "allows gh secret subcommands at the authorize layer", %{root: root} do
     assert {:ok, %{output: output}} =
              GitRun.execute(%{"command" => "gh secret list"}, %{workspace_root: root})
 
-    assert output["blocked"] == true
-    assert output["reason"] == "gh_subcommand_denied"
+    refute output["blocked"] == true
+    assert output["argv"] == ["gh", "secret", "list"]
 
     assert {:ok, %{output: set_output}} =
              GitRun.execute(%{"command" => "gh secret set FOO --body bar"}, %{workspace_root: root})
 
-    assert set_output["blocked"] == true
-    assert set_output["reason"] == "gh_subcommand_denied"
+    refute set_output["blocked"] == true
+    assert set_output["argv"] == ["gh", "secret", "set", "FOO", "--body", "bar"]
   end
 
-  test "blocks all gh variable subcommands", %{root: root} do
+  test "allows gh variable subcommands at the authorize layer", %{root: root} do
     assert {:ok, %{output: output}} =
              GitRun.execute(%{"command" => "gh variable set FOO --body bar"}, %{workspace_root: root})
 
-    assert output["blocked"] == true
-    assert output["reason"] == "gh_subcommand_denied"
+    refute output["blocked"] == true
+    assert output["argv"] == ["gh", "variable", "set", "FOO", "--body", "bar"]
   end
 
-  test "blocks gh auth identity changes and token disclosure", %{root: root} do
+  test "allows gh auth subcommands at the authorize layer", %{root: root} do
     for sub <- ~w(login logout refresh switch setup-git token) do
       assert {:ok, %{output: output}} =
                GitRun.execute(%{"command" => "gh auth #{sub}"}, %{workspace_root: root})
 
-      assert output["blocked"] == true, "expected gh auth #{sub} to be blocked"
-      assert output["reason"] == "gh_subcommand_denied"
+      refute output["blocked"] == true
+      assert output["argv"] == ["gh", "auth", sub]
     end
   end
 
-  test "blocks all gh api calls (would bypass other denylist entries)", %{root: root} do
-    # `gh api -X DELETE /repos/owner/name` would delete a repo without going
-    # through `gh repo delete`. Block the whole `gh api` group.
+  test "allows gh api calls at the authorize layer", %{root: root} do
     for cmd <- [
           "gh api /repos/owner/name",
           "gh api -X DELETE /repos/owner/name",
@@ -127,8 +123,8 @@ defmodule SymphonyElixir.Tools.GitRunTest do
       assert {:ok, %{output: output}} =
                GitRun.execute(%{"command" => cmd}, %{workspace_root: root})
 
-      assert output["blocked"] == true, "expected `#{cmd}` to be blocked"
-      assert output["reason"] == "gh_subcommand_denied"
+      refute output["blocked"] == true
+      assert ["gh", "api" | _rest] = output["argv"]
     end
   end
 

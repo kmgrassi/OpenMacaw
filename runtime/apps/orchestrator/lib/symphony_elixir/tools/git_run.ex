@@ -3,27 +3,8 @@ defmodule SymphonyElixir.Tools.GitRun do
   Workspace-scoped Git/GitHub command tool.
 
   Single command-shaped tool instead of one tool per GitHub action. Agents
-  get full read/write access to `git` and `gh`. The guardrail is a narrow
-  denylist of catastrophic or identity-changing operations.
-
-  Denied:
-
-    * `gh repo delete` — permanent repo destruction.
-    * `gh secret <anything>` — repo secret writes are a security boundary
-      and should be human-driven, not agent-driven.
-    * `gh variable <anything>` — same reasoning as secrets.
-    * `gh auth login | logout | refresh | switch | setup-git | token` —
-      re-auth could swap the runtime's GitHub identity unexpectedly, and
-      `gh auth token` prints the auth token to stdout (credential
-      disclosure via tool output). `gh auth status` is allowed.
-    * `gh api <anything>` — raw GitHub REST/GraphQL access can bypass
-      every other denylist entry (e.g. `gh api -X DELETE /repos/...`
-      deletes a repo without going through `gh repo delete`).
-    * Anything that isn't `git` or `gh` — use `shell.exec` for those.
-
-  Everything else is allowed: commits, pushes (including `--force`),
-  PR/issue/release/workflow CRUD, branch creation and deletion, merges,
-  rebases, hard resets within the workspace, etc.
+  get full read/write access to `git` and `gh`. Anything that isn't `git`
+  or `gh` should use `shell.exec`.
   """
 
   @behaviour SymphonyElixir.Tool
@@ -34,18 +15,6 @@ defmodule SymphonyElixir.Tools.GitRun do
   @default_timeout_ms 30_000
   @default_output_limit_bytes 64_000
   @routing_match_table "routing_rule_match"
-
-  # Narrow denylist. `:all` denies every subcommand under that group.
-  @denied_gh_subcommands %{
-    "repo" => ~w(delete),
-    "secret" => :all,
-    "variable" => :all,
-    # `token` prints the auth token to stdout — denies credential
-    # disclosure via tool output alongside the identity-change set.
-    "auth" => ~w(login logout refresh switch setup-git token),
-    # Raw API access bypasses every other entry — block wholesale.
-    "api" => :all
-  }
 
   @impl true
   def name, do: "git.run"
@@ -58,8 +27,7 @@ defmodule SymphonyElixir.Tools.GitRun do
       "checkout); use `gh` for GitHub platform actions (pr create/view/edit/" <>
       "comment/review/merge, pr checks, issue, run, auth status). A typical " <>
       "flow is `git add` then `git commit` then `git push` then `gh pr create`. " <>
-      "Full read/write access to both; a narrow denylist blocks `gh repo delete`, " <>
-      "secret/variable writes, and auth identity changes."
+      "Full read/write access to both."
   end
 
   @impl true
@@ -92,13 +60,6 @@ defmodule SymphonyElixir.Tools.GitRun do
             gh run rerun 9876543210
             git push origin feat/x
             git checkout -b feat/y
-          Denied (will return blocked=true):
-            gh repo delete owner/repo                    (catastrophic)
-            gh secret list | set | remove                (secret writes)
-            gh variable set | remove                     (variable writes)
-            gh auth login | logout | refresh | switch    (identity change)
-            gh auth token                                (token disclosure)
-            gh api <anything>                            (raw API bypass)
           """
         },
         "cwd" => %{
@@ -159,25 +120,6 @@ defmodule SymphonyElixir.Tools.GitRun do
 
   defp authorize(["git" | _rest]), do: :ok
 
-  defp authorize(["gh", group, subcommand | _rest] = argv) do
-    case Map.get(@denied_gh_subcommands, group) do
-      nil ->
-        :ok
-
-      :all ->
-        {:error, {:command_blocked, :gh_subcommand_denied, argv}}
-
-      denied_list when is_list(denied_list) ->
-        if subcommand in denied_list do
-          {:error, {:command_blocked, :gh_subcommand_denied, argv}}
-        else
-          :ok
-        end
-    end
-  end
-
-  # Bare `gh` or `gh <group>` with no subcommand — let gh itself respond
-  # (it prints usage and exits non-zero). No security concern.
   defp authorize(["gh" | _rest]), do: :ok
 
   defp authorize(argv), do: {:error, {:command_blocked, :unsupported_executable, argv}}
@@ -325,18 +267,6 @@ defmodule SymphonyElixir.Tools.GitRun do
       "reason" => "unsupported_executable",
       "argv" => argv,
       "diagnosis" => "Only git and gh commands are allowed through git.run. Use shell.exec for other executables."
-    }
-  end
-
-  defp blocked_result(:gh_subcommand_denied, argv) do
-    %{
-      "tool" => name(),
-      "ok" => false,
-      "blocked" => true,
-      "reason" => "gh_subcommand_denied",
-      "argv" => argv,
-      "diagnosis" =>
-        "This gh subcommand is denied by policy. Denied: `gh repo delete`, all `gh secret` / `gh variable` / `gh api` operations, and auth identity/token disclosure (`gh auth login|logout|refresh|switch|setup-git|token`)."
     }
   end
 

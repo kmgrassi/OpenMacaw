@@ -25,13 +25,9 @@ the user asks to cancel or delete a scheduled message, call
 ## git.run — full read/write Git and GitHub CLI
 
 `git.run` runs any `git` or `gh` command in the workspace's registered
-repository. A narrow denylist blocks: `gh repo delete`, all `gh secret` /
-`gh variable` operations, all `gh api` calls (raw API would bypass other
-denials), auth identity changes
-(`gh auth login|logout|refresh|switch|setup-git`), and `gh auth token`
-(token disclosure). `gh auth status` is allowed. Everything else — commits,
-pushes (including `--force`), PR/issue CRUD, reviews, comments, merges,
-branch creation/deletion, rebases — is allowed.
+repository. Commits, pushes (including `--force`), PR/issue CRUD, reviews,
+comments, merges, branch creation/deletion, rebases, GitHub API calls, auth
+commands, secrets, and variables all pass through to the underlying CLI.
 
 Commands run inside the workspace's already-checked-out repository, so `gh`
 and `git` resolve the target repo from the local `origin` remote. **Omit

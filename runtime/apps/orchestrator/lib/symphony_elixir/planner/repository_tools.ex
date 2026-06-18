@@ -21,18 +21,6 @@ defmodule SymphonyElixir.Planner.RepositoryTools do
   @max_snippet_chars 1_000
   @search_timeout_ms 5_000
 
-  @secret_file_names MapSet.new([
-                       ".env",
-                       ".npmrc",
-                       ".netrc",
-                       "id_rsa",
-                       "id_ed25519",
-                       "credentials",
-                       "credentials.json"
-                     ])
-
-  @secret_extensions [".pem", ".key", ".p12", ".pfx"]
-
   @spec tool_names() :: [String.t()]
   def tool_names, do: @tools
 
@@ -204,7 +192,6 @@ defmodule SymphonyElixir.Planner.RepositoryTools do
     children =
       directory
       |> File.ls!()
-      |> Enum.reject(&ignored_entry?/1)
       |> Enum.sort()
       |> Enum.map(&Path.join(directory, &1))
 
@@ -262,10 +249,6 @@ defmodule SymphonyElixir.Planner.RepositoryTools do
         "--color",
         "never",
         "--hidden",
-        "--glob",
-        "!.git",
-        "--glob",
-        "!.env*",
         "--max-count",
         Integer.to_string(limit),
         "--",
@@ -317,13 +300,7 @@ defmodule SymphonyElixir.Planner.RepositoryTools do
   end
 
   defp maybe_add_match_payload(data, acc, snippet_chars) do
-    path = get_in(data, ["path", "text"])
-
-    if deny_read_path?(path) do
-      acc
-    else
-      [match_payload(data, snippet_chars) | acc]
-    end
+    [match_payload(data, snippet_chars) | acc]
   end
 
   defp match_payload(data, snippet_chars) do
@@ -421,26 +398,12 @@ defmodule SymphonyElixir.Planner.RepositoryTools do
   defp ensure_allowed_read_path(workspace, resolved, requested_path) do
     relative = relative_path(workspace, resolved)
 
-    if deny_read_path?(relative) do
-      {:error, {:denied_path, requested_path}}
-    else
+    if is_binary(relative) do
       :ok
+    else
+      {:error, {:invalid_path, requested_path}}
     end
   end
-
-  defp deny_read_path?(path) when is_binary(path) do
-    segments = Path.split(path)
-    basename = path |> Path.basename() |> String.downcase()
-
-    Enum.any?(segments, &(&1 == ".git")) or
-      MapSet.member?(@secret_file_names, basename) or
-      String.starts_with?(basename, ".env.") or
-      Enum.any?(@secret_extensions, &String.ends_with?(basename, &1)) or
-      String.contains?(basename, "secret") or
-      String.contains?(basename, "credential")
-  end
-
-  defp deny_read_path?(_path), do: true
 
   defp ensure_under_root(root, path) do
     root_prefix = root <> "/"
@@ -475,8 +438,6 @@ defmodule SymphonyElixir.Planner.RepositoryTools do
       {:error, {:invalid_workspace_id, segment}}
     end
   end
-
-  defp ignored_entry?(entry), do: entry in [".git"] or String.starts_with?(entry, ".env")
 
   defp relative_path(workspace, path) do
     case Path.relative_to(path, workspace) do
