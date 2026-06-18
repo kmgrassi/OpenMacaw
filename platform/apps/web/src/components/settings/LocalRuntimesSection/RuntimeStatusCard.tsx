@@ -1,6 +1,7 @@
 import type { LocalRuntime } from "../../../api/local-runtime";
 import { Badge } from "../../ui/Badge";
 import { Card } from "../../ui/Card";
+import { statusToneClass, type StatusTone } from "../../ui/status-tones";
 import { formatCapability, formatLastSeen } from "./utils";
 
 function runtimeStatus(runtime: LocalRuntime) {
@@ -25,6 +26,12 @@ function runtimeStatus(runtime: LocalRuntime) {
   };
 }
 
+function diagnosticTone(severity: "info" | "warning" | "error"): StatusTone {
+  if (severity === "error") return "error";
+  if (severity === "warning") return "warning";
+  return "info";
+}
+
 export function RuntimeStatusCard({
   runtime,
   heartbeatIntervalMs,
@@ -41,6 +48,7 @@ export function RuntimeStatusCard({
     : runtime.runners
         .map((runner) => runner.model)
         .filter((model) => model.length > 0);
+  const primaryDiagnostic = runtime.localExecution.diagnostics?.[0] ?? null;
 
   return (
     <Card className="space-y-4">
@@ -83,6 +91,20 @@ export function RuntimeStatusCard({
           Heartbeat timeout: {Math.round((heartbeatIntervalMs * 2) / 1000)}s
         </div>
       </div>
+
+      {primaryDiagnostic && (
+        <div
+          className={`rounded-md border px-3 py-2 text-xs ${statusToneClass(
+            diagnosticTone(primaryDiagnostic.severity),
+            "panel",
+          )}`}
+        >
+          <div className="font-medium">{primaryDiagnostic.title}</div>
+          <div className="mt-1 leading-5 opacity-90">
+            {primaryDiagnostic.message}
+          </div>
+        </div>
+      )}
 
       {(runtime.lastError || runtime.localExecution.lastError) && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
