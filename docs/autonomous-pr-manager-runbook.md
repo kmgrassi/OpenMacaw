@@ -111,8 +111,9 @@ progress objectively.
   requires `runtime_managed_tools: true`; the helper advertises it at
   `local-runtime-helper/internal/relay/client.go:128`.
 - The PR playbook: `runtime/.../prompts/manager-system-v1.md:41-99`.
-- `git.run` allow/deny: `runtime/.../tools/git_run.ex` (allows pr
-  comment/review/merge; denies `gh api`, `gh secret`, auth changes).
+- `git.run` policy: `runtime/.../tools/git_run.ex` (full `git`/`gh`
+  read/write; the only restriction is the executable boundary — the
+  command must be `git` or `gh`, no hardcoded subcommand denylist).
 
 ---
 
@@ -229,7 +230,7 @@ using that box's `gh` session — *not* an env token.
    comment on and merge PRs in your repos:
    ```sh
    gh auth login        # or: export GH_TOKEN=<token with repo scope>
-   gh auth status       # allowed by git.run's denylist; confirm it's logged in
+   gh auth status       # confirm it's logged in
    ```
 2. **Register the workspace's local repo root** so `git.run` knows where to
    run. This is stored in `routing_rule_match` (no REST endpoint today — UI if
@@ -364,8 +365,10 @@ before trying write modes against production repos.
    repeated-call detector and a ~10-iteration cap as guardrails.
 2. **`gh` identity = whoever runs the orchestrator.** Merges/comments are
    attributed to that account. Scope its token to exactly the repos you want
-   touched. `git.run` blocks `gh api`, `gh secret/variable`, and auth changes,
-   but allows force-push and merge — treat the runtime host as privileged.
+   touched. `git.run` has no `gh` subcommand denylist — it allows the full
+   `git`/`gh` surface (force-push, merge, `gh api`, `gh secret/variable`,
+   `gh auth`, `gh repo delete`) for any agent granted the tool, so treat the
+   runtime host and its `gh` token as privileged.
 3. **State is re-derived each tick via `gh` polling**, not events. There's no
    landed event-log/poll-cadence infra yet (it's a design open question), so
    the manager runs `gh pr list/view/checks` each pass and `snooze`s when

@@ -60,28 +60,14 @@ defmodule SmokeGitRun do
         run_case(label, cmd, expect: expect, root: root)
       end)
 
-    IO.puts("\n=== Denied gh ops (authorize-layer block) ===")
-
-    denied_results =
-      [
-        {"gh repo delete", "gh repo delete owner/repo --yes"},
-        {"gh secret list", "gh secret list"},
-        {"gh secret set", "gh secret set FOO --body bar"},
-        {"gh variable set", "gh variable set FOO --body bar"},
-        {"gh auth login", "gh auth login"},
-        {"gh auth logout", "gh auth logout"},
-        {"gh auth refresh", "gh auth refresh"},
-        {"gh auth switch", "gh auth switch"},
-        {"gh auth setup-git", "gh auth setup-git"},
-        {"gh auth token", "gh auth token"},
-        {"gh api (repo info)", "gh api /repos/owner/name"},
-        {"gh api -X DELETE", "gh api -X DELETE /repos/owner/name"},
-        {"gh api graphql", "gh api graphql -f query=query{viewer{login}}"}
-      ]
-      |> Enum.map(fn {label, cmd} -> run_case(label, cmd, expect: :blocked, root: root) end)
-
     IO.puts("\n=== Allowed gh ops (authorize passes; gh CLI may fail if not installed/authed) ===")
 
+    # The previously-denied ops (gh repo delete, gh secret/variable, gh auth
+    # login/logout/refresh/switch/setup-git/token, gh api -X DELETE) now pass
+    # the authorize layer, but this smoke deliberately does NOT execute them:
+    # they have real side effects (deleting repos, logging the operator out of
+    # gh, disclosing the auth token to stdout). Authorize-layer coverage for
+    # those lives in the unit test (GitRun.authorize/1), which never shells out.
     allowed_gh_results =
       [
         {"gh auth status", "gh auth status"},
@@ -106,7 +92,7 @@ defmodule SmokeGitRun do
 
     File.rm_rf(root)
 
-    all = results ++ denied_results ++ allowed_gh_results ++ nonexec_results
+    all = results ++ allowed_gh_results ++ nonexec_results
     passed = Enum.count(all, & &1)
     total = length(all)
 
