@@ -21,7 +21,7 @@ defmodule SymphonyElixir.Planner.ModelClient.LocalRelay do
     WorkItem
   }
 
-  alias SymphonyElixir.LocalRelay.{ProtocolExtensions, Registry}
+  alias SymphonyElixir.LocalRelay.{ProtocolExtensions, Readiness, Registry}
   alias SymphonyElixir.Planner.ModelClient.OpenAIResponses
   alias SymphonyElixir.Runner.ToolCallingLoop
 
@@ -80,7 +80,7 @@ defmodule SymphonyElixir.Planner.ModelClient.LocalRelay do
 
     with :ok <- require_field(session.workspace_id, :workspace_id),
          :ok <- require_field(session.target_runner_kind, :target_runner_kind),
-         {:ok, _helper} <- Registry.lookup(session.workspace_id, session.target_runner_kind),
+         {:ok, _helper} <- Readiness.lookup(session.workspace_id, session.target_runner_kind),
          {:ok, frame} <- dispatch_frame(session, prompt, work_item, correlation_id) do
       ToolCallingLoop.run(
         Map.merge(session, %{
@@ -122,7 +122,7 @@ defmodule SymphonyElixir.Planner.ModelClient.LocalRelay do
 
     with :ok <- require_field(workspace_id, :workspace_id),
          :ok <- require_field(target_runner_kind, :target_runner_kind),
-         {:ok, _helper} <- Registry.lookup(workspace_id, target_runner_kind) do
+         {:ok, _helper} <- Readiness.lookup(workspace_id, target_runner_kind) do
       :ok
     end
   end

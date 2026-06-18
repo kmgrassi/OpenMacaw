@@ -73,67 +73,36 @@ defmodule SymphonyElixir.Tools.GitRunTest do
     assert output["argv"] == ["gh", "pr", "comment", "1", "--body", "hi"]
   end
 
-  test "allows gh repo delete at the authorize layer", %{root: root} do
-    assert {:ok, %{output: output}} =
-             GitRun.execute(%{"command" => "gh repo delete owner/repo --yes"}, %{workspace_root: root})
-
-    refute output["blocked"] == true
-    assert output["argv"] == ["gh", "repo", "delete", "owner/repo", "--yes"]
-  end
-
-  test "allows gh secret subcommands at the authorize layer", %{root: root} do
-    assert {:ok, %{output: output}} =
-             GitRun.execute(%{"command" => "gh secret list"}, %{workspace_root: root})
-
-    refute output["blocked"] == true
-    assert output["argv"] == ["gh", "secret", "list"]
-
-    assert {:ok, %{output: set_output}} =
-             GitRun.execute(%{"command" => "gh secret set FOO --body bar"}, %{workspace_root: root})
-
-    refute set_output["blocked"] == true
-    assert set_output["argv"] == ["gh", "secret", "set", "FOO", "--body", "bar"]
-  end
-
-  test "allows gh variable subcommands at the authorize layer", %{root: root} do
-    assert {:ok, %{output: output}} =
-             GitRun.execute(%{"command" => "gh variable set FOO --body bar"}, %{workspace_root: root})
-
-    refute output["blocked"] == true
-    assert output["argv"] == ["gh", "variable", "set", "FOO", "--body", "bar"]
-  end
-
-  test "allows gh auth subcommands at the authorize layer", %{root: root} do
-    for sub <- ~w(login logout refresh switch setup-git token) do
-      assert {:ok, %{output: output}} =
-               GitRun.execute(%{"command" => "gh auth #{sub}"}, %{workspace_root: root})
-
-      refute output["blocked"] == true
-      assert output["argv"] == ["gh", "auth", sub]
-    end
-  end
-
-  test "allows gh api calls at the authorize layer", %{root: root} do
-    for cmd <- [
-          "gh api /repos/owner/name",
-          "gh api -X DELETE /repos/owner/name",
-          "gh api graphql -f query=query{viewer{login}}",
-          "gh api /repos/owner/name/actions/secrets/FOO -X PUT --field encrypted_value=..."
+  # There is no hardcoded gh subcommand denylist. These are asserted against
+  # the pure `authorize/1` policy check, NOT `execute/2` — we must never
+  # shell-execute `gh auth logout`, `gh repo delete`, etc. in a unit test
+  # (that would mutate the developer's real GitHub auth / repos).
+  test "authorize allows every gh subcommand (no hardcoded denylist)" do
+    for argv <- [
+          ~w(gh repo delete owner/repo --yes),
+          ~w(gh secret list),
+          ~w(gh secret set FOO --body bar),
+          ~w(gh variable set FOO --body bar),
+          ~w(gh auth login),
+          ~w(gh auth logout),
+          ~w(gh auth refresh),
+          ~w(gh auth switch),
+          ~w(gh auth setup-git),
+          ~w(gh auth token),
+          ~w(gh api /repos/owner/name),
+          ~w(gh api -X DELETE /repos/owner/name)
         ] do
-      assert {:ok, %{output: output}} =
-               GitRun.execute(%{"command" => cmd}, %{workspace_root: root})
-
-      refute output["blocked"] == true
-      assert ["gh", "api" | _rest] = output["argv"]
+      assert GitRun.authorize(argv) == :ok, "expected `#{Enum.join(argv, " ")}` to be allowed"
     end
   end
 
-  test "allows gh auth status (the inspection auth subcommand)", %{root: root} do
-    assert {:ok, %{output: output}} =
-             GitRun.execute(%{"command" => "gh auth status"}, %{workspace_root: root})
+  test "authorize allows git commands" do
+    assert GitRun.authorize(["git", "push", "--force"]) == :ok
+  end
 
-    refute output["blocked"] == true
-    assert output["argv"] == ["gh", "auth", "status"]
+  test "authorize rejects non-git/gh executables" do
+    assert {:error, {:command_blocked, :unsupported_executable, ["rm", "-rf", "/"]}} =
+             GitRun.authorize(["rm", "-rf", "/"])
   end
 
   test "blocks non-git/gh executables", %{root: root} do

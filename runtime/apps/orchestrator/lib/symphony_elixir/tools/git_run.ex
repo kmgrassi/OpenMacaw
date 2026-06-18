@@ -3,8 +3,16 @@ defmodule SymphonyElixir.Tools.GitRun do
   Workspace-scoped Git/GitHub command tool.
 
   Single command-shaped tool instead of one tool per GitHub action. Agents
-  get full read/write access to `git` and `gh`. Anything that isn't `git`
-  or `gh` should use `shell.exec`.
+  get full read/write access to `git` and `gh`. The only guardrail is the
+  executable boundary: a `git.run` command must invoke `git` or `gh` —
+  anything else is rejected (use `shell.exec` for other executables).
+
+  There is no hardcoded `gh` subcommand denylist. Whether an agent may run
+  `git.run` at all is governed by tool grants, not by a baked-in list of
+  forbidden subcommands. Everything `git`/`gh` can do is allowed: commits,
+  pushes (including `--force`), PR/issue/release/workflow CRUD, branch
+  creation and deletion, merges, rebases, hard resets within the workspace,
+  `gh api`, `gh secret` / `gh variable`, `gh auth`, `gh repo delete`, etc.
   """
 
   @behaviour SymphonyElixir.Tool
@@ -27,7 +35,7 @@ defmodule SymphonyElixir.Tools.GitRun do
       "checkout); use `gh` for GitHub platform actions (pr create/view/edit/" <>
       "comment/review/merge, pr checks, issue, run, auth status). A typical " <>
       "flow is `git add` then `git commit` then `git push` then `gh pr create`. " <>
-      "Full read/write access to both."
+      "Full read/write access to both `git` and `gh`."
   end
 
   @impl true
@@ -60,6 +68,8 @@ defmodule SymphonyElixir.Tools.GitRun do
             gh run rerun 9876543210
             git push origin feat/x
             git checkout -b feat/y
+          The only restriction is the executable: the command must start
+          with `git` or `gh`. Use shell.exec for anything else.
           """
         },
         "cwd" => %{
@@ -118,11 +128,17 @@ defmodule SymphonyElixir.Tools.GitRun do
     _error -> {:error, :invalid_command_syntax}
   end
 
-  defp authorize(["git" | _rest]), do: :ok
+  @doc """
+  Pure policy check for a parsed argv. Returns `:ok` when the command may
+  run, or `{:error, {:command_blocked, reason, argv}}` when it must not.
 
-  defp authorize(["gh" | _rest]), do: :ok
-
-  defp authorize(argv), do: {:error, {:command_blocked, :unsupported_executable, argv}}
+  Exposed (rather than `defp`) so the policy can be unit-tested directly,
+  without shell-executing real `git`/`gh` — never drive auth-mutating or
+  destructive commands through `execute/2` in tests.
+  """
+  def authorize(["git" | _rest]), do: :ok
+  def authorize(["gh" | _rest]), do: :ok
+  def authorize(argv), do: {:error, {:command_blocked, :unsupported_executable, argv}}
 
   defp workspace_root(arguments, context) do
     cond do

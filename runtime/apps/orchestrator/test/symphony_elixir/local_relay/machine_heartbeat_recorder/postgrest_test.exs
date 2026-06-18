@@ -13,9 +13,7 @@ defmodule SymphonyElixir.LocalRelay.MachineHeartbeatRecorder.PostgRESTTest do
       api_key: "secret"
     )
 
-    Application.put_env(:symphony_elixir, :local_relay_machine_heartbeat_recorder_req_options,
-      plug: {Req.Test, __MODULE__}
-    )
+    Application.put_env(:symphony_elixir, :local_relay_machine_heartbeat_recorder_req_options, plug: {Req.Test, __MODULE__})
 
     # Run writes inline so the PATCH is observable in-test.
     Application.put_env(:symphony_elixir, :local_relay_machine_heartbeat_recorder_mode, :sync)
@@ -52,6 +50,7 @@ defmodule SymphonyElixir.LocalRelay.MachineHeartbeatRecorder.PostgRESTTest do
     assert_received {:patch, "PATCH", "/rest/v1/local_runtime_machine", params, body}
     assert params["id"] == "eq.#{@machine_id}"
     assert is_binary(body["last_seen_at"])
+    assert body["status"] == "online"
     assert body["advertised_runner_kinds"] == ["openai_compatible"]
     assert body["helper_version"] == "1.2.3"
   end
@@ -63,6 +62,7 @@ defmodule SymphonyElixir.LocalRelay.MachineHeartbeatRecorder.PostgRESTTest do
 
     assert_received {:patch, "PATCH", _path, _params, body}
     assert is_binary(body["last_seen_at"])
+    assert body["status"] == "online"
     refute Map.has_key?(body, "advertised_runner_kinds")
     refute Map.has_key?(body, "helper_version")
   end
@@ -75,6 +75,7 @@ defmodule SymphonyElixir.LocalRelay.MachineHeartbeatRecorder.PostgRESTTest do
     assert_received {:patch, "PATCH", _path, params, body}
     assert params["id"] == "eq.#{@machine_id}"
     assert body["advertised_runner_kinds"] == []
+    assert body["status"] == "offline"
     assert is_binary(body["last_seen_at"])
   end
 

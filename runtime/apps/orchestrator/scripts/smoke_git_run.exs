@@ -60,25 +60,16 @@ defmodule SmokeGitRun do
         run_case(label, cmd, expect: expect, root: root)
       end)
 
-    IO.puts("\n=== gh ops (authorize passes; gh CLI may fail if not installed/authed) ===")
+    IO.puts("\n=== Allowed gh ops (authorize passes; gh CLI may fail if not installed/authed) ===")
 
-    gh_results =
+    # The previously-denied ops (gh repo delete, gh secret/variable, gh auth
+    # login/logout/refresh/switch/setup-git/token, gh api -X DELETE) now pass
+    # the authorize layer, but this smoke deliberately does NOT execute them:
+    # they have real side effects (deleting repos, logging the operator out of
+    # gh, disclosing the auth token to stdout). Authorize-layer coverage for
+    # those lives in the unit test (GitRun.authorize/1), which never shells out.
+    allowed_gh_results =
       [
-        {"gh repo delete", "gh repo delete owner/repo --yes"},
-        {"gh secret list", "gh secret list"},
-        {"gh secret set", "gh secret set FOO --body bar"},
-        {"gh variable set", "gh variable set FOO --body bar"},
-        {"gh auth login", "gh auth login"},
-        {"gh auth logout", "gh auth logout"},
-        {"gh auth refresh", "gh auth refresh"},
-        {"gh auth switch", "gh auth switch"},
-        {"gh auth setup-git", "gh auth setup-git"},
-        {"gh auth token", "gh auth token"},
-        {"gh api (repo info)", "gh api /repos/owner/name"},
-        {"gh api -X DELETE", "gh api -X DELETE /repos/owner/name"},
-        {"gh api graphql", "gh api graphql -f query=query{viewer{login}}"}
-      ]
-      |> Kernel.++([
         {"gh auth status", "gh auth status"},
         {"gh pr list", "gh pr list --state open --limit 1"},
         {"gh pr comment (write — not actually called against real repo)", "gh pr comment 1 --body smoke"},
@@ -86,7 +77,7 @@ defmodule SmokeGitRun do
         {"gh pr merge", "gh pr merge 1 --squash"},
         {"gh issue create", "gh issue create --title smoke --body smoke"},
         {"gh run rerun", "gh run rerun 1"}
-      ])
+      ]
       |> Enum.map(fn {label, cmd} -> run_case(label, cmd, expect: :exec_fail_ok, root: root) end)
 
     IO.puts("\n=== Non-git executables blocked ===")
@@ -101,7 +92,7 @@ defmodule SmokeGitRun do
 
     File.rm_rf(root)
 
-    all = results ++ gh_results ++ nonexec_results
+    all = results ++ allowed_gh_results ++ nonexec_results
     passed = Enum.count(all, & &1)
     total = length(all)
 

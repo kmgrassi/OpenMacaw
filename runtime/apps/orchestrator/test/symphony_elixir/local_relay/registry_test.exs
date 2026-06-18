@@ -102,6 +102,50 @@ defmodule SymphonyElixir.LocalRelay.RegistryTest do
     assert_receive {:local_relay_cancel, %{"type" => "cancel", "correlation_id" => "corr-1"}}
   end
 
+  test "drain_all evicts helpers and marks pending dispatches offline" do
+    test_pid = self()
+    helper_pid = spawn_link(fn -> forward_messages(test_pid) end)
+
+    assert {:ok, _helper} =
+             Registry.register(%{
+               workspace_id: "workspace-1",
+               machine_id: "machine-1",
+               pid: helper_pid,
+               runners: ["openai_compatible"]
+             })
+
+    assert {:ok, "corr-1", _helper} =
+             Registry.dispatch("workspace-1", "openai_compatible", %{"correlation_id" => "corr-1"}, caller: self())
+
+    assert_receive {:local_relay_dispatch, %{"correlation_id" => "corr-1"}}
+
+    assert :ok = Registry.drain_all(:server_draining)
+
+    assert_receive {:local_relay_evicted, :server_draining}
+
+    assert_receive {:local_relay_error, "corr-1", %{"error_code" => "local_runtime_offline", "reason" => ":server_draining"}}
+
+    assert {:error, :local_runtime_offline} = Registry.lookup("workspace-1", "openai_compatible")
+  end
+
+  test "application prep_stop drains local relay helpers before shutdown" do
+    test_pid = self()
+    helper_pid = spawn_link(fn -> forward_messages(test_pid) end)
+
+    assert {:ok, _helper} =
+             Registry.register(%{
+               workspace_id: "workspace-1",
+               machine_id: "machine-1",
+               pid: helper_pid,
+               runners: ["openai_compatible"]
+             })
+
+    assert :test_state = SymphonyElixir.Application.prep_stop(:test_state)
+
+    assert_receive {:local_relay_evicted, :server_draining}
+    assert {:error, :local_runtime_offline} = Registry.lookup("workspace-1", "openai_compatible")
+  end
+
   test "pid-guarded unregister leaves a newer registration in place" do
     old_pid = spawn_link(fn -> Process.sleep(:infinity) end)
     new_pid = spawn_link(fn -> Process.sleep(:infinity) end)
@@ -156,5 +200,13 @@ defmodule SymphonyElixir.LocalRelay.RegistryTest do
 
     assert {:ok, helper} = Registry.lookup("workspace-1", "openai_compatible")
     assert helper.machine_id == "machine-1"
+  end
+
+  defp forward_messages(test_pid) do
+    receive do
+      message ->
+        send(test_pid, message)
+        forward_messages(test_pid)
+    end
   end
 end

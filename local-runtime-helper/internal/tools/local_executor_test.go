@@ -342,6 +342,26 @@ func TestGitRunRejectsCommandsOutsidePolicy(t *testing.T) {
 	}
 }
 
+func TestGitRunAllowsGithubCLISubcommands(t *testing.T) {
+	testCases := []struct {
+		name string
+		argv []string
+	}{
+		{name: "api", argv: []string{"gh", "api", "repos/kmgrassi/OpenMacaw/issues/211/reactions"}},
+		{name: "secret", argv: []string{"gh", "secret", "list"}},
+		{name: "variable", argv: []string{"gh", "variable", "list"}},
+		{name: "repo delete", argv: []string{"gh", "repo", "delete", "kmgrassi/example", "--yes"}},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if err := allowedGitCommand(testCase.argv); err != nil {
+				t.Fatalf("allowedGitCommand(%#v) error = %v", testCase.argv, err)
+			}
+		})
+	}
+}
+
 func TestGitRunRejectsPathOverrideFlags(t *testing.T) {
 	executor, err := NewExecutor(t.TempDir())
 	if err != nil {

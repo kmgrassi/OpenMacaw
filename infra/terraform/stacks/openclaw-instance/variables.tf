@@ -82,10 +82,52 @@ variable "broker_health_check_path" {
   default     = "/health"
 }
 
+variable "relay_target_group_name" {
+  description = "Target group name for the local-relay WebSocket service. Empty disables relay edge routing."
+  type        = string
+  default     = ""
+}
+
+variable "relay_socket_port" {
+  description = "Runtime orchestrator relay socket port behind the relay target group."
+  type        = number
+  default     = 4310
+}
+
+variable "relay_health_check_path" {
+  description = "Health check path for the relay target group."
+  type        = string
+  default     = "/api/v1/health"
+}
+
+variable "relay_deregistration_delay_seconds" {
+  description = "Seconds the relay target group keeps draining deregistered targets. Keep short so local helpers reconnect promptly during rolling deploys."
+  type        = number
+  default     = 5
+}
+
+variable "relay_stickiness_enabled" {
+  description = "Whether the local-relay target group should use ALB cookie stickiness for initial WebSocket routing."
+  type        = bool
+  default     = true
+}
+
+variable "relay_stickiness_duration_seconds" {
+  description = "ALB stickiness cookie duration for local-relay routing."
+  type        = number
+  default     = 300
+}
+
 variable "api_listener_rule_priority" {
   description = "ALB listener rule priority for API host/path routing."
   type        = number
   default     = 210
+}
+
+variable "relay_listener_rule_priority" {
+  description = "ALB listener rule priority for API /local-relay/* routing. Must be lower than api_listener_rule_priority so it matches first."
+  type        = number
+  default     = 200
 }
 
 variable "ecs_cluster" {

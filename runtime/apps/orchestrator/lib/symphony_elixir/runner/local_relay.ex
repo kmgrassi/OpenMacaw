@@ -9,7 +9,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
 
   @behaviour SymphonyElixir.Runner
 
-  alias SymphonyElixir.LocalRelay.{ProtocolExtensions, Registry, Session}
+  alias SymphonyElixir.LocalRelay.{ProtocolExtensions, Readiness, Registry, Session}
   alias SymphonyElixir.LocalRelay.Handlers.HelperManaged
   alias SymphonyElixir.MessageHistory
   alias SymphonyElixir.Runner.Observability
@@ -87,7 +87,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
 
     result =
       with {:ok, frame} <- dispatch_frame(session, prompt, work_item, correlation_id),
-           {:ok, helper} <- Registry.lookup(session.workspace_id, session.target_runner_kind),
+           {:ok, helper} <- Readiness.lookup(session.workspace_id, session.target_runner_kind),
            :ok <- ensure_model_available(session, helper),
            :ok <- ensure_capabilities(session, helper) do
         if session.metadata.tool_calling_mode == "cloud_managed" do
@@ -128,7 +128,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
 
     with :ok <- require_field(workspace_id, :workspace_id),
          :ok <- require_field(runner_kind, :target_runner_kind),
-         {:ok, _helper} <- Registry.lookup(workspace_id, runner_kind) do
+         {:ok, _helper} <- Readiness.lookup(workspace_id, runner_kind) do
       :ok
     else
       {:error, :missing_workspace_id} -> {:error, :missing_workspace_id}
