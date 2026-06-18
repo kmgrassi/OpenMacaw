@@ -49,8 +49,8 @@ describe("buildLocalExecution", () => {
           code: "helper_heartbeat_stale",
           severity: "error",
           command:
-            "launchctl kickstart -k gui/$(id -u)/com.openmacaw.local-runtime-helper",
-          logPath: "~/Library/Logs/local-runtime-helper.err.log",
+            "local-runtime-helper doctor --config ~/.config/openmacaw/runtime.toml && local-runtime-helper start --config ~/.config/openmacaw/runtime.toml",
+          logPath: null,
         }),
       ],
     });

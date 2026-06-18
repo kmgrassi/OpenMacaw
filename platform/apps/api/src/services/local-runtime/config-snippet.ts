@@ -7,9 +7,10 @@ import type { Tables } from "@kmgrassi/supabase-schema";
 
 export const LOCAL_RUNTIME_HEARTBEAT_INTERVAL_MS = 30_000;
 const HELPER_ONLINE_WINDOW_MS = LOCAL_RUNTIME_HEARTBEAT_INTERVAL_MS * 2;
-const HELPER_RESTART_COMMAND =
-  "launchctl kickstart -k gui/$(id -u)/com.openmacaw.local-runtime-helper";
-const HELPER_LOG_PATH = "~/Library/Logs/local-runtime-helper.err.log";
+const HELPER_DOCTOR_COMMAND =
+  "local-runtime-helper doctor --config ~/.config/openmacaw/runtime.toml";
+const HELPER_START_COMMAND =
+  "local-runtime-helper start --config ~/.config/openmacaw/runtime.toml";
 
 export type LocalRuntimeMachineRow = Pick<
   Tables<"local_runtime_machine">,
@@ -216,9 +217,10 @@ function buildLocalRuntimeDiagnostics(input: {
       message: hasHeartbeat
         ? "The helper was registered before, but production has not received a fresh relay heartbeat."
         : "Production has not received a relay registration from this helper.",
-      action: "Restart the managed helper, then refresh this page and run the dispatch test.",
-      command: HELPER_RESTART_COMMAND,
-      logPath: HELPER_LOG_PATH,
+      action:
+        "Run the helper doctor on the local machine. If it passes, start or restart the helper, then refresh this page and run the dispatch test.",
+      command: `${HELPER_DOCTOR_COMMAND} && ${HELPER_START_COMMAND}`,
+      logPath: null,
       detail: {
         machineId: input.machine.id,
         lastSeenAt: input.machine.last_seen_at,
@@ -247,9 +249,9 @@ function buildLocalRuntimeDiagnostics(input: {
       severity: "warning",
       title: "Helper is connected but degraded",
       message: "The helper is online, but its last advertised state indicates at least one runner is not healthy.",
-      action: "Run the dispatch test and check the helper logs for the failing runner.",
-      command: `tail -f ${HELPER_LOG_PATH}`,
-      logPath: HELPER_LOG_PATH,
+      action: "Run the helper doctor and dispatch test to identify the failing runner.",
+      command: HELPER_DOCTOR_COMMAND,
+      logPath: null,
       detail: { machineId: input.machine.id },
     });
   }
