@@ -131,7 +131,6 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
     config
     |> stringify_keys()
     |> Map.put_new("permission_mode", "acceptEdits")
-    |> Map.put_new("disallowed_tools", ["Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)"])
   end
 
   defp default_bridge_path do

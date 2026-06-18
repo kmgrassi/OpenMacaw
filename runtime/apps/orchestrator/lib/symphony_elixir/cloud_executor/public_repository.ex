@@ -21,35 +21,13 @@ defmodule SymphonyElixir.CloudExecutor.PublicRepository do
     branch describe diff grep log ls-files remote rev-parse show status
   )
 
-  # Per-command deny-list of flags that can spawn sub-processes, write to the
-  # filesystem, or otherwise escape the read-only intent of the allowlist. Each
-  # entry is matched against argv tokens after the executable (and, for git,
-  # the subcommand). A flag is considered to match if the argv token equals the
-  # deny entry exactly, or starts with the deny entry followed by `=` (covering
-  # `--option=value` forms).
-  #
-  # The deny-lists are intentionally conservative. We default-deny argv tokens
-  # that look like long options (`--something`) we have not explicitly
-  # vetted; short options (`-x`) are allowed unless individually denied because
-  # tools like `head`/`tail`/`grep` have many benign short flags that are
-  # tedious to enumerate. Operators must extend the per-command allow rules
-  # below if they need to permit new long options.
+  # Read-only execution still needs argument-level containment for commands
+  # whose options can spawn subprocesses or mutate the cloned workspace.
   @deny_flags %{
-    # find: -exec/-execdir/-ok/-okdir spawn arbitrary programs; -delete mutates
-    # the filesystem; -fprint*/-fls write to files outside the workspace.
     "find" => ~w(-exec -execdir -ok -okdir -delete -fprint -fprint0 -fprintf -fls),
-    # grep/rg: --exec is not a real flag for either, but several long options
-    # write output to files (`--output`, `-O` in rg) or load patterns from
-    # arbitrary files (`--file`).
     "grep" => ~w(--exec --output --files-with-matches=/dev/stdin),
     "rg" => ~w(--pre --pre-glob --hostname-bin -O --output),
-    # sed: -i/--in-place mutates files; -e/-f/--expression/--file with shell
-    # `e` command can execute programs; -s `e` flag inside a script can spawn
-    # subshells. We block in-place edits and the dangerous `e`/`w` commands by
-    # rejecting -i/--in-place and any -e/--expression argument.
     "sed" => ~w(-i --in-place),
-    # cat/head/tail/ls/pwd/wc: no sub-process or write flags exist by default,
-    # but be defensive by listing known dangerous-looking long flags.
     "cat" => [],
     "head" => [],
     "tail" => [],
@@ -58,8 +36,6 @@ defmodule SymphonyElixir.CloudExecutor.PublicRepository do
     "wc" => []
   }
 
-  # git subcommand argv deny-list. These reject flags or arguments that let
-  # git execute arbitrary commands or write outside the resource directory.
   @git_deny_flags %{
     "branch" => ~w(--edit-description -d -D -m -M --delete --rename --create-reflog),
     "describe" => [],
@@ -73,9 +49,6 @@ defmodule SymphonyElixir.CloudExecutor.PublicRepository do
     "status" => []
   }
 
-  # Long-option (--foo) deny prefixes that apply to every command. These cover
-  # well-known escape vectors that show up across multiple tools and pager
-  # configurations.
   @global_deny_prefixes ~w(--exec --exec-path --filter --upload-pack --receive-pack --eval)
 
   @type request :: map()
@@ -409,12 +382,6 @@ defmodule SymphonyElixir.CloudExecutor.PublicRepository do
 
   defp validate_read_only_argv([program | _args]), do: {:error, error("command_not_allowed", program)}
 
-  # Per-command argv validation enforces that no allowlisted command can spawn
-  # sub-processes (e.g. `find -exec`), mutate the filesystem
-  # (e.g. `find -delete`, `sed -i`), or load configuration that would let
-  # external code execute (e.g. `git --upload-pack=...`). Unknown long options
-  # (`--something`) are rejected by default; operators must extend the
-  # per-command allow rules above to whitelist new flags.
   defp validate_command_args(program, args) do
     deny = Map.get(@deny_flags, program, [])
     validate_argv_tokens(program, args, deny)
@@ -436,8 +403,7 @@ defmodule SymphonyElixir.CloudExecutor.PublicRepository do
         {:error, error("invalid_command", "argv entries must not contain null bytes")}
 
       denied_token?(token, deny) or denied_global?(token) ->
-        {:error,
-         error("command_not_allowed", "argument not permitted for #{context}: #{token}")}
+        {:error, error("command_not_allowed", "argument not permitted for #{context}: #{token}")}
 
       true ->
         validate_argv_tokens(context, rest, deny)

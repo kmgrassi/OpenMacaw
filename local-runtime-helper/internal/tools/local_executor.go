@@ -246,9 +246,6 @@ func (e *Executor) resolveRepoPath(repoRoot, requested string, kind repoPathKind
 	if rel == "" {
 		rel = "."
 	}
-	if denyReadPath(rel) {
-		return "", "", fmt.Errorf("denied path")
-	}
 	info, err := os.Stat(resolved)
 	if err != nil {
 		return "", "", err
@@ -459,9 +456,6 @@ func walkRepoEntries(repoRoot, directory string, depth, maxDepth, limit int, ent
 		if len(*entries) >= limit {
 			return nil
 		}
-		if ignoredEntry(child.Name()) {
-			continue
-		}
 		childPath := filepath.Join(directory, child.Name())
 		info, err := child.Info()
 		if err != nil {
@@ -471,7 +465,7 @@ func walkRepoEntries(repoRoot, directory string, depth, maxDepth, limit int, ent
 			continue
 		}
 		rel, err := filepath.Rel(repoRoot, childPath)
-		if err != nil || denyReadPath(rel) {
+		if err != nil {
 			continue
 		}
 		entryType := "file"
@@ -541,10 +535,6 @@ func (e *Executor) searchRepo(ctx context.Context, repoRoot, rel, searchRoot, qu
 		"--color",
 		"never",
 		"--hidden",
-		"--glob",
-		"!.git",
-		"--glob",
-		"!.env*",
 		"--max-count",
 		fmt.Sprint(limit),
 		"--",
@@ -592,9 +582,6 @@ func parseRGJSON(output string, limit, snippetChars int) []map[string]any {
 			continue
 		}
 		path := nestedText(data, "path")
-		if denyReadPath(path) {
-			continue
-		}
 		lineText := nestedText(data, "lines")
 		match := map[string]any{
 			"path":    strings.TrimPrefix(filepath.ToSlash(path), "./"),
@@ -873,37 +860,6 @@ func validateRelativePath(path string) error {
 		}
 	}
 	return nil
-}
-
-func denyReadPath(path string) bool {
-	if path == "" {
-		return true
-	}
-	path = filepath.ToSlash(path)
-	for _, segment := range strings.Split(path, "/") {
-		if segment == ".git" {
-			return true
-		}
-	}
-	base := strings.ToLower(filepath.Base(path))
-	switch base {
-	case ".env", ".npmrc", ".netrc", "id_rsa", "id_ed25519", "credentials", "credentials.json":
-		return true
-	}
-	if strings.HasPrefix(base, ".env.") ||
-		strings.HasSuffix(base, ".pem") ||
-		strings.HasSuffix(base, ".key") ||
-		strings.HasSuffix(base, ".p12") ||
-		strings.HasSuffix(base, ".pfx") ||
-		strings.Contains(base, "secret") ||
-		strings.Contains(base, "credential") {
-		return true
-	}
-	return false
-}
-
-func ignoredEntry(entry string) bool {
-	return entry == ".git" || strings.HasPrefix(entry, ".env")
 }
 
 func stringArg(args map[string]any, key string) string {

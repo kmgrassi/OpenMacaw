@@ -130,7 +130,6 @@ Example profile:
     "permission_mode": "acceptEdits",
     "tools": ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
     "allowed_tools": ["Read", "Write", "Edit", "Bash", "Glob", "Grep"],
-    "disallowed_tools": ["Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)"],
     "max_turns": 20
   }
 }

@@ -37,7 +37,6 @@ export type ClaudeCodeDiagnostic = {
 };
 
 const CLAUDE_CODE_TOOLS = ["Read", "Write", "Edit", "Bash", "Glob", "Grep"] as const;
-const CLAUDE_CODE_DISALLOWED_TOOLS = ["Read(./.env)", "Read(./.env.*)", "Read(./secrets/**)"] as const;
 
 function isFailedBridgeStatus(status: string | null | undefined) {
   const normalized = status?.trim().toLowerCase();
@@ -157,7 +156,7 @@ export function buildClaudeCodeDiagnostic(input: {
       permissionMode: "acceptEdits",
       tools: [...CLAUDE_CODE_TOOLS],
       allowedTools: [...CLAUDE_CODE_TOOLS],
-      disallowedTools: [...CLAUDE_CODE_DISALLOWED_TOOLS],
+      disallowedTools: [],
     },
     blockers,
   };

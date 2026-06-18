@@ -11,8 +11,6 @@ defmodule SymphonyElixir.Planner.RepositoryReadTools do
   - Reject path traversal and absolute paths supplied as repository-relative paths.
   - Resolve symlinks and reject reads or listings that escape the materialized
     workspace or repository cache.
-  - Deny secret-like files by default, including env files, private keys, and
-    credential/config files.
   - Bound list, search, snippet, and file-content output sizes.
   """
 
@@ -27,7 +25,6 @@ defmodule SymphonyElixir.Planner.RepositoryReadTools do
   @safety_rules [
     "no_path_traversal",
     "no_symlink_escape",
-    "deny_secret_like_files",
     "stay_inside_workspace_or_repo_cache"
   ]
 
@@ -164,6 +161,6 @@ defmodule SymphonyElixir.Planner.RepositoryReadTools do
   end
 
   defp safety_description do
-    "Implementations must reject path traversal, symlink escapes, and secret-like files."
+    "Implementations must reject path traversal and symlink escapes."
   end
 end

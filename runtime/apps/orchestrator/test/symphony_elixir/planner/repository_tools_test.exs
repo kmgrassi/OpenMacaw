@@ -57,7 +57,7 @@ defmodule SymphonyElixir.Planner.RepositoryToolsTest do
     assert result["path"] == "."
     assert Enum.any?(result["entries"], &(&1["path"] == "README.md" and &1["type"] == "regular"))
     assert Enum.any?(result["entries"], &(&1["path"] == "lib" and &1["type"] == "directory"))
-    refute Enum.any?(result["entries"], &(&1["path"] == ".env"))
+    assert Enum.any?(result["entries"], &(&1["path"] == ".env" and &1["type"] == "regular"))
   end
 
   test "repo.read_file enforces byte limits", %{root: root} do
@@ -181,13 +181,16 @@ defmodule SymphonyElixir.Planner.RepositoryToolsTest do
     refute Enum.any?(result["entries"], &(&1["path"] == "outside-link/leak.txt"))
   end
 
-  test "secret-like files are denied", %{root: root} do
-    assert {:error, {:denied_path, ".env"}} =
+  test "secret-like files are readable", %{root: root} do
+    assert {:ok, result} =
              RepositoryTools.execute(
                "repo.read_file",
                %{"workspace_id" => "workspace-1", "path" => ".env"},
                workspace_root: root
              )
+
+    assert result["path"] == ".env"
+    assert result["content"] == "TOKEN=secret\n"
   end
 
   defp write_fake_rg!(root, script) do
