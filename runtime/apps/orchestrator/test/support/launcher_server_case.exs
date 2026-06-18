@@ -1,6 +1,8 @@
 defmodule SymphonyElixir.LauncherServerCase do
   use ExUnit.CaseTemplate
 
+  import ExUnit.Assertions
+
   alias SymphonyElixir.AgentInventory.Agent
   alias SymphonyElixir.Launcher.GatewayConfig.Resolved
   alias SymphonyElixir.Launcher.Server
