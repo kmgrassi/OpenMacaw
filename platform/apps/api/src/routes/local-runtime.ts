@@ -150,7 +150,7 @@ export function registerLocalRuntimeRoutes(app: Express, launcherRequest: Launch
       requireAuth: true,
       async handler({ req, res, userId }) {
         const workspaceId = requireWorkspaceId(req);
-        await requireWorkspaceAdminAccess(userId, workspaceId);
+        await requireWorkspaceAccess(userId, workspaceId);
         return res.status(200).json(await listLocalRuntimesForWorkspace(workspaceId));
       },
       onError: (res, error) =>

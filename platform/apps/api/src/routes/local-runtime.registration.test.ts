@@ -55,6 +55,76 @@ describe("local runtime route registration", () => {
     });
   });
 
+  it("allows non-admin workspace members to list local runtimes", async () => {
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(
+      createMockSupabaseClient({
+        workspaces: [{ id: workspaceId, owner_user_id: "other-owner" }],
+        workspace_members: [
+          { workspace_id: workspaceId, user_id: "11111111-1111-4111-8111-111111111111", role: "member" },
+        ],
+        local_runtime_machine: [
+          {
+            id: "machine-1",
+            workspace_id: workspaceId,
+            display_name: "Member-visible helper",
+            last_seen_at: null,
+            revoked_at: null,
+            runner_kinds: ["openai_compatible"],
+            advertised_runner_kinds: [],
+            status: "offline",
+          },
+        ],
+        routing_rule: [
+          {
+            id: "local-rule-1",
+            workspace_id: workspaceId,
+            name: "local:qwen3-coder:30b",
+            runner_kind: "local_relay",
+            model: "qwen3-coder:30b",
+            provider: "openai_compatible",
+            machine_id: "machine-1",
+            last_error: null,
+            last_error_at: null,
+          },
+        ],
+        routing_rule_match: [
+          {
+            rule_id: "local-rule-1",
+            kind: "local_machine",
+            key: "id",
+            value: "machine-1",
+            workspace_id: workspaceId,
+          },
+          {
+            rule_id: "local-rule-1",
+            kind: "local_endpoint",
+            key: "url",
+            value: "http://127.0.0.1:11434/v1",
+            workspace_id: workspaceId,
+          },
+        ],
+        local_runtime_model: [],
+        agent: [],
+      }) as never,
+    );
+
+    const response = await fetch(`${baseUrl}/api/local-runtime/runtimes?workspaceId=${workspaceId}`, {
+      headers: {
+        authorization: "Bearer test-token",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      runtimes: [
+        {
+          id: "machine-1",
+          machineDisplayName: "Member-visible helper",
+        },
+      ],
+    });
+  });
+
   it("lists a freshly heartbeating helper as online when persisted status is still offline", async () => {
     const db = withOwnedWorkspace({
       routing_rule: [
