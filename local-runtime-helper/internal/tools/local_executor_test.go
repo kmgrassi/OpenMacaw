@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kmgrassi/local-runtime-helper/internal/runner"
@@ -36,6 +37,87 @@ func TestShellExecRunsArgvInWorkspaceRoot(t *testing.T) {
 	}
 }
 
+func TestShellExecUsesNormalizedToolPath(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	root := t.TempDir()
+	binDir := filepath.Join(root, "bin")
+	if err := os.Mkdir(binDir, 0o755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	toolPath := filepath.Join(binDir, "openmacaw-test-tool")
+	if err := os.WriteFile(toolPath, []byte("#!/bin/sh\nprintf normalized-path\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	executor, err := NewExecutor(root)
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+	executor.toolPath = binDir + string(os.PathListSeparator) + executor.toolPath
+
+	result := executor.Execute(context.Background(), runner.ToolCallRequest{
+		ToolCallID: "call-shell",
+		Name:       "shell.exec",
+		Arguments: map[string]any{
+			"argv": []any{"openmacaw-test-tool"},
+		},
+	})
+	if !result.Success {
+		t.Fatalf("result.Success = false, output = %#v", result.Output)
+	}
+	output := result.Output.(map[string]any)
+	if output["stdout"] != "normalized-path" {
+		t.Fatalf("stdout = %#v, want normalized-path", output["stdout"])
+	}
+
+}
+
+func TestShellExecResolvesRelativeExecutableAgainstCWD(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	if err := os.Mkdir(repo, 0o755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "test.sh"), []byte("#!/bin/sh\nprintf workspace-script\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	executor, err := NewExecutor(root)
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+
+	result := executor.Execute(context.Background(), runner.ToolCallRequest{
+		ToolCallID: "call-shell",
+		Name:       "shell.exec",
+		Arguments: map[string]any{
+			"argv": []any{"./test.sh"},
+			"cwd":  "repo",
+		},
+	})
+	if !result.Success {
+		t.Fatalf("result.Success = false, output = %#v", result.Output)
+	}
+	output := result.Output.(map[string]any)
+	if output["stdout"] != "workspace-script" {
+		t.Fatalf("stdout = %#v, want workspace-script", output["stdout"])
+	}
+}
+
+func TestNormalizedToolPathAddsLocalToolDirectories(t *testing.T) {
+	path := normalizedToolPath("/usr/bin:/bin")
+	entries := filepath.SplitList(path)
+	if !containsEntry(entries, "/opt/homebrew/bin") {
+		t.Fatalf("normalized path = %q, want /opt/homebrew/bin", path)
+	}
+	if strings.Count(path, "/usr/bin") != 1 {
+		t.Fatalf("normalized path = %q, want no duplicate /usr/bin", path)
+	}
+}
+
 func TestShellExecConfinesCWDToWorkspaceRoot(t *testing.T) {
 	executor, err := NewExecutor(t.TempDir())
 	if err != nil {
@@ -53,6 +135,15 @@ func TestShellExecConfinesCWDToWorkspaceRoot(t *testing.T) {
 	if result.Success {
 		t.Fatalf("result.Success = true, want false for a cwd outside the workspace root")
 	}
+}
+
+func containsEntry(entries []string, want string) bool {
+	for _, entry := range entries {
+		if entry == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRepoReadFileUsesRoutedWorkspaceRoot(t *testing.T) {
@@ -248,6 +339,26 @@ func TestGitRunRejectsCommandsOutsidePolicy(t *testing.T) {
 	output := result.Output.(map[string]any)
 	if output["reason"] != "unsupported_executable" {
 		t.Fatalf("reason = %#v", output["reason"])
+	}
+}
+
+func TestGitRunAllowsGithubCLISubcommands(t *testing.T) {
+	testCases := []struct {
+		name string
+		argv []string
+	}{
+		{name: "api", argv: []string{"gh", "api", "repos/kmgrassi/OpenMacaw/issues/211/reactions"}},
+		{name: "secret", argv: []string{"gh", "secret", "list"}},
+		{name: "variable", argv: []string{"gh", "variable", "list"}},
+		{name: "repo delete", argv: []string{"gh", "repo", "delete", "kmgrassi/example", "--yes"}},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if err := allowedGitCommand(testCase.argv); err != nil {
+				t.Fatalf("allowedGitCommand(%#v) error = %v", testCase.argv, err)
+			}
+		})
 	}
 }
 

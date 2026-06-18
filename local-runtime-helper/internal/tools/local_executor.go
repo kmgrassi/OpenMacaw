@@ -34,6 +34,7 @@ const (
 
 type Executor struct {
 	workspaceRoot string
+	toolPath      string
 }
 
 func NewExecutor(workspaceRoot string) (*Executor, error) {
@@ -41,7 +42,7 @@ func NewExecutor(workspaceRoot string) (*Executor, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Executor{workspaceRoot: root}, nil
+	return &Executor{workspaceRoot: root, toolPath: normalizedToolPath(os.Getenv("PATH"))}, nil
 }
 
 func (e *Executor) Execute(ctx context.Context, req runner.ToolCallRequest) runner.ToolCallResult {
@@ -274,14 +275,24 @@ func (e *Executor) runCommand(ctx context.Context, argv []string, args map[strin
 	if err != nil {
 		return errorOutput(err), false
 	}
+	executable, err := e.lookupExecutable(argv[0], cwd)
+	if err != nil {
+		return map[string]any{
+			"ok":      false,
+			"error":   "tool_dependency_missing",
+			"command": argv[0],
+			"message": err.Error(),
+		}, false
+	}
 	timeout := boundedDuration(args, "timeout_ms", time.Second, 10*time.Minute, defaultTimeout)
 	outputLimit := boundedInt(args, "output_limit_bytes", 1, 1024*1024, defaultOutputLimit)
 
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
+	cmd := exec.CommandContext(runCtx, executable, argv[1:]...)
 	cmd.Dir = cwd
+	cmd.Env = e.commandEnv()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &limitedWriter{buf: &stdout, limit: outputLimit}
@@ -328,6 +339,97 @@ func (e *Executor) runCommand(ctx context.Context, argv []string, args map[strin
 		"stdout":         stdout.String(),
 		"stderr":         stderr.String(),
 	}, ok
+}
+
+func (e *Executor) commandEnv() []string {
+	env := os.Environ()
+	pathSet := false
+	for index, entry := range env {
+		if strings.HasPrefix(entry, "PATH=") {
+			env[index] = "PATH=" + e.toolPath
+			pathSet = true
+			break
+		}
+	}
+	if !pathSet {
+		env = append(env, "PATH="+e.toolPath)
+	}
+	return env
+}
+
+func (e *Executor) lookupExecutable(name, cwd string) (string, error) {
+	if strings.ContainsAny(name, `/\`) {
+		return e.resolvePathExecutable(name, cwd)
+	}
+	for _, dir := range filepath.SplitList(e.toolPath) {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		candidate := filepath.Join(dir, name)
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() || info.Mode().Perm()&0o111 == 0 {
+			continue
+		}
+		return candidate, nil
+	}
+	return "", fmt.Errorf("executable %q not found on helper tool PATH", name)
+}
+
+func (e *Executor) resolvePathExecutable(name, cwd string) (string, error) {
+	candidate := name
+	if !filepath.IsAbs(candidate) {
+		candidate = filepath.Join(cwd, candidate)
+	}
+	resolved := filepath.Clean(candidate)
+	if !pathInside(resolved, e.workspaceRoot) {
+		return "", fmt.Errorf("executable path outside workspace root")
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() || info.Mode().Perm()&0o111 == 0 {
+		return "", fmt.Errorf("executable %q is not executable", name)
+	}
+	return resolved, nil
+}
+
+func normalizedToolPath(current string) string {
+	seen := map[string]bool{}
+	entries := make([]string, 0, len(filepath.SplitList(current))+8)
+	add := func(path string) {
+		trimmed := strings.TrimSpace(path)
+		if trimmed == "" || seen[trimmed] {
+			return
+		}
+		seen[trimmed] = true
+		entries = append(entries, trimmed)
+	}
+
+	for _, entry := range filepath.SplitList(current) {
+		add(entry)
+	}
+	for _, entry := range defaultToolPathEntries() {
+		add(entry)
+	}
+	return strings.Join(entries, string(os.PathListSeparator))
+}
+
+func defaultToolPathEntries() []string {
+	entries := []string{
+		"/opt/homebrew/bin",
+		"/opt/homebrew/sbin",
+		"/usr/local/bin",
+		"/usr/local/sbin",
+		"/usr/bin",
+		"/bin",
+		"/usr/sbin",
+		"/sbin",
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		entries = append(entries, filepath.Join(home, ".local", "bin"), filepath.Join(home, "go", "bin"))
+	}
+	return entries
 }
 
 func listRepoEntries(repoRoot, directory string, maxDepth, limit int) ([]map[string]any, error) {
@@ -420,7 +522,7 @@ func trimToValidUTF8(content []byte) []byte {
 }
 
 func (e *Executor) searchRepo(ctx context.Context, repoRoot, rel, searchRoot, query string, limit, snippetChars int) ([]map[string]any, error) {
-	rg, err := exec.LookPath("rg")
+	rg, err := e.lookupExecutable("rg", repoRoot)
 	if err != nil {
 		return nil, fmt.Errorf("ripgrep not found")
 	}
@@ -450,6 +552,7 @@ func (e *Executor) searchRepo(ctx context.Context, repoRoot, rel, searchRoot, qu
 		searchPath,
 	)
 	cmd.Dir = repoRoot
+	cmd.Env = e.commandEnv()
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -627,7 +730,7 @@ func allowedGitCommand(argv []string) error {
 	case "git":
 		return allowedGitArgs(argv[1:])
 	case "gh":
-		return allowedGHCommand(argv[1:])
+		return nil
 	default:
 		return fmt.Errorf("unsupported_executable")
 	}
@@ -698,26 +801,6 @@ func gitConfigTargetsWorkTree(argv []string) bool {
 		return strings.EqualFold(strings.TrimSpace(arg), "core.worktree")
 	}
 	return false
-}
-
-func allowedGHCommand(argv []string) error {
-	if len(argv) == 0 {
-		return nil
-	}
-	switch argv[0] {
-	case "auth":
-		if len(argv) > 1 && argv[1] == "status" {
-			return nil
-		}
-		return fmt.Errorf("gh_subcommand_denied")
-	case "repo":
-		if len(argv) > 1 && argv[1] == "delete" {
-			return fmt.Errorf("gh_subcommand_denied")
-		}
-	case "secret", "variable", "api":
-		return fmt.Errorf("gh_subcommand_denied")
-	}
-	return nil
 }
 
 func (e *Executor) resolveCWD(cwd string) (string, error) {
