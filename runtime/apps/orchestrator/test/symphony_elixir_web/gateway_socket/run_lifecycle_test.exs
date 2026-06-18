@@ -23,8 +23,45 @@ defmodule SymphonyElixirWeb.GatewaySocket.RunLifecycleTest do
     assert_receive {:gateway_runner_down, ^session_key, "run-down", reason}
     assert reason in [:killed, :noproc]
 
-    :timer.sleep(20)
+    assert_eventually(fn ->
+      state = :sys.get_state(SessionStore)
+      assert state.runs["run-down"] == nil
+      assert state.monitors == %{}
+    end)
+
     {:ok, %{run: _run}} = SessionStore.start_run(scope, "run-next", self())
+  end
+
+  test "owner exit clears the active run lock" do
+    scope = %{
+      agent_id: "11111111-1111-4111-8111-111111111111",
+      workspace_id: "22222222-2222-4222-8222-222222222222",
+      user_id: "33333333-3333-4333-8333-333333333333",
+      session_key: default_session_key()
+    }
+
+    {:ok, _session} = SessionStore.ensure_session(scope)
+
+    owner =
+      spawn(fn ->
+        receive do
+          :stop -> :ok
+        end
+      end)
+
+    {:ok, sleeper} =
+      Task.Supervisor.start_child(SymphonyElixir.TaskSupervisor, fn -> Process.sleep(5_000) end)
+
+    {:ok, %{run: _run}} = SessionStore.start_run(scope, "run-owner-down", owner)
+    {:ok, _attached} = SessionStore.attach_run("run-owner-down", sleeper)
+
+    ref = Process.monitor(owner)
+    send(owner, :stop)
+    assert_receive {:DOWN, ^ref, :process, ^owner, :normal}
+
+    assert_eventually(fn ->
+      assert {:ok, %{run: _run}} = SessionStore.start_run(scope, "run-next", self())
+    end)
   end
 
   test "gateway_runner_down clears the run and records an error assistant message" do
@@ -170,4 +207,18 @@ defmodule SymphonyElixirWeb.GatewaySocket.RunLifecycleTest do
     assert {:ok, nil} = SessionStore.complete_run("run-delete")
     assert Process.alive?(Process.whereis(SessionStore))
   end
+
+  defp assert_eventually(fun, attempts \\ 20)
+
+  defp assert_eventually(fun, attempts) when attempts > 0 do
+    try do
+      fun.()
+    rescue
+      ExUnit.AssertionError ->
+        Process.sleep(25)
+        assert_eventually(fun, attempts - 1)
+    end
+  end
+
+  defp assert_eventually(fun, 0), do: fun.()
 end

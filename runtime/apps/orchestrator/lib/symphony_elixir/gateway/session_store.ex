@@ -176,13 +176,18 @@ defmodule SymphonyElixir.Gateway.SessionStore do
             id: run_id,
             session_key: session_key,
             owner_pid: owner_pid,
+            owner_monitor_ref: Process.monitor(owner_pid),
             task_pid: nil,
             monitor_ref: nil,
             started_at: now_ms(),
             assistant_buffer: ""
           }
 
-          new_state = put_in(state, [:runs, run_id], run)
+          new_state =
+            state
+            |> put_in([:runs, run_id], run)
+            |> put_in([:monitors, run.owner_monitor_ref], {run_id, :owner})
+
           {:reply, {:ok, %{session: session, run: run}}, new_state}
         end
     end
@@ -200,7 +205,7 @@ defmodule SymphonyElixir.Gateway.SessionStore do
         new_state =
           state
           |> put_in([:runs, run_id], updated_run)
-          |> put_in([:monitors, monitor_ref], run_id)
+          |> put_in([:monitors, monitor_ref], {run_id, :task})
 
         {:reply, {:ok, updated_run}, new_state}
     end
@@ -212,7 +217,7 @@ defmodule SymphonyElixir.Gateway.SessionStore do
         {:reply, {:ok, nil}, state}
 
       run ->
-        state = demonitor_run(state, run)
+        state = demonitor_run_and_owner(state, run)
 
         assistant_text =
           final_assistant_text(run.assistant_buffer, Keyword.get(opts, :assistant_fallback))
@@ -249,7 +254,7 @@ defmodule SymphonyElixir.Gateway.SessionStore do
         {:reply, {:ok, nil}, state}
 
       run ->
-        state = state |> demonitor_run(run) |> remove_run(run_id)
+        state = state |> demonitor_run_and_owner(run) |> remove_run(run_id)
         {:reply, {:ok, Map.get(state.sessions, run.session_key)}, state}
     end
   end
@@ -270,7 +275,7 @@ defmodule SymphonyElixir.Gateway.SessionStore do
         if is_pid(task_pid), do: Process.exit(task_pid, :kill)
         session = Map.get(state.sessions, run.session_key)
         notify_run_aborted(run)
-        state = state |> demonitor_run(run) |> remove_run(run.id)
+        state = state |> demonitor_run_and_owner(run) |> remove_run(run.id)
         {:reply, {:ok, session}, state}
     end
   end
@@ -309,7 +314,7 @@ defmodule SymphonyElixir.Gateway.SessionStore do
           run ->
             if is_pid(run.task_pid), do: Process.exit(run.task_pid, :kill)
             notify_run_aborted(run)
-            acc |> demonitor_run(run) |> remove_run(run_id)
+            acc |> demonitor_run_and_owner(run) |> remove_run(run_id)
         end
       end)
 
@@ -398,7 +403,21 @@ defmodule SymphonyElixir.Gateway.SessionStore do
       {nil, monitors} ->
         {:noreply, %{state | monitors: monitors}}
 
-      {run_id, monitors} ->
+      {{run_id, :owner}, monitors} ->
+        run = Map.get(state.runs, run_id)
+        state = %{state | monitors: monitors}
+
+        if is_map(run) and is_pid(run.task_pid), do: Process.exit(run.task_pid, :kill)
+
+        state =
+          case run do
+            nil -> state
+            run -> state |> demonitor_run(run) |> remove_run(run_id)
+          end
+
+        {:noreply, state}
+
+      {{run_id, :task}, monitors} ->
         run = Map.get(state.runs, run_id)
         state = %{state | monitors: monitors}
 
@@ -414,7 +433,8 @@ defmodule SymphonyElixir.Gateway.SessionStore do
               send(owner_pid, {:gateway_runner_down, run.session_key, run_id, shutdown_reason})
             end
 
-            {:noreply, %{state | runs: Map.delete(state.runs, run_id)}}
+            state = state |> demonitor_run_and_owner(run) |> remove_run(run_id)
+            {:noreply, state}
         end
     end
   end
@@ -498,6 +518,19 @@ defmodule SymphonyElixir.Gateway.SessionStore do
   end
 
   defp demonitor_run(state, _run), do: state
+
+  defp demonitor_owner(state, %{owner_monitor_ref: ref}) when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+    %{state | monitors: Map.delete(state.monitors, ref)}
+  end
+
+  defp demonitor_owner(state, _run), do: state
+
+  defp demonitor_run_and_owner(state, run) do
+    state
+    |> demonitor_run(run)
+    |> demonitor_owner(run)
+  end
 
   # Killing the task and demonitor-flushing means no :DOWN and no subsequent
   # completion will reach the owner socket, so tell it the run is over here.

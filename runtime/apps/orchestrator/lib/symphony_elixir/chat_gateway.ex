@@ -41,9 +41,10 @@ defmodule SymphonyElixir.ChatGateway do
     with {:ok, scope} <- require_scope(scope),
          {:ok, agent} <- fetch_agent(scope, opts),
          session_thread_id = session_thread_id(scope, agent, opts),
+         :ok <- ensure_runtime_session(scope, agent),
+         {:ok, %{run: run}} <- SessionStore.start_run(scope, run_id, owner_pid),
          :ok <- SessionStore.append_user_message(scope, body),
          :ok <- record_user_message(scope, session_thread_id, body, run_id, metadata, opts),
-         {:ok, %{run: run}} <- SessionStore.start_run(scope, run_id, owner_pid),
          runner_scope = runner_scope(scope, session_thread_id),
          {:ok, task_pid} <- start_and_attach_runner(agent, runner_scope, body, run_id, owner_pid, opts) do
       send(task_pid, {:gateway_start, run_id})
@@ -90,11 +91,7 @@ defmodule SymphonyElixir.ChatGateway do
   end
 
   defp ensure_session_thread(scope, agent, opts) do
-    SessionStore.ensure_session(scope,
-      label: agent.name || scope.session_key,
-      display_name: agent.name,
-      model: model_name(agent)
-    )
+    ensure_runtime_session(scope, agent)
 
     case message_log().upsert_session_thread(scope,
            label: agent.name || scope.session_key,
@@ -109,6 +106,17 @@ defmodule SymphonyElixir.ChatGateway do
       {:error, reason} ->
         log_message_persistence_failed(scope, reason, nil, Keyword.get(opts, :run_id), opts, "message_log.upsert_session_thread")
         nil
+    end
+  end
+
+  defp ensure_runtime_session(scope, agent) do
+    case SessionStore.ensure_session(scope,
+           label: agent.name || scope.session_key,
+           display_name: agent.name,
+           model: model_name(agent)
+         ) do
+      {:ok, _session} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
