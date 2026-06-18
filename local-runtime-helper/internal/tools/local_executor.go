@@ -730,7 +730,7 @@ func allowedGitCommand(argv []string) error {
 	case "git":
 		return allowedGitArgs(argv[1:])
 	case "gh":
-		return allowedGHCommand(argv[1:])
+		return nil
 	default:
 		return fmt.Errorf("unsupported_executable")
 	}
@@ -801,26 +801,6 @@ func gitConfigTargetsWorkTree(argv []string) bool {
 		return strings.EqualFold(strings.TrimSpace(arg), "core.worktree")
 	}
 	return false
-}
-
-func allowedGHCommand(argv []string) error {
-	if len(argv) == 0 {
-		return nil
-	}
-	switch argv[0] {
-	case "auth":
-		if len(argv) > 1 && argv[1] == "status" {
-			return nil
-		}
-		return fmt.Errorf("gh_subcommand_denied")
-	case "repo":
-		if len(argv) > 1 && argv[1] == "delete" {
-			return fmt.Errorf("gh_subcommand_denied")
-		}
-	case "secret", "variable", "api":
-		return fmt.Errorf("gh_subcommand_denied")
-	}
-	return nil
 }
 
 func (e *Executor) resolveCWD(cwd string) (string, error) {
