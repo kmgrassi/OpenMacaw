@@ -1,10 +1,10 @@
-import { ApiRouteError } from "../../../http.js";
 import { getServiceRoleSupabase, getUserScopedSupabase, normalizeSupabaseError } from "../../../supabase-client.js";
 import { computeScheduledTaskNextRunAt } from "../../scheduled-tasks.js";
 import { asJson, routerToolPolicyDefaults } from "../builders.js";
 import { getSetupDefaults } from "../defaults.js";
 import { workspaceRouterAgentId, workspaceRouterOptimizationTaskId } from "../identity.js";
 import type { AgentRow } from "../types.js";
+import { pickClaimableAgent, requireAgentRow } from "./agent-row-helpers.js";
 import { DEFAULT_AGENT_SELECT } from "./selects.js";
 
 const ROUTER_TASK_KIND = "router_optimization";
@@ -34,8 +34,7 @@ async function findClaimableWorkspaceRouterAgent(accessToken: string, workspaceI
     .order("updated_at", { ascending: true });
 
   if (error) throw normalizeSupabaseError("agent query", error);
-  const agents = data as AgentRow[];
-  return agents.find((agent) => agent.status === "active") ?? agents[0] ?? null;
+  return pickClaimableAgent(data as AgentRow[]);
 }
 
 async function updateWorkspaceRouterAgent(accessToken: string, agent: AgentRow, userId: string) {
@@ -52,7 +51,11 @@ async function updateWorkspaceRouterAgent(accessToken: string, agent: AgentRow, 
     .select(DEFAULT_AGENT_SELECT);
 
   if (error) throw normalizeSupabaseError("agent update", error);
-  return (data[0] as AgentRow | undefined) ?? agent;
+  return requireAgentRow(
+    data as AgentRow[] | undefined,
+    "router_agent_update_failed",
+    "Router agent update returned no row",
+  );
 }
 
 async function createWorkspaceRouterAgent(accessToken: string, workspaceId: string, userId: string) {
@@ -75,11 +78,11 @@ async function createWorkspaceRouterAgent(accessToken: string, workspaceId: stri
     .select(DEFAULT_AGENT_SELECT);
 
   if (error) throw normalizeSupabaseError("agent upsert", error);
-  const agent = data[0] as AgentRow | undefined;
-  if (!agent) {
-    throw new ApiRouteError(502, "router_agent_create_failed", "Router agent creation returned no row");
-  }
-  return agent;
+  return requireAgentRow(
+    data as AgentRow[] | undefined,
+    "router_agent_create_failed",
+    "Router agent creation returned no row",
+  );
 }
 
 function metadataKind(metadata: unknown) {
