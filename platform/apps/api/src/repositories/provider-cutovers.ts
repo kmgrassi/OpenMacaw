@@ -34,37 +34,49 @@ const WorkItemWorkspaceRowSchema = z.object({
 });
 
 type ProviderCutoverRow = z.infer<typeof ProviderCutoverRowSchema>;
+type ProviderCutoverInsert = Omit<ProviderCutoverRow, "id">;
+type WorkItemWorkspaceRow = z.infer<typeof WorkItemWorkspaceRowSchema>;
 
 const PROVIDER_CUTOVER_SELECT =
   "id,workspace_id,agent_id,work_item_id,triggered_at,from_provider,from_model,from_credential_id,to_provider,to_model,to_credential_id,trigger_error_code,trigger_status_code,elapsed_ms,outcome" as const;
 
-type UntypedSupabaseResponse = PromiseLike<{
-  data: unknown;
-  error: Parameters<typeof normalizeSupabaseError>[1] | null;
+type SupabaseError = Parameters<typeof normalizeSupabaseError>[1];
+
+type TypedSupabaseResponse<Row> = PromiseLike<{
+  data: Row[] | Row | null;
+  error: SupabaseError | null;
 }>;
 
-type UntypedSupabaseQuery = UntypedSupabaseResponse & {
-  select: (columns?: string) => UntypedSupabaseQuery;
-  eq: (column: string, value: unknown) => UntypedSupabaseQuery;
-  lt: (column: string, value: unknown) => UntypedSupabaseQuery;
-  or: (filters: string) => UntypedSupabaseQuery;
-  order: (column: string, options?: Record<string, unknown>) => UntypedSupabaseQuery;
-  limit: (count: number) => UntypedSupabaseResponse;
-  single: () => UntypedSupabaseResponse;
-  maybeSingle: () => UntypedSupabaseResponse;
+type TypedSupabaseSingleResponse<Row> = PromiseLike<{
+  data: Row | null;
+  error: SupabaseError | null;
+}>;
+
+type TypedSupabaseQuery<Row> = TypedSupabaseResponse<Row> & {
+  select: (columns?: string) => TypedSupabaseQuery<Row>;
+  eq: (column: string, value: unknown) => TypedSupabaseQuery<Row>;
+  lt: (column: string, value: unknown) => TypedSupabaseQuery<Row>;
+  or: (filters: string) => TypedSupabaseQuery<Row>;
+  order: (column: string, options?: Record<string, unknown>) => TypedSupabaseQuery<Row>;
+  limit: (count: number) => TypedSupabaseResponse<Row>;
+  single: () => TypedSupabaseSingleResponse<Row>;
+  maybeSingle: () => TypedSupabaseSingleResponse<Row>;
 };
 
-type UntypedSupabaseTable = {
-  select: (columns?: string) => UntypedSupabaseQuery;
-  insert: (values: Record<string, unknown>) => UntypedSupabaseQuery;
+type TypedSupabaseTable<Row, InsertRow> = {
+  select: (columns?: string) => TypedSupabaseQuery<Row>;
+  insert: (values: InsertRow) => TypedSupabaseQuery<Row>;
 };
 
-function providerCutoverTable() {
-  return getServiceRoleSupabase().from("provider_cutover" as never) as unknown as UntypedSupabaseTable;
+function providerCutoverTable(): TypedSupabaseTable<ProviderCutoverRow, ProviderCutoverInsert> {
+  return getServiceRoleSupabase().from("provider_cutover" as never) as unknown as TypedSupabaseTable<
+    ProviderCutoverRow,
+    ProviderCutoverInsert
+  >;
 }
 
-function workItemsTable() {
-  return getServiceRoleSupabase().from("work_items") as unknown as UntypedSupabaseTable;
+function workItemsTable(): TypedSupabaseTable<WorkItemWorkspaceRow, never> {
+  return getServiceRoleSupabase().from("work_items") as unknown as TypedSupabaseTable<WorkItemWorkspaceRow, never>;
 }
 
 function mapProviderCutover(row: ProviderCutoverRow): ProviderCutover {
@@ -138,7 +150,7 @@ export async function listForWorkItem(workItemId: string): Promise<ProviderCutov
         .order("triggered_at", { ascending: false });
 
       if (error) throw normalizeSupabaseError("provider_cutover query", error);
-      return parseSupabaseRows("provider_cutover query", ProviderCutoverRowSchema, data as unknown[] | null).map(
+      return parseSupabaseRows("provider_cutover query", ProviderCutoverRowSchema, Array.isArray(data) ? data : []).map(
         mapProviderCutover,
       );
     },
@@ -180,7 +192,7 @@ export async function listRecentForWorkspace(
       const rows = parseSupabaseRows(
         "provider_cutover recent query",
         ProviderCutoverRowSchema,
-        data as unknown[] | null,
+        Array.isArray(data) ? data : [],
       );
       const pageRows = rows.slice(0, limit);
       const lastRow = pageRows.at(-1);
