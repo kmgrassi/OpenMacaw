@@ -1,9 +1,9 @@
-import { ApiRouteError } from "../../../http.js";
 import { getUserScopedSupabase, normalizeSupabaseError } from "../../../supabase-client.js";
 import { asJson, buildModelSettings, managerAgentName, managerToolPolicyDefaults } from "../builders.js";
 import { getSetupDefaults } from "../defaults.js";
 import { workspaceManagerAgentId } from "../identity.js";
 import type { AgentRow } from "../types.js";
+import { pickClaimableAgent, requireAgentRow } from "./agent-row-helpers.js";
 import { DEFAULT_AGENT_SELECT } from "./selects.js";
 
 async function findClaimableWorkspaceManagerAgent(accessToken: string, workspaceId: string) {
@@ -15,8 +15,7 @@ async function findClaimableWorkspaceManagerAgent(accessToken: string, workspace
     .order("updated_at", { ascending: true });
 
   if (error) throw normalizeSupabaseError("agent query", error);
-  const agents = data as AgentRow[];
-  return agents.find((agent) => agent.status === "active") ?? agents[0] ?? null;
+  return pickClaimableAgent(data as AgentRow[]);
 }
 
 function hasPrimaryModelSettings(agent: AgentRow) {
@@ -44,7 +43,11 @@ async function updateWorkspaceManagerAgent(accessToken: string, agent: AgentRow,
     .select(DEFAULT_AGENT_SELECT);
 
   if (error) throw normalizeSupabaseError("agent update", error);
-  return (data[0] as AgentRow | undefined) ?? agent;
+  return requireAgentRow(
+    data as AgentRow[] | undefined,
+    "manager_agent_update_failed",
+    "Manager agent update returned no row",
+  );
 }
 
 async function createWorkspaceManagerAgent(accessToken: string, workspaceId: string, userId: string) {
@@ -66,11 +69,11 @@ async function createWorkspaceManagerAgent(accessToken: string, workspaceId: str
     )
     .select(DEFAULT_AGENT_SELECT);
   if (error) throw normalizeSupabaseError("agent upsert", error);
-  const agent = data[0] as AgentRow | undefined;
-  if (!agent) {
-    throw new ApiRouteError(502, "manager_agent_create_failed", "Manager agent creation returned no row");
-  }
-  return agent;
+  return requireAgentRow(
+    data as AgentRow[] | undefined,
+    "manager_agent_create_failed",
+    "Manager agent creation returned no row",
+  );
 }
 
 export async function ensureWorkspaceManagerAgent(accessToken: string, workspaceId: string, userId: string) {

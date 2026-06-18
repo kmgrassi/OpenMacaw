@@ -1,11 +1,11 @@
 import type { DefaultAgentRole } from "../../../../../../contracts/setup.js";
-import { ApiRouteError } from "../../../http.js";
 import { findSetupAgentById } from "../../../repositories/agents.js";
 import { getUserScopedSupabase, normalizeSupabaseError } from "../../../supabase-client.js";
 import { asJson, buildModelSettings, defaultAgentName, plannerToolPolicyDefaults } from "../builders.js";
 import { getSetupDefaults } from "../defaults.js";
 import { personalDefaultAgentId } from "../identity.js";
 import type { AgentRow, DefaultAssignmentRow } from "../types.js";
+import { pickClaimableAgent, requireAgentRow } from "./agent-row-helpers.js";
 import { writeGatewayConfigForDefaultAgent } from "./gateway-config-writer.js";
 import { DEFAULT_AGENT_SELECT, DEFAULT_ASSIGNMENT_SELECT } from "./selects.js";
 
@@ -66,8 +66,7 @@ async function findClaimableDefaultAgent(
     .order("updated_at", { ascending: true });
 
   if (error) throw normalizeSupabaseError("agent query", error);
-  const agents = data as AgentRow[];
-  return agents.find((agent) => agent.status === "active") ?? agents[0] ?? null;
+  return pickClaimableAgent(data as AgentRow[]);
 }
 
 async function createDefaultAgent(accessToken: string, workspaceId: string, userId: string, role: DefaultAgentRole) {
@@ -93,11 +92,11 @@ async function createDefaultAgent(accessToken: string, workspaceId: string, user
     )
     .select(DEFAULT_AGENT_SELECT);
   if (error) throw normalizeSupabaseError("agent upsert", error);
-  const agent = data[0] as AgentRow | undefined;
-  if (!agent) {
-    throw new ApiRouteError(502, "default_agent_create_failed", "Default agent creation returned no row");
-  }
-  return agent;
+  return requireAgentRow(
+    data as AgentRow[] | undefined,
+    "default_agent_create_failed",
+    "Default agent creation returned no row",
+  );
 }
 
 export async function ensureDefaultAgent(
