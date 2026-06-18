@@ -1,38 +1,37 @@
-import type { Json } from "@kmgrassi/supabase-schema";
+import type { Database, Json } from "@kmgrassi/supabase-schema";
 
+import { narrowSupabase } from "../lib/narrow-supabase.js";
 import { normalizeSupabaseError, type ApiSupabaseClient } from "../supabase-client.js";
 
 export type AgentToolGrantMode = "include" | "exclude";
 export type AgentToolGrantSource = "template" | "manual" | "system" | "migration";
 
-export type GrantResolverToolRow = {
-  id: string;
-  workspace_id: string | null;
-  slug: string | null;
-  name: string | null;
-  description: string | null;
+type ToolRow = Database["public"]["Tables"]["tool"]["Row"];
+type AgentToolGrantTableRow = Database["public"]["Tables"]["agent_tool_grant"]["Row"];
+
+export type GrantResolverToolRow = Pick<
+  ToolRow,
+  | "id"
+  | "workspace_id"
+  | "slug"
+  | "name"
+  | "description"
+  | "parameters"
+  | "examples"
+  | "function_name"
+  | "type"
+  | "execution_kind"
+  | "runner_kind"
+  | "enabled"
+  | "created_by_user_id"
+> & {
   parameters: Json | null;
   examples: Json | null;
-  function_name: string | null;
-  type?: string | null;
-  execution_kind: string | null;
-  runner_kind: string | null;
-  enabled: boolean;
-  created_by_user_id?: string | null;
 };
 
-export type AgentToolGrantRow = {
-  id: string;
-  agent_id: string;
-  tool_id: string;
-  workspace_id: string;
+export type AgentToolGrantRow = Omit<AgentToolGrantTableRow, "mode" | "source"> & {
   mode: AgentToolGrantMode;
   source: AgentToolGrantSource;
-  source_tool_template_id: string | null;
-  reason: string | null;
-  created_by_user_id: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
 };
 
 export type ResolvedAgentToolGrant = {
@@ -52,17 +51,6 @@ const TOOL_SELECT =
 const AGENT_TOOL_GRANT_SELECT =
   "id,agent_id,tool_id,workspace_id,mode,source,source_tool_template_id,reason,created_by_user_id,created_at,updated_at" as const;
 
-type ResolverQuery<Row> = PromiseLike<{ data: Row[] | null; error: unknown }> & {
-  is(column: string, value: unknown): ResolverQuery<Row>;
-  eq(column: string, value: unknown): ResolverQuery<Row>;
-};
-
-function table<Row>(supabase: ApiSupabaseClient, name: string) {
-  return supabase.from(name as never) as unknown as {
-    select(columns?: string): ResolverQuery<Row>;
-  };
-}
-
 function sortToolRows<Row extends { slug: string | null; name: string | null }>(rows: Row[]) {
   return [...rows].sort(
     (left, right) =>
@@ -70,33 +58,39 @@ function sortToolRows<Row extends { slug: string | null; name: string | null }>(
   );
 }
 
+function rowsFromResult<Row>(data: Row[] | Row | null): Row[] {
+  if (!data) return [];
+  return Array.isArray(data) ? data : [data];
+}
+
 async function listVisibleToolRows(input: { workspaceId: string; supabase: ApiSupabaseClient }) {
+  const supabase = narrowSupabase(input.supabase);
   const [globalResult, workspaceResult] = await Promise.all([
-    table<GrantResolverToolRow>(input.supabase, "tool").select(TOOL_SELECT).is("workspace_id", null),
-    table<GrantResolverToolRow>(input.supabase, "tool").select(TOOL_SELECT).eq("workspace_id", input.workspaceId),
+    supabase.from<GrantResolverToolRow>("tool").select(TOOL_SELECT).is("workspace_id", null),
+    supabase.from<GrantResolverToolRow>("tool").select(TOOL_SELECT).eq("workspace_id", input.workspaceId),
   ]);
 
-  if (globalResult.error) throw normalizeSupabaseError("tool query", globalResult.error as never);
-  if (workspaceResult.error) throw normalizeSupabaseError("tool query", workspaceResult.error as never);
+  if (globalResult.error) throw normalizeSupabaseError("tool query", globalResult.error);
+  if (workspaceResult.error) throw normalizeSupabaseError("tool query", workspaceResult.error);
+
+  const globalRows = rowsFromResult(globalResult.data);
+  const workspaceRows = rowsFromResult(workspaceResult.data);
 
   return sortToolRows(
     Array.from(
-      new Map(
-        [...(globalResult.data ?? []), ...(workspaceResult.data ?? [])]
-          .filter((tool) => tool.enabled)
-          .map((tool) => [tool.id, tool]),
-      ).values(),
+      new Map([...globalRows, ...workspaceRows].filter((tool) => tool.enabled).map((tool) => [tool.id, tool])).values(),
     ),
   );
 }
 
 async function listAgentToolGrants(input: { agentId: string; workspaceId: string; supabase: ApiSupabaseClient }) {
-  const result = await table<AgentToolGrantRow>(input.supabase, "agent_tool_grant")
+  const result = await narrowSupabase(input.supabase)
+    .from<AgentToolGrantRow>("agent_tool_grant")
     .select(AGENT_TOOL_GRANT_SELECT)
     .eq("agent_id", input.agentId)
     .eq("workspace_id", input.workspaceId);
-  if (result.error) throw normalizeSupabaseError("agent_tool_grant query", result.error as never);
-  return result.data ?? [];
+  if (result.error) throw normalizeSupabaseError("agent_tool_grant query", result.error);
+  return rowsFromResult(result.data);
 }
 
 function isEnabledGrant(grant: AgentToolGrantRow) {
