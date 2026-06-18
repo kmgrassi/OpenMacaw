@@ -90,6 +90,31 @@ export type LocalRuntimeMachineStatus = z.infer<
   typeof LocalRuntimeMachineStatusSchema
 >;
 
+export const LocalRuntimeDiagnosticCodeSchema = z.enum([
+  "helper_not_connected",
+  "helper_heartbeat_stale",
+  "workspace_root_missing",
+  "helper_degraded",
+  "helper_not_registered",
+]);
+export type LocalRuntimeDiagnosticCode = z.infer<
+  typeof LocalRuntimeDiagnosticCodeSchema
+>;
+
+export const LocalRuntimeDiagnosticSchema = z.object({
+  code: LocalRuntimeDiagnosticCodeSchema,
+  severity: z.enum(["info", "warning", "error"]),
+  title: z.string().min(1),
+  message: z.string().min(1),
+  action: z.string().min(1).nullable().default(null),
+  command: z.string().min(1).nullable().default(null),
+  logPath: z.string().min(1).nullable().default(null),
+  detail: z.record(z.string(), z.unknown()).default({}),
+});
+export type LocalRuntimeDiagnostic = z.infer<
+  typeof LocalRuntimeDiagnosticSchema
+>;
+
 export const LocalRuntimeErrorDetailSchema = z.object({
   httpStatus: z.number().int().positive().optional(),
   dialError: z.string().min(1).optional(),
@@ -136,6 +161,7 @@ export const LocalExecutionTargetSchema = z
     runtimeManagedTools: z.boolean().nullable().default(null),
     lastError: z.string().nullable().default(null),
     lastErrorAt: z.string().nullable().default(null),
+    diagnostics: z.array(LocalRuntimeDiagnosticSchema).default([]),
   })
   .transform((target) => ({
     ...target,

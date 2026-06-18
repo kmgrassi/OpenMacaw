@@ -41,6 +41,23 @@ export type LocalExecutionTarget = {
   advertisedRunnerKinds: string[];
   advertisedModels: string[];
   runtimeManagedTools: boolean | null;
+  diagnostics: LocalRuntimeDiagnostic[];
+};
+
+export type LocalRuntimeDiagnostic = {
+  code:
+    | "helper_not_connected"
+    | "helper_heartbeat_stale"
+    | "workspace_root_missing"
+    | "helper_degraded"
+    | "helper_not_registered";
+  severity: "info" | "warning" | "error";
+  title: string;
+  message: string;
+  action: string | null;
+  command: string | null;
+  logPath: string | null;
+  detail: Record<string, unknown>;
 };
 
 export type LocalRuntimeModel = {

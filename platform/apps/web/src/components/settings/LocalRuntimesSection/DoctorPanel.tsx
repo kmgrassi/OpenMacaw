@@ -1,5 +1,6 @@
 import type {
   LocalRuntime,
+  LocalRuntimeDiagnostic,
   LocalRuntimeEvent,
   LocalRuntimeTestDispatchResponse,
 } from "../../../api/local-runtime";
@@ -18,6 +19,12 @@ type DoctorCheck = {
 function checkTone(check: DoctorCheck): StatusTone {
   if (check.pending) return "idle";
   return check.passed ? "success" : "warning";
+}
+
+function diagnosticTone(diagnostic: LocalRuntimeDiagnostic): StatusTone {
+  if (diagnostic.severity === "error") return "error";
+  if (diagnostic.severity === "warning") return "warning";
+  return "info";
 }
 
 function detailValue(value: unknown): string {
@@ -82,6 +89,7 @@ export function DoctorPanel({
     (!configuredModel ||
       liveModels.length === 0 ||
       liveModels.includes(configuredModel));
+  const diagnostics = runtime.localExecution.diagnostics ?? [];
 
   const checks: DoctorCheck[] = [
     {
@@ -159,6 +167,57 @@ export function DoctorPanel({
           );
         })}
       </div>
+
+      {diagnostics.length > 0 && (
+        <div className="space-y-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            What to check
+          </h4>
+          <div className="space-y-2">
+            {diagnostics.map((diagnostic) => {
+              const tone = diagnosticTone(diagnostic);
+              return (
+                <div
+                  key={diagnostic.code}
+                  className={`rounded-md border px-3 py-2 text-xs ${statusToneClass(
+                    tone,
+                    "panel",
+                  )}`}
+                >
+                  <div className="flex items-center gap-2 font-medium">
+                    <span
+                      aria-hidden
+                      className={`h-2 w-2 rounded-full ${statusToneClass(
+                        tone,
+                        "dot",
+                      )}`}
+                    />
+                    {diagnostic.title}
+                  </div>
+                  <div className="mt-1 leading-5 opacity-90">
+                    {diagnostic.message}
+                  </div>
+                  {diagnostic.action && (
+                    <div className="mt-1 leading-5 opacity-90">
+                      {diagnostic.action}
+                    </div>
+                  )}
+                  {diagnostic.command && (
+                    <div className="mt-2 overflow-x-auto rounded bg-black/30 px-2 py-1.5 font-mono text-[11px] text-slate-100">
+                      {diagnostic.command}
+                    </div>
+                  )}
+                  {diagnostic.logPath && (
+                    <div className="mt-1 font-mono text-[11px] opacity-80">
+                      Logs: {diagnostic.logPath}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {(runtime.lastError || runtime.localExecution.lastError) && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">

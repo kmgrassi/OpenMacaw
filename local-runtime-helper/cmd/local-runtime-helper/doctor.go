@@ -11,6 +11,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -51,6 +54,7 @@ func cmdDoctor(args []string) {
 		if len(validationErrors(cfg)) == 0 {
 			results = append(results, checkResult{Name: "config valid"})
 		}
+		results = append(results, checkManagedService(ctx))
 		results = append(results, checkResult{Name: "cloud reachable", Err: checkTCP(ctx, cfg.Cloud.Endpoint)})
 		for _, kind := range sortedRunnerKinds(cfg.Runners) {
 			runner := cfg.Runners[kind]
@@ -94,6 +98,38 @@ func cmdDoctor(args []string) {
 	if failed {
 		os.Exit(1)
 	}
+}
+
+func checkManagedService(ctx context.Context) checkResult {
+	if runtime.GOOS != "darwin" {
+		return checkResult{Name: "managed service"}
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return checkResult{Name: "managed service", Err: fmt.Errorf("read home directory: %w", err)}
+	}
+	plistPath := filepath.Join(home, "Library", "LaunchAgents", "com.openmacaw.local-runtime-helper.plist")
+	if _, err := os.Stat(plistPath); errors.Is(err, os.ErrNotExist) {
+		return checkResult{Name: "managed service"}
+	} else if err != nil {
+		return checkResult{Name: "managed service", Err: fmt.Errorf("inspect LaunchAgent plist: %w", err)}
+	}
+
+	label := fmt.Sprintf("gui/%d/com.openmacaw.local-runtime-helper", os.Getuid())
+	output, err := exec.CommandContext(ctx, "launchctl", "print", label).CombinedOutput()
+	if err != nil {
+		return checkResult{
+			Name: "managed service",
+			Err:  fmt.Errorf("LaunchAgent is installed but not inspectable; run: launchctl kickstart -k %q", label),
+		}
+	}
+	if !strings.Contains(string(output), "state = running") {
+		return checkResult{
+			Name: "managed service",
+			Err:  fmt.Errorf("LaunchAgent is installed but not running; run: launchctl kickstart -k %q", label),
+		}
+	}
+	return checkResult{Name: "managed service"}
 }
 
 func checkRunner(ctx context.Context, runner runnerConfig) checkResult {
