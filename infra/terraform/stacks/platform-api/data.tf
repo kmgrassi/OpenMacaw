@@ -14,6 +14,7 @@ data "terraform_remote_state" "platform" {
 }
 
 data "aws_route53_zone" "main" {
+  count        = local.manage_public_edge ? 1 : 0
   name         = var.route53_zone_name
   private_zone = false
 }

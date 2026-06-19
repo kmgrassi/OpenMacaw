@@ -22,7 +22,7 @@ resource "aws_route53_record" "cert_validation" {
     }
   } : {}
 
-  zone_id = data.aws_route53_zone.main.zone_id
+  zone_id = data.aws_route53_zone.main[0].zone_id
   name    = each.value.name
   type    = each.value.type
   records = [each.value.record]
@@ -44,7 +44,7 @@ data "aws_lb" "shared" {
 
 resource "aws_route53_record" "api" {
   count   = local.manage_public_edge ? 1 : 0
-  zone_id = data.aws_route53_zone.main.zone_id
+  zone_id = data.aws_route53_zone.main[0].zone_id
   name    = var.domain_name
   type    = "A"
 
