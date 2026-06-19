@@ -17,9 +17,9 @@ describe("resolveGatewayWsUrl", () => {
 
   it("derives the websocket URL from the broker base when the websocket env is missing", () => {
     vi.stubEnv("VITE_GATEWAY_WS_URL", "");
-    vi.stubEnv("VITE_BROKER_BASE", "https://api.openmacaw.ai");
+    vi.stubEnv("VITE_BROKER_BASE", "https://api.example.com");
 
-    expect(resolveGatewayWsUrl()).toBe("wss://api.openmacaw.ai/ws");
+    expect(resolveGatewayWsUrl()).toBe("wss://api.example.com/ws");
   });
 
   it("derives the websocket URL from the stored broker base when env is missing", () => {
@@ -28,13 +28,13 @@ describe("resolveGatewayWsUrl", () => {
     vi.stubGlobal("window", {
       localStorage: {
         getItem: (key: string) =>
-          key === "openclaw.broker_base" ? "https://api.openmacaw.ai/" : null,
+          key === "openclaw.broker_base" ? "https://api.example.com/" : null,
       },
       location: {
         hostname: "app.openmacaw.ai",
       },
     });
 
-    expect(resolveGatewayWsUrl()).toBe("wss://api.openmacaw.ai/ws");
+    expect(resolveGatewayWsUrl()).toBe("wss://api.example.com/ws");
   });
 });
