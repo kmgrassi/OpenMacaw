@@ -157,6 +157,20 @@ export function useChat(
     return addEventListener(handler);
   }, [agentId, sessionKey, addEventListener, queryClient]);
 
+  // Recover the composer after a mid-run disconnect. When the socket drops
+  // while a run is in flight, the terminal `final` frame for that run never
+  // reaches the browser, and the post-send reconcile loop has usually already
+  // given up — a local-relay turn can outlast its ~8s budget by tens of
+  // seconds. On every (re)connect with a run still marked active, reconcile
+  // against persisted history: a run that finished during the gap clears
+  // `activeRunId` instead of leaving the composer stuck "sending" forever.
+  useEffect(() => {
+    if (!connected || !sessionKey) return;
+    const runId = runIdRef.current;
+    if (!runId) return;
+    void reconcilePersistedResponse(runId, sessionKey);
+  }, [connected, sessionKey, reconcilePersistedResponse]);
+
   const sendMessage = useCallback(
     async (text: string) => {
       const msg = text.trim();
