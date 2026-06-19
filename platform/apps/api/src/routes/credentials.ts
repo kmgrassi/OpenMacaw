@@ -12,6 +12,7 @@ import { upsertCredentialAlias } from "../repositories/credentials.js";
 import { validateModelProviderCredential } from "../services/model-catalog.js";
 import { syncCredentialIntoRoutingRuleForAgent } from "../services/stored-agent-routing.js";
 import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
+import { assertWorkspaceAdminAccess } from "../services/workspace-access.js";
 import {
   saveInlineCredentialForAgentInSupabase,
   saveModelProviderCredentialForWorkspaceInSupabase,
@@ -39,6 +40,11 @@ async function requireWorkspaceAccess(userId: string, workspaceId: string) {
     }
     throw error;
   }
+}
+
+async function requireWorkspaceAdmin(userId: string, workspaceId: string) {
+  await requireWorkspaceAccess(userId, workspaceId);
+  await assertWorkspaceAdminAccess(userId, workspaceId, "workspace credentials");
 }
 
 export function registerCredentialRoutes(app: Express) {
@@ -88,6 +94,9 @@ export function registerCredentialRoutes(app: Express) {
 
         if (scope.kind === "workspace" || scope.kind === "agent") {
           await requireWorkspaceAccess(userId, scope.workspaceId);
+        }
+        if (scope.kind === "workspace") {
+          await requireWorkspaceAdmin(userId, scope.workspaceId);
         }
 
         const agent =

@@ -1,7 +1,11 @@
 import { ApiRouteError } from "../http.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
 
-export async function assertWorkspaceAdminAccess(userId: string, workspaceId: string) {
+export async function assertWorkspaceAdminAccess(
+  userId: string,
+  workspaceId: string,
+  resourceLabel = "workspace resource",
+) {
   const supabase = getServiceRoleSupabase();
 
   const { data: memberRow, error: memberError } = await supabase
@@ -37,6 +41,6 @@ export async function assertWorkspaceAdminAccess(userId: string, workspaceId: st
   throw new ApiRouteError(
     403,
     "workspace_admin_required",
-    "Authenticated user must be a workspace admin to manage local runtimes",
+    `Authenticated user must be a workspace admin to manage ${resourceLabel}`,
   );
 }

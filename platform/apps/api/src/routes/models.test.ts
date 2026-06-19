@@ -4,8 +4,24 @@ import type { AddressInfo } from "node:net";
 import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiRouteError } from "../http.js";
 import { clearModelCatalogCacheForTests } from "../services/model-catalog.js";
+import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
+import { assertWorkspaceAdminAccess } from "../services/workspace-access.js";
+import { saveModelProviderCredentialForWorkspaceInSupabase } from "../services/saved-credentials.js";
 import { registerModelCatalogRoutes } from "./models.js";
+
+vi.mock("../services/work-item-ingest.js", () => ({
+  assertWorkspaceMembership: vi.fn(),
+}));
+
+vi.mock("../services/workspace-access.js", () => ({
+  assertWorkspaceAdminAccess: vi.fn(),
+}));
+
+vi.mock("../services/saved-credentials.js", () => ({
+  saveModelProviderCredentialForWorkspaceInSupabase: vi.fn(),
+}));
 
 const realFetch = globalThis.fetch;
 
@@ -23,6 +39,9 @@ describe("model catalog routes", () => {
   beforeEach(async () => {
     clearModelCatalogCacheForTests();
     delete process.env.OPENAI_API_KEY;
+    vi.mocked(assertWorkspaceMembership).mockResolvedValue(undefined);
+    vi.mocked(assertWorkspaceAdminAccess).mockResolvedValue(undefined);
+    vi.mocked(saveModelProviderCredentialForWorkspaceInSupabase).mockResolvedValue(null as never);
 
     const app = express();
     app.use(express.json());
@@ -70,6 +89,56 @@ describe("model catalog routes", () => {
         message: "workspaceId is required",
       },
     });
+  });
+
+  it("rejects provider credential writes from non-members", async () => {
+    vi.mocked(assertWorkspaceMembership).mockRejectedValueOnce(new Error("not authorized for workspace"));
+
+    const response = await fetch(`${baseUrl}/api/model-providers/openai/credentials`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        apiKey: "sk-test",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "workspace_forbidden" },
+    });
+    expect(saveModelProviderCredentialForWorkspaceInSupabase).not.toHaveBeenCalled();
+  });
+
+  it("rejects provider credential writes from non-admin members", async () => {
+    vi.mocked(assertWorkspaceAdminAccess).mockRejectedValueOnce(
+      new ApiRouteError(
+        403,
+        "workspace_admin_required",
+        "Authenticated user must be a workspace admin to manage workspace credentials",
+      ),
+    );
+
+    const response = await fetch(`${baseUrl}/api/model-providers/openai/credentials`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        apiKey: "sk-test",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "workspace_admin_required" },
+    });
+    expect(saveModelProviderCredentialForWorkspaceInSupabase).not.toHaveBeenCalled();
   });
 
   it("returns provider models when a provider credential is configured", async () => {

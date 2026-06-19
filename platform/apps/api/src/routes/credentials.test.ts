@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiRouteError } from "../http.js";
 import { upsertCredentialAlias } from "../repositories/credentials.js";
 import {
   saveInlineCredentialForAgentInSupabase,
@@ -15,6 +16,7 @@ import { listStoredAgentsFromSupabase } from "../services/stored-agent-managemen
 import { syncCredentialIntoRoutingRuleForAgent } from "../services/stored-agent-routing.js";
 import { validateModelProviderCredential } from "../services/model-catalog.js";
 import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
+import { assertWorkspaceAdminAccess } from "../services/workspace-access.js";
 import { registerCredentialRoutes } from "./credentials.js";
 
 vi.mock("../repositories/credentials.js", () => ({
@@ -44,6 +46,10 @@ vi.mock("../services/model-catalog.js", () => ({
 
 vi.mock("../services/work-item-ingest.js", () => ({
   assertWorkspaceMembership: vi.fn(),
+}));
+
+vi.mock("../services/workspace-access.js", () => ({
+  assertWorkspaceAdminAccess: vi.fn(),
 }));
 
 function closeServer(server: Server | undefined) {
@@ -82,6 +88,7 @@ describe("credential routes", () => {
 
   beforeEach(async () => {
     vi.mocked(assertWorkspaceMembership).mockResolvedValue(undefined);
+    vi.mocked(assertWorkspaceAdminAccess).mockResolvedValue(undefined);
     vi.mocked(validateModelProviderCredential).mockResolvedValue({
       ok: true,
       modelCount: 1,
@@ -185,6 +192,7 @@ describe("credential routes", () => {
       alias: "default-openai",
       credentialId: "credential-row-1",
     });
+    expect(assertWorkspaceAdminAccess).toHaveBeenCalledWith("user-1", "workspace-1", "workspace credentials");
   });
 
   it("rejects agent credential writes when the target agent is outside the caller scope", async () => {
@@ -263,6 +271,34 @@ describe("credential routes", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "workspace_forbidden" },
+    });
+    expect(saveModelProviderCredentialForWorkspaceInSupabase).not.toHaveBeenCalled();
+  });
+
+  it("rejects workspace credential writes from non-admin workspace members", async () => {
+    vi.mocked(assertWorkspaceAdminAccess).mockRejectedValueOnce(
+      new ApiRouteError(
+        403,
+        "workspace_admin_required",
+        "Authenticated user must be a workspace admin to manage workspace credentials",
+      ),
+    );
+
+    const response = await fetch(`${baseUrl}/api/credentials`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        scope: { kind: "workspace", workspaceId: "workspace-1" },
+        key: { format: "api_key", provider: "openai", secret: "sk-test" },
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "workspace_admin_required" },
     });
     expect(saveModelProviderCredentialForWorkspaceInSupabase).not.toHaveBeenCalled();
   });

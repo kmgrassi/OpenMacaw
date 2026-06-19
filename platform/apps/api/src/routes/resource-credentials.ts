@@ -7,6 +7,7 @@ import {
 import { ApiRouteError, apiRoute } from "../http.js";
 import { saveGitHubAppInstallationCredentialForWorkspace } from "../services/resource-credentials.js";
 import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
+import { assertWorkspaceAdminAccess } from "../services/workspace-access.js";
 
 async function requireWorkspaceAccess(userId: string, workspaceId: string) {
   try {
@@ -23,6 +24,11 @@ async function requireWorkspaceAccess(userId: string, workspaceId: string) {
   }
 }
 
+async function requireWorkspaceAdmin(userId: string, workspaceId: string) {
+  await requireWorkspaceAccess(userId, workspaceId);
+  await assertWorkspaceAdminAccess(userId, workspaceId, "workspace credentials");
+}
+
 export function registerResourceCredentialRoutes(app: Express) {
   app.post(
     "/api/resource-credentials/github-app-installations",
@@ -31,7 +37,7 @@ export function registerResourceCredentialRoutes(app: Express) {
       bodySchema: GitHubAppInstallationCredentialRequestSchema,
       invalidBodyMessage: "GitHub App installation credential details are required",
       handler: async ({ body, res, userId }) => {
-        await requireWorkspaceAccess(userId, body.workspaceId);
+        await requireWorkspaceAdmin(userId, body.workspaceId);
         const credential = await saveGitHubAppInstallationCredentialForWorkspace({
           userId: userId ?? null,
           credential: body,

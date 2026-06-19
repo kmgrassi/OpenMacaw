@@ -4,8 +4,10 @@ import type { AddressInfo } from "node:net";
 import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiRouteError } from "../http.js";
 import { saveGitHubAppInstallationCredentialForWorkspace } from "../services/resource-credentials.js";
 import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
+import { assertWorkspaceAdminAccess } from "../services/workspace-access.js";
 import { registerResourceCredentialRoutes } from "./resource-credentials.js";
 
 vi.mock("../services/resource-credentials.js", () => ({
@@ -14,6 +16,10 @@ vi.mock("../services/resource-credentials.js", () => ({
 
 vi.mock("../services/work-item-ingest.js", () => ({
   assertWorkspaceMembership: vi.fn(),
+}));
+
+vi.mock("../services/workspace-access.js", () => ({
+  assertWorkspaceAdminAccess: vi.fn(),
 }));
 
 function closeServer(server: Server | undefined) {
@@ -29,6 +35,7 @@ describe("resource credential routes", () => {
 
   beforeEach(async () => {
     vi.mocked(assertWorkspaceMembership).mockResolvedValue(undefined);
+    vi.mocked(assertWorkspaceAdminAccess).mockResolvedValue(undefined);
     vi.mocked(saveGitHubAppInstallationCredentialForWorkspace).mockResolvedValue({
       credentialId: "credential-1",
       workspaceId: "workspace-1",
@@ -100,6 +107,7 @@ describe("resource credential routes", () => {
         installationId: "456",
       }),
     });
+    expect(assertWorkspaceAdminAccess).toHaveBeenCalledWith("user-1", "workspace-1", "workspace credentials");
   });
 
   it("requires exactly one private key source", async () => {
@@ -140,6 +148,36 @@ describe("resource credential routes", () => {
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "workspace_forbidden" },
+    });
+    expect(saveGitHubAppInstallationCredentialForWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("rejects GitHub App credential writes from non-admin workspace members", async () => {
+    vi.mocked(assertWorkspaceAdminAccess).mockRejectedValueOnce(
+      new ApiRouteError(
+        403,
+        "workspace_admin_required",
+        "Authenticated user must be a workspace admin to manage workspace credentials",
+      ),
+    );
+
+    const response = await fetch(`${baseUrl}/api/resource-credentials/github-app-installations`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        appId: "123",
+        installationId: "456",
+        privateKey: "mock-github-app-private-key",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "workspace_admin_required" },
     });
     expect(saveGitHubAppInstallationCredentialForWorkspace).not.toHaveBeenCalled();
   });

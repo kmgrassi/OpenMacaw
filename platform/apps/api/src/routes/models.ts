@@ -15,6 +15,8 @@ import {
   listModelProviderConnections,
   validateModelProviderCredential,
 } from "../services/model-catalog.js";
+import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
+import { assertWorkspaceAdminAccess } from "../services/workspace-access.js";
 
 function requestAgentId(req: express.Request): string | null {
   const value = req.query.agentId;
@@ -30,6 +32,23 @@ const MODEL_CREDENTIAL_PROVIDERS = new Set<string>(MODEL_PROVIDER_IDS);
 
 function asModelProvider(provider: string): ModelProvider | null {
   return MODEL_CREDENTIAL_PROVIDERS.has(provider) ? (provider as ModelProvider) : null;
+}
+
+async function requireWorkspaceAdmin(userId: string, workspaceId: string) {
+  try {
+    await assertWorkspaceMembership(userId, workspaceId);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not authorized")) {
+      throw new ApiRouteError(
+        403,
+        "workspace_forbidden",
+        "Authenticated user is not authorized for the requested workspace",
+      );
+    }
+    throw error;
+  }
+
+  await assertWorkspaceAdminAccess(userId, workspaceId, "workspace credentials");
 }
 
 export function registerModelCatalogRoutes(app: express.Express) {
@@ -60,6 +79,7 @@ export function registerModelCatalogRoutes(app: express.Express) {
       bodySchema: SaveModelProviderCredentialRequestSchema,
       invalidBodyMessage: "workspaceId and apiKey are required",
       handler: async ({ req, res, body, userId }) => {
+        await requireWorkspaceAdmin(userId, body.workspaceId);
         const parsedProvider = CredentialProviderSchema.safeParse(req.params.provider);
         const modelProvider = parsedProvider.success ? asModelProvider(parsedProvider.data) : null;
         if (!parsedProvider.success || !modelProvider) {
