@@ -129,3 +129,28 @@ test("waitForGatewayEvent resolves terminal results and falls back on close", as
 
   assert.deepEqual(await closedPromise, { status: "fallback" });
 });
+
+test("waitForGatewayEvent falls back on timeout", async () => {
+  const ws = new FakeSocket();
+  const result = await waitForGatewayEvent({
+    ws,
+    timeoutMs: 1,
+    parseFrame,
+    fallbackResult: () => ({ status: "timed_out" }),
+    onFrameResult: () => undefined,
+  });
+
+  assert.deepEqual(result, { status: "timed_out" });
+});
+
+test("waitForGatewayEvent preserves immediate timeout fallback when timeoutMs is omitted", async () => {
+  const ws = new FakeSocket();
+  const result = await waitForGatewayEvent({
+    ws,
+    parseFrame,
+    fallbackResult: () => ({ status: "timed_out" }),
+    onFrameResult: () => undefined,
+  });
+
+  assert.deepEqual(result, { status: "timed_out" });
+});
