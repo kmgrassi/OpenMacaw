@@ -55,7 +55,9 @@ defmodule SymphonyElixir.Launcher.Server do
   alias SymphonyElixir.Launcher.EngineInstanceSync
   alias SymphonyElixir.Launcher.GatewayConfig
   alias SymphonyElixir.Launcher.LifecycleLog
+  alias SymphonyElixir.Launcher.RuntimeConfig
   alias SymphonyElixir.Launcher.StateManager
+  alias SymphonyElixir.Launcher.WorkspaceRuntime
   alias SymphonyElixir.Orchestrator.Starter
   alias SymphonyElixir.Planning.PlanHandoff
   alias SymphonyElixir.RuntimeLog
@@ -235,7 +237,7 @@ defmodule SymphonyElixir.Launcher.Server do
 
   @impl true
   def handle_call({:workspace_active_agents_count, workspace_id, exclude_pid}, _from, state) do
-    {:reply, do_workspace_active_agents_count(state, workspace_id, exclude_pid), state}
+    {:reply, WorkspaceRuntime.active_agents_count(state, workspace_id, exclude_pid, state.snapshotter), state}
   end
 
   @impl true
@@ -349,7 +351,7 @@ defmodule SymphonyElixir.Launcher.Server do
             {:reply, {:ok, serialize_entry(entry)}, new_state}
 
           {:error, reason} = error ->
-            record_gateway_apply(resolution, :error, nil, error: format_error(reason))
+            record_gateway_apply(resolution, :error, nil, error: RuntimeConfig.format_error(reason))
 
             fields =
               LifecycleLog.log_failure(
@@ -393,7 +395,7 @@ defmodule SymphonyElixir.Launcher.Server do
         config = AgentStarter.inject_plan_handoff(config, handoff)
 
         cond do
-          incomplete_credential_refresh?(metadata) and config_has_resolved_credentials?(entry.config) ->
+          incomplete_credential_refresh?(metadata) and RuntimeConfig.resolved_credentials?(entry.config) ->
             RuntimeLog.log(:warning, :agent_start_credential_refresh_incomplete_reusing_runtime, %{
               agent_id: agent.id,
               workspace_id: agent.workspace_id,
@@ -405,7 +407,7 @@ defmodule SymphonyElixir.Launcher.Server do
 
             {:reply, {:ok, serialize_entry(entry, true)}, state}
 
-          equivalent_runtime_config?(entry.config, config) ->
+          RuntimeConfig.equivalent?(entry.config, config) ->
             {:reply, {:ok, serialize_entry(entry, true)}, state}
 
           true ->
@@ -485,7 +487,7 @@ defmodule SymphonyElixir.Launcher.Server do
         {:reply, {:ok, serialize_entry(updated_entry, false)}, new_state}
 
       {:error, reason} = error ->
-        record_gateway_apply(resolution, :error, entry.id, error: format_error(reason))
+        record_gateway_apply(resolution, :error, entry.id, error: RuntimeConfig.format_error(reason))
         EngineInstanceSync.update_status(entry, :failed)
 
         fields =
@@ -751,58 +753,8 @@ defmodule SymphonyElixir.Launcher.Server do
 
   defp reconcile_engine_instance_async(state), do: EngineInstanceSync.reconcile_async(state.orchestrators)
 
-  defp equivalent_runtime_config?(left, right) do
-    comparable_runtime_config(left) == comparable_runtime_config(right)
-  end
-
   defp incomplete_credential_refresh?(%{credential_refresh: {:incomplete, _reason}}), do: true
   defp incomplete_credential_refresh?(_metadata), do: false
-
-  defp config_has_resolved_credentials?(config) when is_map(config) do
-    config = normalize_config_value(config)
-
-    config_has_credentials_map?(config) or config_has_tracker_api_key?(config)
-  end
-
-  defp config_has_resolved_credentials?(_config), do: false
-
-  defp config_has_credentials_map?(config) do
-    case Map.get(config, "credentials") do
-      credentials when is_map(credentials) -> map_size(credentials) > 0
-      _ -> false
-    end
-  end
-
-  defp config_has_tracker_api_key?(config) do
-    case get_in(config, ["tracker", "api_key"]) do
-      value when is_binary(value) -> value != ""
-      _ -> false
-    end
-  end
-
-  defp comparable_runtime_config(config) when is_map(config) do
-    config
-    |> normalize_config_value()
-    |> drop_runtime_config_volatiles()
-  end
-
-  defp comparable_runtime_config(config), do: config
-
-  defp normalize_config_value(value) when is_map(value) do
-    Map.new(value, fn {key, nested} -> {to_string(key), normalize_config_value(nested)} end)
-  end
-
-  defp normalize_config_value(value) when is_list(value), do: Enum.map(value, &normalize_config_value/1)
-  defp normalize_config_value(value), do: value
-
-  defp drop_runtime_config_volatiles(config) when is_map(config) do
-    config
-    |> Map.delete("trace_id")
-    |> update_in(["runtime"], fn
-      runtime when is_map(runtime) -> Map.delete(runtime, "trace_id")
-      runtime -> runtime
-    end)
-  end
 
   defp schedule_heartbeat(%{heartbeat_ms: ms} = state) when is_integer(ms) and ms > 0 do
     if state.heartbeat_ref, do: Process.cancel_timer(state.heartbeat_ref)
@@ -905,51 +857,6 @@ defmodule SymphonyElixir.Launcher.Server do
         Logger.warning("Failed to record gateway_config_state error for #{scope_type}/#{scope_id}: #{inspect(reason)}")
 
         :ok
-    end
-  end
-
-  defp format_error(reason) when is_binary(reason), do: reason
-  defp format_error({:invalid_agent_config, message, _details}) when is_binary(message), do: message
-  defp format_error(reason), do: inspect(reason)
-
-  defp do_workspace_active_agents_count(state, workspace_id, exclude_pid) when is_binary(workspace_id) do
-    state.orchestrators
-    |> Map.values()
-    |> Enum.filter(&workspace_count_entry?(&1, workspace_id, exclude_pid))
-    |> Enum.reduce_while({:ok, 0}, fn entry, {:ok, count} ->
-      case running_agents_for_entry(entry, state.snapshotter) do
-        {:ok, running_count} ->
-          {:cont, {:ok, count + running_count}}
-
-        {:error, reason} ->
-          {:halt, {:error, {:workspace_runtime_unavailable, Map.get(entry, :id), reason}}}
-      end
-    end)
-  end
-
-  defp do_workspace_active_agents_count(_state, _workspace_id, _exclude_pid), do: {:error, :invalid_workspace_id}
-
-  defp workspace_count_entry?(entry, workspace_id, exclude_pid) do
-    Map.get(entry, :workspace_id) == workspace_id and Map.get(entry, :status) == :running and
-      Map.get(entry, :pid) != exclude_pid
-  end
-
-  defp running_agents_for_entry(%{pid: pid}, _snapshotter) when not is_pid(pid),
-    do: {:error, :runtime_unavailable}
-
-  defp running_agents_for_entry(%{pid: pid}, snapshotter) when is_function(snapshotter, 2) do
-    case snapshotter.(pid, 1_000) do
-      %{running: running} when is_list(running) ->
-        {:ok, length(running)}
-
-      :timeout ->
-        {:error, :timeout}
-
-      :unavailable ->
-        {:error, :unavailable}
-
-      other ->
-        {:error, {:invalid_snapshot, other}}
     end
   end
 
