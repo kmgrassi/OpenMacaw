@@ -105,14 +105,40 @@ export function sanitizeForArtifact(value) {
 
 function flattenEvidenceText(value) {
   if (value == null) return [];
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (typeof value === "string") {
+    return [value, ...flattenParsedJsonString(value)];
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
     return [String(value)];
   }
-  if (Array.isArray(value)) return value.flatMap(flattenEvidenceText);
+  if (Array.isArray(value)) {
+    const flattened = value.flatMap(flattenEvidenceText);
+    const joined = joinedPrimitiveArray(value);
+    return joined ? [joined, ...flattened] : flattened;
+  }
   if (typeof value === "object") {
     return [JSON.stringify(value), ...Object.values(value).flatMap(flattenEvidenceText)];
   }
   return [];
+}
+
+function flattenParsedJsonString(value) {
+  const trimmed = value.trim();
+  if (!trimmed || !/^[\[{]/.test(trimmed)) return [];
+
+  try {
+    return flattenEvidenceText(JSON.parse(trimmed));
+  } catch {
+    return [];
+  }
+}
+
+function joinedPrimitiveArray(value) {
+  if (!value.every((entry) => typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean")) {
+    return null;
+  }
+
+  return value.map(String).join(" ");
 }
 
 function isSensitiveKey(key) {
