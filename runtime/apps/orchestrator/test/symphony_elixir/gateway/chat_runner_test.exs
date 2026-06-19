@@ -22,6 +22,18 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
        }}
     end
 
+    def get_agent("manager-1") do
+      {:ok,
+       %Agent{
+         id: "manager-1",
+         slug: "manager",
+         name: "Manager",
+         workspace_id: "workspace-1",
+         type: "manager",
+         created_by_user_id: "user-1"
+       }}
+    end
+
     def get_agent(_agent_id), do: {:error, :not_found}
 
     def list_credentials("planner-1") do
@@ -108,6 +120,34 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     end
 
     defp owner, do: Application.fetch_env!(:symphony_elixir, :chat_runner_test_owner)
+  end
+
+  defmodule TestManagerToolDefinitionResolver do
+    def resolve_for_agent("manager-1") do
+      {:ok,
+       %{
+         tool_definitions: [
+           %{
+             "name" => "git.run",
+             "description" => "Run a git command",
+             "inputSchema" => %{
+               "type" => "object",
+               "properties" => %{
+                 "command" => %{"type" => "string"}
+               },
+               "required" => ["command"]
+             }
+           }
+         ]
+       }}
+    end
+
+    def resolve_for_agent(_agent_id), do: {:ok, %{tool_definitions: []}}
+  end
+
+  defmodule TestEmptyManagerToolDefinitionResolver do
+    def resolve_for_agent("manager-1"), do: {:ok, %{tool_definitions: []}}
+    def resolve_for_agent(_agent_id), do: {:error, :not_found}
   end
 
   setup do
@@ -240,6 +280,226 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert_received {:gateway_runner_failed, "agent:manager-1:main", "run-nil", :supabase_unconfigured}
     refute_received {:manager_session_resolved, _workspace_id}
     refute_received {:manager_run_turn, _session, _prompt, _work_item}
+  end
+
+  test "manager gateway profile sessions include grant-derived tool definitions" do
+    delete_app_env(:symphony_elixir, :gateway_manager_session_resolver)
+    put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
+    put_app_env(:symphony_elixir, :manager_tool_definition_resolver, TestManagerToolDefinitionResolver)
+    put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, __MODULE__})
+    put_app_env(:symphony_elixir, :manager_openai_compatible_req_options, plug: {Req.Test, __MODULE__})
+
+    put_system_envs([
+      {"SUPABASE_URL", "https://test.supabase.co"},
+      {"SUPABASE_SERVICE_ROLE_KEY", "test-api-key"}
+    ])
+
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      cond do
+        conn.request_path == "/rest/v1/routing_rule_match" ->
+          params = URI.decode_query(conn.query_string)
+
+          matches =
+            if params["kind"] == "eq.agent_id" do
+              [%{"rule_id" => "rule-manager"}]
+            else
+              [%{"rule_id" => "rule-manager", "kind" => "agent_id", "key" => "agent_id", "value" => "manager-1"}]
+            end
+
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(200, Jason.encode!(matches))
+
+        conn.request_path == "/rest/v1/routing_rule" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(
+            200,
+            Jason.encode!([
+              %{
+                "id" => "rule-manager",
+                "priority" => 1,
+                "runner_kind" => "manager",
+                "provider" => "openai_compatible",
+                "model" => "qwen-manager",
+                "enabled" => true,
+                "workspace_id" => "workspace-1"
+              }
+            ])
+          )
+
+        conn.request_path == "/v1/chat/completions" ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          send(test_pid, {:manager_chat_request, Jason.decode!(body)})
+
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(
+            200,
+            Jason.encode!(%{
+              "id" => "chatcmpl-manager",
+              "choices" => [
+                %{
+                  "finish_reason" => "stop",
+                  "message" => %{"role" => "assistant", "content" => "manager response"}
+                }
+              ]
+            })
+          )
+
+        true ->
+          Plug.Conn.send_resp(conn, 404, ~s({"error":"unexpected #{conn.request_path}"}))
+      end
+    end)
+
+    assert :ok = ChatRunner.run(manager_agent(), scope("workspace-1"), "hello manager", "run-manager-profile", self())
+
+    assert_receive {:manager_chat_request, request}
+    assert [%{"type" => "function", "function" => %{"name" => "git_run"}}] = request["tools"]
+
+    assert_receive {:gateway_runner_complete, "agent:manager-1:main", "run-manager-profile", {:ok, result}}
+    assert result["output_text"] == "manager response"
+    assert result["model"] == "qwen-manager"
+    assert result["provider"] == "openai_compatible"
+
+    refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
+  end
+
+  test "manager gateway profile sessions preserve empty grant-derived tool definitions" do
+    delete_app_env(:symphony_elixir, :gateway_manager_session_resolver)
+    put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
+    put_app_env(:symphony_elixir, :manager_tool_definition_resolver, TestEmptyManagerToolDefinitionResolver)
+    put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, __MODULE__})
+    put_app_env(:symphony_elixir, :manager_openai_compatible_req_options, plug: {Req.Test, __MODULE__})
+
+    put_system_envs([
+      {"SUPABASE_URL", "https://test.supabase.co"},
+      {"SUPABASE_SERVICE_ROLE_KEY", "test-api-key"}
+    ])
+
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      cond do
+        conn.request_path == "/rest/v1/routing_rule_match" ->
+          params = URI.decode_query(conn.query_string)
+
+          matches =
+            if params["kind"] == "eq.agent_id" do
+              [%{"rule_id" => "rule-manager"}]
+            else
+              [%{"rule_id" => "rule-manager", "kind" => "agent_id", "key" => "agent_id", "value" => "manager-1"}]
+            end
+
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(200, Jason.encode!(matches))
+
+        conn.request_path == "/rest/v1/routing_rule" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(
+            200,
+            Jason.encode!([
+              %{
+                "id" => "rule-manager",
+                "priority" => 1,
+                "runner_kind" => "manager",
+                "provider" => "openai_compatible",
+                "model" => "qwen-manager",
+                "enabled" => true,
+                "workspace_id" => "workspace-1"
+              }
+            ])
+          )
+
+        conn.request_path == "/v1/chat/completions" ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          send(test_pid, {:manager_chat_request, Jason.decode!(body)})
+
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(
+            200,
+            Jason.encode!(%{
+              "id" => "chatcmpl-manager",
+              "choices" => [
+                %{
+                  "finish_reason" => "stop",
+                  "message" => %{"role" => "assistant", "content" => "manager response"}
+                }
+              ]
+            })
+          )
+
+        true ->
+          Plug.Conn.send_resp(conn, 404, ~s({"error":"unexpected #{conn.request_path}"}))
+      end
+    end)
+
+    assert :ok = ChatRunner.run(manager_agent(), scope("workspace-1"), "hello manager", "run-manager-empty-profile", self())
+
+    assert_receive {:manager_chat_request, request}
+    assert request["tools"] == []
+
+    assert_receive {:gateway_runner_complete, "agent:manager-1:main", "run-manager-empty-profile", {:ok, result}}
+    assert result["output_text"] == "manager response"
+
+    refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
+  end
+
+  test "local manager gateway profile sessions dispatch grant-derived tool definitions to helper" do
+    delete_app_env(:symphony_elixir, :gateway_manager_session_resolver)
+    setup_manager_profile_routing(%{"provider" => "local", "model" => "qwen-manager"})
+    put_app_env(:symphony_elixir, :manager_tool_definition_resolver, TestManagerToolDefinitionResolver)
+
+    test_pid = self()
+
+    helper =
+      spawn_link(fn ->
+        receive do
+          {:local_relay_dispatch, frame} ->
+            send(test_pid, {:manager_relay_dispatch_frame, frame})
+            Registry.complete(frame["correlation_id"], %{"output_text" => "local manager response"})
+        end
+      end)
+
+    Registry.register(%{
+      workspace_id: "workspace-1",
+      machine_id: "machine-manager",
+      pid: helper,
+      runners: [
+        %{
+          runner_kind: "openai_compatible",
+          provider: "local",
+          model: "qwen-manager",
+          capabilities: %{runtime_managed_tools: true, tool_calls: true}
+        }
+      ]
+    })
+
+    assert :ok = ChatRunner.run(manager_agent(), scope("workspace-1"), "hello local manager", "run-manager-local", self())
+
+    assert_receive {:manager_relay_dispatch_frame, frame}
+    assert frame["runner_kind"] == "local_relay"
+    assert frame["target_runner_kind"] == "openai_compatible"
+    assert frame["tool_calling_mode"] == "runtime_managed"
+    assert frame["provider"] == "local"
+    assert frame["model"] == "qwen-manager"
+
+    assert %{"name" => "git.run", "execution_kind" => "helper"} =
+             Enum.find(frame["tool_definitions"], &(&1["name"] == "git.run"))
+
+    assert [%{"function" => %{"name" => "git_run"}}] = frame["provider_tool_specs"]
+
+    assert_receive {:gateway_runner_complete, "agent:manager-1:main", "run-manager-local", {:ok, result}}
+    assert result["output_text"] == "local manager response"
+    assert result["model"] == "qwen-manager"
+    assert result["provider"] == "local"
+
+    refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
   end
 
   test "local_relay agents run gateway chat turns through the relay tool-calling loop" do
@@ -386,6 +646,59 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
                   "value" => "/Users/dev/repos/openmacaw"
                 }
               ]
+            end
+
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(200, Jason.encode!(matches))
+
+        conn.request_path == "/rest/v1/routing_rule" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(200, Jason.encode!([rule]))
+
+        true ->
+          Plug.Conn.send_resp(conn, 404, ~s({"error":"unexpected #{conn.request_path}"}))
+      end
+    end)
+  end
+
+  defp setup_manager_profile_routing(rule_overrides) do
+    Registry.reset!()
+    on_exit(fn -> Registry.reset!() end)
+
+    put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
+    put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, __MODULE__})
+
+    put_system_envs([
+      {"SUPABASE_URL", "https://test.supabase.co"},
+      {"SUPABASE_SERVICE_ROLE_KEY", "test-api-key"}
+    ])
+
+    rule =
+      Map.merge(
+        %{
+          "id" => "rule-manager",
+          "priority" => 1,
+          "runner_kind" => "manager",
+          "provider" => "openai_compatible",
+          "model" => "qwen-manager",
+          "enabled" => true,
+          "workspace_id" => "workspace-1"
+        },
+        rule_overrides
+      )
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      cond do
+        conn.request_path == "/rest/v1/routing_rule_match" ->
+          params = URI.decode_query(conn.query_string)
+
+          matches =
+            if params["kind"] == "eq.agent_id" do
+              [%{"rule_id" => "rule-manager"}]
+            else
+              [%{"rule_id" => "rule-manager", "kind" => "agent_id", "key" => "agent_id", "value" => "manager-1"}]
             end
 
           conn

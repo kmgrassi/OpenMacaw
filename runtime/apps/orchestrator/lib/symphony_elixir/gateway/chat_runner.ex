@@ -327,9 +327,43 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       "history_window" => Map.get(scope, :history_window) || Map.get(scope, "history_window"),
       message_recorder_scope: scope
     }
+    |> maybe_put_manager_tool_definitions(profile)
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
   end
+
+  defp maybe_put_manager_tool_definitions(config, profile) do
+    case manager_tool_definitions(profile) do
+      {:ok, definitions} when is_list(definitions) ->
+        Map.put(config, "tool_definitions", definitions)
+
+      _ ->
+        config
+    end
+  end
+
+  defp manager_tool_definitions(profile) do
+    case Map.get(profile, :tool_definitions) || Map.get(profile, "tool_definitions") do
+      definitions when is_list(definitions) ->
+        {:ok, definitions}
+
+      _ ->
+        resolve_manager_tool_definitions(profile.agent_id)
+    end
+  end
+
+  defp resolve_manager_tool_definitions(agent_id) when is_binary(agent_id) and agent_id != "" do
+    resolver = Application.get_env(:symphony_elixir, :manager_tool_definition_resolver, ToolRegistry)
+
+    case resolver.resolve_for_agent(agent_id) do
+      {:ok, %{tool_definitions: definitions}} when is_list(definitions) -> {:ok, definitions}
+      _ -> :error
+    end
+  rescue
+    _ -> :error
+  end
+
+  defp resolve_manager_tool_definitions(_agent_id), do: :error
 
   defp default_base_url(%{provider: "openai_compatible"}) do
     System.get_env("MANAGER_OPENAI_COMPATIBLE_BASE_URL") ||
