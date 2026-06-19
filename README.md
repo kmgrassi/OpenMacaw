@@ -26,7 +26,7 @@ source tree.
 | Node.js 20+ and [pnpm](https://pnpm.io/) 9+ | platform, runtime scripts | `npm install -g pnpm` |
 | Elixir 1.16+ / Erlang OTP 26+ (`elixir`, `mix`) | runtime | `brew install elixir` or [mise](https://mise.jdx.dev/) |
 | `curl`, `lsof`, `shasum` | dev scripts | preinstalled on macOS; standard packages on Linux |
-| Docker + [Supabase CLI](https://supabase.com/docs/guides/local-development) | local database | only if you run Supabase locally (recommended) |
+| Docker + [Supabase CLI](https://supabase.com/docs/guides/local-development) | local database | needed for login and database-backed workflows |
 | Go 1.23+ | local runtime helper | only if you build the optional helper daemon |
 
 Verify the command-line tools with:
@@ -35,39 +35,7 @@ Verify the command-line tools with:
 ./openmacaw doctor
 ```
 
-### 1. Set up the database (Supabase)
-
-OpenMacaw stores its state in [Supabase](https://supabase.com) (Postgres).
-The fastest path is the local stack:
-
-```sh
-cd platform
-supabase start      # starts local Postgres + auth + Studio (needs Docker)
-supabase db reset   # applies the schema from supabase/migrations/
-supabase status     # prints the URL and keys you need in the next step
-```
-
-Alternatively, create a hosted Supabase project and push the schema to it —
-see [docs/supabase/README.md](docs/supabase/README.md) for both paths in
-detail.
-
-### 2. Configure environment
-
-Copy the example env files and fill in the **Required** sections at the top
-with the values from `supabase status` (or your hosted project's dashboard):
-
-```sh
-cp platform/.env.example platform/.env
-cp runtime/.env.example runtime/.env
-```
-
-In `platform/.env`, four values must be set for the stack to boot and log in:
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VITE_SUPABASE_DEV_URL`, and
-`VITE_SUPABASE_DEV_ANON_KEY`. The runtime needs the same `SUPABASE_URL` and
-`SUPABASE_SERVICE_ROLE_KEY` pair. Everything else in the files is optional
-and feature-gated.
-
-### 3. Run the stack
+### 1. Run the local stack
 
 From the repository root:
 
@@ -75,18 +43,47 @@ From the repository root:
 ./openmacaw run
 ```
 
-That command checks prerequisites and your env file, installs missing
-JavaScript and Elixir dependencies, then starts the platform API, platform web
-app, runtime launcher, and runtime orchestrator together:
+That command installs missing JavaScript and Elixir dependencies, checks
+whether Supabase is configured, then starts the platform API, platform web app,
+runtime launcher, and runtime orchestrator together:
 
 - Web: `http://127.0.0.1:5173`
 - API: `http://127.0.0.1:3100`
 - Runtime orchestrator: `http://127.0.0.1:4000`
 - Runtime launcher: `http://127.0.0.1:4100`
+- Supabase Studio, after local Supabase is started: `http://127.0.0.1:54323`
 
-Press `Ctrl+C` to stop the stack.
+Press `Ctrl+C` to stop the OpenMacaw processes.
 
-### 4. Log in and verify
+If Supabase is not configured yet, `./openmacaw run` continues and prints a
+setup note. The shell/UI can load, but login and database-backed agent workflows
+need Supabase. For the local database path:
+
+```sh
+cd platform
+supabase start
+supabase migration up --local
+supabase status -o env
+```
+
+Copy the local API URL, anon key, and service_role key into `platform/.env`
+and the API URL plus service_role key into `runtime/.env`. You can create both
+files from the examples:
+
+```sh
+cp platform/.env.example platform/.env
+cp runtime/.env.example runtime/.env
+```
+
+If you want to use a hosted Supabase project instead, create
+`platform/.env` and `runtime/.env` from the example files before running the
+stack, then fill in the Required sections with your hosted project URL, anon
+key, and service role key. See
+[docs/supabase/README.md](docs/supabase/README.md) for hosted setup and
+migration details. Set `OPENMACAW_AUTO_SUPABASE=1` to let `./openmacaw run`
+start local Supabase and fill the local env files automatically.
+
+### 2. Log in and verify
 
 Create a user, then sign in at `http://127.0.0.1:5173`:
 

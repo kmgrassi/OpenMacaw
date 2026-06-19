@@ -32,6 +32,7 @@ Environment overrides:
   API_PORT, WEB_PORT, LAUNCHER_PORT, LAUNCHER_START_PORT, ORCHESTRATOR_PORT
   OPENMACAW_SKIP_BOOTSTRAP=1     Do not install missing dependencies
   OPENMACAW_SKIP_ENV_CHECK=1     Do not validate platform/.env
+  OPENMACAW_AUTO_SUPABASE=1      Start/configure local Supabase when needed
   OPENMACAW_HEALTH_TIMEOUT=60    Startup health wait in seconds
 EOF
 }
@@ -49,6 +50,84 @@ env_value() {
   sed -n "s/^$1=//p" "$2" | tail -1
 }
 
+env_needs_value() {
+  local value="$1"
+
+  case "$value" in
+    ""|*your-project-ref*|*your-service-role-key*|*your-dev-anon-key*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+is_local_supabase_url() {
+  local value="$1"
+
+  case "$value" in
+    http://127.0.0.1:*|http://localhost:*|http://0.0.0.0:*)
+      return 0
+      ;;
+  esac
+
+  return 1
+}
+
+set_env_value() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local tmp
+  local found=0
+  local line
+
+  tmp="$(mktemp "${file}.tmp.XXXXXX")"
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "$key="*)
+        printf '%s=%s\n' "$key" "$value"
+        found=1
+        ;;
+      *)
+        printf '%s\n' "$line"
+        ;;
+    esac
+  done < "$file" > "$tmp"
+
+  if [ "$found" -eq 0 ]; then
+    printf '%s=%s\n' "$key" "$value" >> "$tmp"
+  fi
+
+  mv "$tmp" "$file"
+}
+
+ensure_env_file() {
+  local file="$1"
+  local example="$2"
+
+  if [ -f "$file" ]; then
+    return 0
+  fi
+
+  if [ -f "$example" ]; then
+    cp "$example" "$file"
+  else
+    : > "$file"
+  fi
+}
+
+extract_status_value() {
+  local key="$1"
+  local status="$2"
+  local value
+
+  value="$(printf '%s\n' "$status" | sed -n "s/^${key}=//p" | tail -1)"
+  value="${value%\"}"
+  value="${value#\"}"
+  printf '%s' "$value"
+}
+
 # Prints a problem description and returns 0 when platform/.env is missing or
 # incomplete; returns 1 when it is fully configured.
 env_config_problem() {
@@ -64,11 +143,9 @@ env_config_problem() {
 
   for var in $required_vars; do
     value="$(env_value "$var" "$env_file")"
-    case "$value" in
-      ""|*your-project-ref*|*your-service-role-key*|*your-dev-anon-key*)
-        missing="$missing $var"
-        ;;
-    esac
+    if env_needs_value "$value"; then
+      missing="$missing $var"
+    fi
   done
 
   if [ -n "$missing" ]; then
@@ -79,9 +156,74 @@ env_config_problem() {
   return 1
 }
 
-# Mode "warn" reports env status without failing (used by doctor, which the
-# Quick start runs before env setup). Mode "strict" refuses to continue (used
-# by run, which cannot work without the env).
+local_supabase_config_needed() {
+  local env_file="$ROOT_DIR/platform/.env"
+  local url
+
+  if [ ! -f "$env_file" ]; then
+    return 0
+  fi
+
+  url="$(env_value SUPABASE_URL "$env_file")"
+  if env_config_problem >/dev/null; then
+    return 0
+  fi
+
+  is_local_supabase_url "$url"
+}
+
+ensure_local_supabase() {
+  local env_file="$ROOT_DIR/platform/.env"
+  local runtime_env_file="$ROOT_DIR/runtime/.env"
+  local status_output
+  local api_url
+  local service_role_key
+  local anon_key
+
+  if [ "${OPENMACAW_AUTO_SUPABASE:-0}" != "1" ]; then
+    return 0
+  fi
+
+  if ! local_supabase_config_needed; then
+    return 0
+  fi
+
+  require_cmd supabase
+
+  echo "[openmacaw] ensuring local Supabase is running"
+  (
+    cd "$ROOT_DIR/platform"
+    supabase start
+    supabase migration up --local
+  )
+
+  status_output="$(cd "$ROOT_DIR/platform" && supabase status -o env)"
+  api_url="$(extract_status_value API_URL "$status_output")"
+  api_url="${api_url:-$(extract_status_value SUPABASE_URL "$status_output")}"
+  service_role_key="$(extract_status_value SERVICE_ROLE_KEY "$status_output")"
+  service_role_key="${service_role_key:-$(extract_status_value SUPABASE_SERVICE_ROLE_KEY "$status_output")}"
+  anon_key="$(extract_status_value ANON_KEY "$status_output")"
+  anon_key="${anon_key:-$(extract_status_value SUPABASE_ANON_KEY "$status_output")}"
+
+  if [ -z "$api_url" ] || [ -z "$service_role_key" ] || [ -z "$anon_key" ]; then
+    die "could not read API_URL, SERVICE_ROLE_KEY, and ANON_KEY from 'supabase status -o env'"
+  fi
+
+  ensure_env_file "$env_file" "$ROOT_DIR/platform/.env.example"
+  set_env_value "$env_file" SUPABASE_URL "$api_url"
+  set_env_value "$env_file" SUPABASE_SERVICE_ROLE_KEY "$service_role_key"
+  set_env_value "$env_file" VITE_SUPABASE_DEV_URL "$api_url"
+  set_env_value "$env_file" VITE_SUPABASE_DEV_ANON_KEY "$anon_key"
+
+  ensure_env_file "$runtime_env_file" "$ROOT_DIR/runtime/.env.example"
+  set_env_value "$runtime_env_file" SUPABASE_URL "$api_url"
+  set_env_value "$runtime_env_file" SUPABASE_SERVICE_ROLE_KEY "$service_role_key"
+
+  echo "[openmacaw] local Supabase configured in platform/.env and runtime/.env"
+}
+
+# Mode "warn" reports env status without failing. Mode "strict" refuses to
+# continue, and is available for callers that require a configured database.
 check_env_config() {
   local mode="$1"
   local problem
@@ -94,7 +236,7 @@ check_env_config() {
   if problem="$(env_config_problem)"; then
     if [ "$mode" = "warn" ]; then
       echo "[openmacaw] env not configured yet: ${problem}"
-      echo "[openmacaw]   './openmacaw run' needs it — see the Quick start in README.md"
+      echo "[openmacaw]   database-backed features need it — see the Quick start in README.md"
     else
       die "${problem}.
 
@@ -114,6 +256,30 @@ Quick start in README.md. Set OPENMACAW_SKIP_ENV_CHECK=1 to bypass."
 
   if [ ! -f "$ROOT_DIR/runtime/.env" ] && [ ! -f "$ROOT_DIR/runtime/apps/orchestrator/.env" ]; then
     echo "[openmacaw] warning: runtime/.env not found — the stack will start, but agent runs that need the database will fail. Create it with: cp runtime/.env.example runtime/.env" >&2
+  fi
+}
+
+print_env_config_note() {
+  local problem
+
+  if [ "${OPENMACAW_SKIP_ENV_CHECK:-0}" = "1" ]; then
+    return 0
+  fi
+
+  if problem="$(env_config_problem)"; then
+    cat <<EOF
+
+[openmacaw] Supabase is not configured: ${problem}
+  The web/API/runtime processes can start, but login and database-backed
+  agent workflows need Supabase.
+  For local Supabase, run:
+    cd platform
+    supabase start
+    supabase migration up --local
+    supabase status -o env
+  Then copy the local API URL, anon key, and service_role key into
+  platform/.env and runtime/.env. See README.md for details.
+EOF
   fi
 }
 
@@ -304,7 +470,9 @@ stop_stack() {
 
 run_stack() {
   derive_ports
-  doctor strict
+  ensure_local_supabase
+  doctor warn
+  print_env_config_note
   bootstrap_if_needed
 
   mkdir -p "$RUN_DIR"

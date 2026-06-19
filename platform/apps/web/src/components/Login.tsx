@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 
 import {
   clearAllSupabaseAuthStorage,
+  getSupabaseConfigStatus,
   getSupabaseClient,
 } from "../api/supabase";
 import { Button } from "./ui/Button";
@@ -16,6 +17,8 @@ type Props = {
 };
 
 export function Login({ onSignIn, error, loading }: Props) {
+  const supabaseConfig = getSupabaseConfigStatus();
+  const authDisabled = !supabaseConfig.configured;
   // Wipe any existing Supabase session when this page mounts. Prevents a
   // stale session from a prior environment (e.g. dev/prod flip at the same
   // origin, or a cross-project token that leaked into localStorage) from
@@ -32,6 +35,10 @@ export function Login({ onSignIn, error, loading }: Props) {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      if (!supabaseConfig.configured) {
+        if (!cancelled) setReady(true);
+        return;
+      }
       try {
         await getSupabaseClient().auth.signOut({ scope: "local" });
         clearAllSupabaseAuthStorage();
@@ -47,7 +54,7 @@ export function Login({ onSignIn, error, loading }: Props) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [supabaseConfig.configured]);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -109,7 +116,7 @@ export function Login({ onSignIn, error, loading }: Props) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            disabled={!ready || loading}
+            disabled={authDisabled || !ready || loading}
           />
           <Input
             label="Password"
@@ -119,15 +126,23 @@ export function Login({ onSignIn, error, loading }: Props) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            disabled={!ready || loading}
+            disabled={authDisabled || !ready || loading}
           />
+
+          {!supabaseConfig.configured && (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+              {supabaseConfig.message}
+            </p>
+          )}
 
           {error && <p className="text-sm text-red-400">{error}</p>}
 
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={!ready || loading || !email.trim() || !password}
+            disabled={
+              authDisabled || !ready || loading || !email.trim() || !password
+            }
             className="w-full"
           >
             {!ready ? "Preparing..." : loading ? "Signing in..." : "Sign In"}
@@ -138,7 +153,7 @@ export function Login({ onSignIn, error, loading }: Props) {
               type="button"
               variant="secondary"
               onClick={handleShortcutLogin}
-              disabled={!ready || loading}
+              disabled={authDisabled || !ready || loading}
               className="w-full"
             >
               {shortcutLabel}
