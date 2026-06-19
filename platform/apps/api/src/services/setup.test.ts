@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getServiceRoleSupabase, getSupabaseForAccessToken, getUserScopedSupabase } from "../supabase-client.js";
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 import { getAgentHealth, getSetup, listSetupAuthState } from "./setup.js";
+import { DEFAULT_MANAGER_TOOL_SLUGS } from "./tool-bundles.js";
 
 vi.mock("../supabase-client.js", () => ({
   getServiceRoleSupabase: vi.fn(),
@@ -29,6 +30,7 @@ const planningAgentId = "44444444-4444-4444-8444-444444444444";
 const codingAgentId = "55555555-5555-4555-8555-555555555555";
 const managerAgentId = "66666666-6666-4666-8666-666666666666";
 const routerAgentId = "77777777-7777-4777-8777-777777777777";
+const managerTemplateId = "88888888-8888-4888-8888-888888888888";
 
 type Row = Record<string, unknown>;
 
@@ -49,6 +51,34 @@ function agent(overrides: Partial<Row> & { id: string; type: string | null }): R
     created_by_user_id: userId,
     updated_at: "2026-04-25T00:00:00.000Z",
     ...rest,
+  };
+}
+
+function toolId(slug: string) {
+  return `tool-${slug.replaceAll(".", "-")}`;
+}
+
+function managerToolCatalog() {
+  return {
+    tool: DEFAULT_MANAGER_TOOL_SLUGS.map((slug) => ({
+      id: toolId(slug),
+      workspace_id: null,
+      slug,
+      enabled: true,
+    })),
+    tool_policy_template: [
+      {
+        id: managerTemplateId,
+        workspace_id: null,
+        slug: "manager",
+        enabled: true,
+      },
+    ],
+    tool_policy_template_tool: DEFAULT_MANAGER_TOOL_SLUGS.map((slug) => ({
+      template_id: managerTemplateId,
+      tool_id: toolId(slug),
+    })),
+    agent_tool_grant: [] as Row[],
   };
 }
 
@@ -82,7 +112,9 @@ function setupSupabaseMock(input?: {
     gatewayConfigAgentIds: new Set(input?.gatewayConfigAgentIds ?? []),
     scheduledTasks: [...(input?.scheduledTasks ?? [])],
     workspaceSettings: [...(input?.workspaceSettings ?? [])],
+    agentToolGrants: [] as Row[],
   };
+  const managerCatalog = managerToolCatalog();
 
   const supabaseTables = {
     workspaces: state.workspaces,
@@ -114,6 +146,10 @@ function setupSupabaseMock(input?: {
     })),
     scheduled_task: state.scheduledTasks,
     workspace_settings: state.workspaceSettings,
+    tool: managerCatalog.tool,
+    tool_policy_template: managerCatalog.tool_policy_template,
+    tool_policy_template_tool: managerCatalog.tool_policy_template_tool,
+    agent_tool_grant: state.agentToolGrants,
   };
   const supabaseClient = createMockSupabaseClient(supabaseTables);
   vi.mocked(getServiceRoleSupabase).mockReturnValue(supabaseClient as never);
@@ -171,6 +207,9 @@ describe("default-agent auth bootstrap", () => {
     expect(state.workspaces[0]?.id).toBe("workspaces-1");
     expect(state.workspaces[0]?.id).not.toBe(userId);
     expect(state.agents.map((row) => row.id)).toHaveLength(4);
+    expect(state.agentToolGrants.map((grant) => grant.tool_id).sort()).toEqual(
+      DEFAULT_MANAGER_TOOL_SLUGS.map(toolId).sort(),
+    );
     expect(state.scheduledTasks).toHaveLength(1);
     expect(routerTask).toMatchObject({
       workspace_id: state.workspaces[0]?.id,

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 import { ensureDefaultAgentToolsForAgent } from "./default-agent-tools.js";
-import { GIT_COMMAND_TOOL_SLUG, SCHEDULED_TASK_TOOL_SLUGS } from "./tool-bundles.js";
+import { DEFAULT_MANAGER_TOOL_SLUGS, GIT_COMMAND_TOOL_SLUG, SCHEDULED_TASK_TOOL_SLUGS } from "./tool-bundles.js";
 
 const agentId = "33333333-3333-4333-8333-333333333333";
 const workspaceId = "22222222-2222-4222-8222-222222222222";
@@ -36,6 +36,7 @@ function templateTool(templateSlug: string, toolId: string) {
 const scheduledToolIds = SCHEDULED_TASK_TOOL_SLUGS.map((slug) => `tool-${slug.replaceAll(".", "-")}`);
 const sortedScheduledToolSlugs = [...SCHEDULED_TASK_TOOL_SLUGS].sort();
 const sortedScheduledToolIds = [...scheduledToolIds].sort();
+const sortedManagerToolSlugs = [...DEFAULT_MANAGER_TOOL_SLUGS].sort();
 
 function scheduledTemplateTools(templateSlug: string) {
   return scheduledToolIds.map((toolId) => templateTool(templateSlug, toolId));
@@ -406,7 +407,7 @@ describe("default agent tools", () => {
 
     expect(result).toEqual({
       changed: true,
-      assignedToolSlugs: [GIT_COMMAND_TOOL_SLUG, ...sortedScheduledToolSlugs, "task.read"],
+      assignedToolSlugs: sortedManagerToolSlugs,
       missingToolSlugs: [],
     });
     expect(tables.agent_tool_grant).toEqual(
@@ -440,6 +441,27 @@ describe("default agent tools", () => {
             created_by_user_id: userId,
           }),
         ),
+        expect.objectContaining({
+          agent_id: agentId,
+          tool_id: "tool-read",
+          workspace_id: workspaceId,
+          mode: "include",
+          created_by_user_id: userId,
+        }),
+        expect.objectContaining({
+          agent_id: agentId,
+          tool_id: "tool-symbols",
+          workspace_id: workspaceId,
+          mode: "include",
+          created_by_user_id: userId,
+        }),
+        expect.objectContaining({
+          agent_id: agentId,
+          tool_id: "tool-plan-create",
+          workspace_id: workspaceId,
+          mode: "include",
+          created_by_user_id: userId,
+        }),
       ]),
     );
   });
@@ -467,7 +489,7 @@ describe("default agent tools", () => {
 
     expect(result).toEqual({
       changed: true,
-      assignedToolSlugs: [GIT_COMMAND_TOOL_SLUG, ...sortedScheduledToolSlugs],
+      assignedToolSlugs: sortedManagerToolSlugs.filter((slug) => slug !== "task.read"),
       missingToolSlugs: [],
     });
     expect(tables.agent_tool_grant).toEqual(

@@ -49,6 +49,8 @@ export const DEFAULT_PLANNER_REMEDIATION_TOOL_SLUGS = [
 
 export const DEFAULT_CODING_TOOL_SLUGS = [...DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS] as const;
 
+export const DEFAULT_MANAGER_TOOL_SLUGS = [GIT_COMMAND_TOOL_SLUG, ...DEFAULT_CODING_TOOL_SLUGS] as const;
+
 export const LOCAL_MODEL_CODING_TOOL_SLUGS = [
   "repo.read_file",
   "repo.list",
@@ -75,7 +77,7 @@ const TOOL_BUNDLES: Record<ToolProfile, ToolBundleDefinition> = {
     },
   },
   manager: {
-    defaultToolSlugs: [GIT_COMMAND_TOOL_SLUG, ...SCHEDULED_TASK_TOOL_SLUGS],
+    defaultToolSlugs: DEFAULT_MANAGER_TOOL_SLUGS,
   },
   router: {
     defaultToolSlugs: ROUTER_TOOL_SLUGS,

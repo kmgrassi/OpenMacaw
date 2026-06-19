@@ -17,6 +17,7 @@ import {
 import { ensureDefaultAgentToolsForAgent } from "../src/services/default-agent-tools.js";
 import {
   DEFAULT_PLANNING_TOOL_SLUGS,
+  DEFAULT_MANAGER_TOOL_SLUGS,
   GIT_COMMAND_TOOL_SLUG,
   SCHEDULED_TASK_TOOL_SLUGS,
 } from "../src/services/tool-bundles.js";
@@ -483,7 +484,7 @@ function defaultToolPolicy(kind: AgentType): ToolPolicy {
     return ToolPolicySchema.parse({
       manager: {
         cadence_ms: 60_000,
-        tools: [GIT_COMMAND_TOOL_SLUG, ...SCHEDULED_TASK_TOOL_SLUGS],
+        tools: DEFAULT_MANAGER_TOOL_SLUGS,
       },
     });
   }

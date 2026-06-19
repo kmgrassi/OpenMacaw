@@ -8,7 +8,7 @@ import {
 } from "./setup.js";
 import { getServiceRoleSupabase, getSupabaseForAccessToken, getUserScopedSupabase } from "../supabase-client.js";
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
-import { GIT_COMMAND_TOOL_SLUG, SCHEDULED_TASK_TOOL_SLUGS } from "./tool-bundles.js";
+import { DEFAULT_MANAGER_TOOL_SLUGS } from "./tool-bundles.js";
 
 vi.mock("../supabase-client.js", () => ({
   executeLoggedSupabaseRows: vi.fn(
@@ -35,6 +35,35 @@ const planningAgentId = "33333333-3333-4333-8333-333333333333";
 const codingAgentId = "44444444-4444-4444-8444-444444444444";
 const foreignAgentId = "55555555-5555-4555-8555-555555555555";
 const managerAgentId = "66666666-6666-4666-8666-666666666666";
+const managerTemplateId = "77777777-7777-4777-8777-777777777777";
+
+function toolId(slug: string) {
+  return `tool-${slug.replaceAll(".", "-")}`;
+}
+
+function managerToolCatalog() {
+  return {
+    tool: DEFAULT_MANAGER_TOOL_SLUGS.map((slug) => ({
+      id: toolId(slug),
+      workspace_id: null,
+      slug,
+      enabled: true,
+    })),
+    tool_policy_template: [
+      {
+        id: managerTemplateId,
+        workspace_id: null,
+        slug: "manager",
+        enabled: true,
+      },
+    ],
+    tool_policy_template_tool: DEFAULT_MANAGER_TOOL_SLUGS.map((slug) => ({
+      template_id: managerTemplateId,
+      tool_id: toolId(slug),
+    })),
+    agent_tool_grant: [] as Array<Record<string, unknown>>,
+  };
+}
 
 function setupMockDatabase() {
   const db = {
@@ -104,6 +133,7 @@ function setupMockDatabase() {
     routing_rule_match: [] as Array<Record<string, unknown>>,
     gateway_config: [] as Array<Record<string, unknown>>,
     gateway_config_versions: [] as Array<Record<string, unknown>>,
+    ...managerToolCatalog(),
   };
 
   const supabaseClient = createMockSupabaseClient(db);
@@ -322,9 +352,15 @@ describe("applyDefaultAgentCredentials", () => {
     });
     expect(db.agent.find((agent) => agent.id === managerAgentId)?.tool_policy).toMatchObject({
       manager: {
-        tools: [GIT_COMMAND_TOOL_SLUG, ...SCHEDULED_TASK_TOOL_SLUGS],
+        tools: DEFAULT_MANAGER_TOOL_SLUGS,
       },
     });
+    expect(
+      db.agent_tool_grant
+        .filter((grant) => grant.agent_id === managerAgentId)
+        .map((grant) => grant.tool_id)
+        .sort(),
+    ).toEqual(DEFAULT_MANAGER_TOOL_SLUGS.map(toolId).sort());
     expect(db.gateway_config.find((row) => row.scope_id === managerAgentId)?.config_json).toMatchObject({
       runners: {
         manager: {
