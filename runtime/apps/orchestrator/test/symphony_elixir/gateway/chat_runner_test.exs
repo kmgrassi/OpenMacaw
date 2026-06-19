@@ -285,11 +285,10 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     refute Enum.any?(frame["messages"], &(Map.get(&1, "content") == "should not replay"))
     assert [%{"name" => _name} | _rest] = frame["tool_definitions"]
 
-    # Workspace-local tools are offered to the local model and marked for
-    # helper-side execution so they run against the user's routed checkout.
+    # Agents without persisted grants get only the universal fallback surface;
+    # broad local CLI access must be explicitly granted.
     git_tool = Enum.find(frame["tool_definitions"], &(&1["name"] == "git.run"))
-    assert git_tool, "expected git.run in local_relay tool_definitions"
-    assert git_tool["execution_kind"] == "helper"
+    refute git_tool, "did not expect git.run in no-grants local_relay tool_definitions"
 
     assert_receive {:gateway_runner_event, "agent:relay-1:main", "run-relay", %{event: :turn_started}}
 

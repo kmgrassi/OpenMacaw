@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
   use SymphonyElixir.Runner.ManagerTestSupport
 
   alias SymphonyElixir.LocalRelay.Registry
+  alias SymphonyElixir.ToolRegistry
 
   test "runs a local relay manager tool loop and sends tool outputs as continuation frames" do
     test_pid = self()
@@ -57,12 +58,11 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
     assert session.model_client == ModelClient.LocalRelay
     assert session.api_key == "local-runtime"
 
-    # session.tool_specs is the source helper_executed_tool?/2 reads to decide
-    # delegation, so git.run must be marked here (not only on the dispatch
-    # frame) or the manager would silently run it in-orchestrator.
+    # No-grants manager/local-relay fallback must not expose broad local
+    # git/gh execution. git.run is still available when platform-supplied
+    # tool_definitions explicitly include it.
     git_spec = Enum.find(session.tool_specs, &(Map.get(&1, "name") == "git.run"))
-    assert git_spec, "expected git.run in session.tool_specs"
-    assert git_spec["execution_kind"] == "helper"
+    refute git_spec, "did not expect git.run in fallback session.tool_specs"
 
     work_item = %WorkItem{id: "work-1", identifier: "MAN-1", title: "Manage work"}
 
@@ -87,13 +87,12 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
                      }}
 
     assert Enum.map(provider_tool_specs, &get_in(&1, ["function", "name"])) ==
-             Enum.map(tool_names(), &String.replace(&1, ".", "_"))
+             tool_names()
+             |> Enum.reject(&(&1 == "git.run"))
+             |> Enum.map(&String.replace(&1, ".", "_"))
 
-    # git.run is marked for helper-side execution so the relay helper runs
-    # git/gh on the user's machine; other manager tools stay runtime-executed.
     git_tool = Enum.find(tool_definitions, &(Map.get(&1, "name") == "git.run"))
-    assert git_tool, "expected git.run in manager tool_definitions"
-    assert git_tool["execution_kind"] == "helper"
+    refute git_tool, "did not expect git.run in fallback manager tool_definitions"
 
     assert_received {:relay_snooze_patch, %{"id" => "eq.work-1", "workspace_id" => "eq.workspace-1"}, %{"next_poll_at" => next_poll_at}}
 
@@ -128,6 +127,31 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
     assert_received {:manager_event, %{event: :notification, payload: %{"params" => %{"textDelta" => "Snoozed from relay."}}}}
 
     assert_received {:manager_event, %{event: :turn_completed, payload: %{"id" => ^correlation_id}}}
+
+    assert :ok = Manager.stop_session(session)
+  end
+
+  test "keeps explicitly supplied manager local relay git.run helper-executed" do
+    {:ok, session} =
+      Manager.start_session(
+        %{
+          "provider" => "local",
+          "model" => "qwen",
+          "workspace_id" => "workspace-1",
+          "tool_definitions" => ToolRegistry.definitions(["snooze", "git.run"])
+        },
+        nil
+      )
+
+    assert session.allowed_tools == ["snooze", "git.run"]
+
+    git_spec = Enum.find(session.tool_specs, &(Map.get(&1, "name") == "git.run"))
+    assert git_spec, "expected explicitly supplied git.run in session.tool_specs"
+    assert git_spec["execution_kind"] == "helper"
+
+    snooze_spec = Enum.find(session.tool_specs, &(Map.get(&1, "name") == "snooze"))
+    assert snooze_spec
+    refute Map.get(snooze_spec, "execution_kind") == "helper"
 
     assert :ok = Manager.stop_session(session)
   end

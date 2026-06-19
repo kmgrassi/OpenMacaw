@@ -218,7 +218,9 @@ defmodule SymphonyElixir.Integration.ManagerLocalSmokeTest do
     assert capability_requirements != %{}
 
     assert Enum.map(provider_tool_specs, &get_in(&1, ["function", "name"])) ==
-             Enum.map(ToolRegistry.bundle(:manager), &String.replace(&1, ".", "_"))
+             ToolRegistry.bundle(:manager)
+             |> Enum.reject(&(&1 == "git.run"))
+             |> Enum.map(&String.replace(&1, ".", "_"))
 
     # snooze round-tripped: PostgREST patch hit, continuation frame carried tool output.
     assert_received {:work_items_patch, %{"id" => "eq.work-1", "workspace_id" => "eq.workspace-1"}, %{"next_poll_at" => next_poll_at}}

@@ -466,11 +466,11 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   # no-grants fallback below).
   @local_helper_tools ["git.run", "shell.exec", "repo.list", "repo.read_file", "repo.search"]
 
-  # CLI tools added to the no-grants fallback surface. Kept to git.run only:
-  # shell.exec (arbitrary execution on the user's machine) must require an
-  # explicit `agent_tool_grant`, never appear just because an agent has no
-  # persisted grants.
-  @fallback_helper_cli_tools ["git.run"]
+  # CLI tools are intentionally absent from the no-grants fallback surface.
+  # Broad local CLI access (`git.run`, `shell.exec`) must require an explicit
+  # `agent_tool_grant`, never appear just because an agent has no persisted
+  # grants.
+  @fallback_helper_cli_tools []
 
   # Workspace-local tools the helper executor cannot run yet: runtime-side
   # execution requires the user's `workspace_root` (which lives on the laptop,
@@ -526,8 +526,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   # "helper" so they run on the user's machine. Primary source is the agent's
   # granted tools (`agent_tool_grant`), so a local-model agent gets exactly the
   # tools it was granted (repo.*, shell.exec, scheduled_task.*, git.run, ...).
-  # Falls back to the universal bundle + git.run for agents with no grants, to
-  # preserve prior behavior.
+  # Falls back to the universal bundle only for agents with no grants.
   defp local_relay_tool_definitions(profile) do
     profile
     |> agent_granted_definitions()
