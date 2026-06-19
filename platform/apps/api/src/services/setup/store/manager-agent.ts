@@ -1,4 +1,5 @@
 import { getUserScopedSupabase, normalizeSupabaseError } from "../../../supabase-client.js";
+import { ensureDefaultAgentToolsForAgent } from "../../default-agent-tools.js";
 import { asJson, buildModelSettings, managerAgentName, managerToolPolicyDefaults } from "../builders.js";
 import { getSetupDefaults } from "../defaults.js";
 import { workspaceManagerAgentId } from "../identity.js";
@@ -78,7 +79,16 @@ async function createWorkspaceManagerAgent(accessToken: string, workspaceId: str
 
 export async function ensureWorkspaceManagerAgent(accessToken: string, workspaceId: string, userId: string) {
   const claimableAgent = await findClaimableWorkspaceManagerAgent(accessToken, workspaceId);
-  if (claimableAgent) return updateWorkspaceManagerAgent(accessToken, claimableAgent, userId);
+  const managerAgent = claimableAgent
+    ? await updateWorkspaceManagerAgent(accessToken, claimableAgent, userId)
+    : await createWorkspaceManagerAgent(accessToken, workspaceId, userId);
 
-  return createWorkspaceManagerAgent(accessToken, workspaceId, userId);
+  await ensureDefaultAgentToolsForAgent({
+    agentId: managerAgent.id,
+    workspaceId: managerAgent.workspace_id,
+    agentType: managerAgent.type,
+    userId,
+  });
+
+  return managerAgent;
 }
