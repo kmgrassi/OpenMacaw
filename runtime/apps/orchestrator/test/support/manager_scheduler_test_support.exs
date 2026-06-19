@@ -112,6 +112,28 @@ defmodule SymphonyElixir.Manager.SchedulerTestSupport do
     end
   end
 
+  defmodule TestToolDefinitionResolver do
+    def resolve_for_agent("manager-agent-1") do
+      {:ok,
+       %{
+         tool_definitions: [
+           %{
+             "name" => "git.run",
+             "description" => "Run a git command",
+             "parameters_schema" => %{
+               "type" => "object",
+               "properties" => %{"command" => %{"type" => "string"}},
+               "required" => ["command"]
+             },
+             "execution_kind" => "shell"
+           }
+         ]
+       }}
+    end
+
+    def resolve_for_agent(_agent_id), do: {:ok, %{tool_definitions: []}}
+  end
+
   defmodule TestExecutionProfile do
     def resolve(agent_id, workspace_id, opts \\ []) do
       config =

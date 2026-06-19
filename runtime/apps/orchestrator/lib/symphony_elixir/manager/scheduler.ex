@@ -24,6 +24,7 @@ defmodule SymphonyElixir.Manager.Scheduler do
   alias SymphonyElixir.Runner
   alias SymphonyElixir.RuntimeLog
   alias SymphonyElixir.StructuredContext
+  alias SymphonyElixir.ToolRegistry
 
   @registry SymphonyElixir.Manager.Scheduler.Registry
   @default_due_task_query SchedulerConfig.default_due_task_query()
@@ -719,9 +720,43 @@ defmodule SymphonyElixir.Manager.Scheduler do
       "base_url" => default_base_url(profile),
       "trace_id" => Process.get(:symphony_trace_id)
     }
+    |> maybe_put_tool_definitions(profile)
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
   end
+
+  defp maybe_put_tool_definitions(config, profile) do
+    case manager_tool_definitions(profile) do
+      definitions when is_list(definitions) and definitions != [] ->
+        Map.put(config, "tool_definitions", definitions)
+
+      _ ->
+        config
+    end
+  end
+
+  defp manager_tool_definitions(profile) do
+    case Map.get(profile, :tool_definitions) || Map.get(profile, "tool_definitions") do
+      definitions when is_list(definitions) and definitions != [] ->
+        definitions
+
+      _ ->
+        resolve_manager_tool_definitions(profile.agent_id)
+    end
+  end
+
+  defp resolve_manager_tool_definitions(agent_id) when is_binary(agent_id) and agent_id != "" do
+    resolver = Application.get_env(:symphony_elixir, :manager_tool_definition_resolver, ToolRegistry)
+
+    case resolver.resolve_for_agent(agent_id) do
+      {:ok, %{tool_definitions: definitions}} when is_list(definitions) -> definitions
+      _ -> []
+    end
+  rescue
+    _ -> []
+  end
+
+  defp resolve_manager_tool_definitions(_agent_id), do: []
 
   defp default_base_url(%{provider: "openai_compatible"}) do
     System.get_env("MANAGER_OPENAI_COMPATIBLE_BASE_URL") ||
