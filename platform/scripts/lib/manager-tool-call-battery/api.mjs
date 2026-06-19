@@ -223,7 +223,7 @@ export async function sendBrowserGatewayMessage(input) {
   const startedAt = new Date().toISOString();
   const preparation = sanitizeForArtifact(await prepareRuntime(input));
   const requestId = `battery-${randomUUID()}`;
-  const idempotencyKey = `battery-${randomUUID()}`;
+  const idempotencyKey = randomUUID();
   const events = [];
 
   const ws = await openBrowserGatewaySocket(input, events);

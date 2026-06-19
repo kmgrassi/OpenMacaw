@@ -1,5 +1,5 @@
 defmodule SymphonyElixir.Runner.LocalRelayToolTest do
-  use SymphonyElixir.TestSupport
+  use SymphonyElixir.TestSupport, async: false
 
   alias SymphonyElixir.LocalRelay.{ProtocolExtensions, Registry}
   alias SymphonyElixir.Runner.LocalRelay
@@ -325,7 +325,8 @@ defmodule SymphonyElixir.Runner.LocalRelayToolTest do
   end
 
   test "cloud-managed mode honors the session timeout" do
-    helper = start_timeout_helper()
+    parent = self()
+    helper = start_timeout_then_completion_helper(parent)
 
     Registry.register(%{
       workspace_id: "workspace-tools",
@@ -349,6 +350,22 @@ defmodule SymphonyElixir.Runner.LocalRelayToolTest do
       )
 
     assert {:error, {:retryable, :local_runner_timeout}} = LocalRelay.run_turn(session, "Read README.md", build_work_item())
+    assert_receive {:helper_cancelled, _frame}
+
+    {:ok, retry_session} =
+      LocalRelay.start_session(
+        %{
+          "workspace_id" => "workspace-tools",
+          "agent_id" => "agent-1",
+          "model" => "qwen",
+          "tool_calling_mode" => "cloud_managed",
+          "tool_definitions" => [read_file_tool()]
+        },
+        nil
+      )
+
+    assert {:ok, %{"output_text" => "after timeout"}} =
+             LocalRelay.run_turn(retry_session, "Retry after timeout", build_work_item())
   end
 
   test "tool definitions require a helper that advertises tool calling before dispatch" do
@@ -505,13 +522,18 @@ defmodule SymphonyElixir.Runner.LocalRelayToolTest do
     end)
   end
 
-  defp start_timeout_helper do
+  defp start_timeout_then_completion_helper(parent) do
     spawn_link(fn ->
       receive do
         {:local_relay_dispatch, _frame} ->
           receive do
-            {:local_relay_cancel, _frame} -> :ok
+            {:local_relay_cancel, frame} -> send(parent, {:helper_cancelled, frame})
           end
+      end
+
+      receive do
+        {:local_relay_dispatch, %{"correlation_id" => correlation_id}} ->
+          Registry.complete(correlation_id, %{"output_text" => "after timeout"})
       end
     end)
   end

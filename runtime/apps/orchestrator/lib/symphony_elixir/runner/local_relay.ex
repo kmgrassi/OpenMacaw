@@ -108,7 +108,9 @@ defmodule SymphonyElixir.Runner.LocalRelay do
         {:error, :model_not_found} -> {:error, {:fatal, :model_not_found}}
         {:error, :capability_missing} -> {:error, {:fatal, :capability_missing}}
         {:error, {:invalid_tool_definition, message}} -> {:error, {:fatal, {:invalid_tool_definition, message}}}
+        {:error, reason} -> {:error, reason}
       end
+      |> cancel_relay_dispatch_on_error(correlation_id)
 
     log_provider_result(result, context, started_at)
   end
@@ -120,6 +122,13 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   end
 
   def stop_session(_session), do: :ok
+
+  defp cancel_relay_dispatch_on_error({:ok, _result} = result, _correlation_id), do: result
+
+  defp cancel_relay_dispatch_on_error({:error, _reason} = result, correlation_id) do
+    _ = Registry.cancel(correlation_id)
+    result
+  end
 
   @impl true
   def ping(config) do

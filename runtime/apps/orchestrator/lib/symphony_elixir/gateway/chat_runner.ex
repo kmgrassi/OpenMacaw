@@ -367,19 +367,27 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
            Runner.LocalModelCoding.start_session(
              local_model_coding_config(profile, agent, scope, on_message),
              workspace
-           ),
-         {:ok, result} <- Runner.LocalModelCoding.run_turn(session, prompt, work_item),
-         :ok <- Runner.LocalModelCoding.stop_session(session) do
-      # Annotate the result with model + provider so the gateway socket
-      # can persist them on the assistant message row (otherwise the
-      # MessageLog row ends up with model=null/provider=null and the
-      # dashboard can't tell which model served the response).
-      enriched =
-        result
-        |> Map.put_new("model", Map.get(session, :model))
-        |> Map.put_new("provider", Map.get(session, :provider))
+           ) do
+      try do
+        case Runner.LocalModelCoding.run_turn(session, prompt, work_item) do
+          {:ok, result} ->
+            # Annotate the result with model + provider so the gateway socket
+            # can persist them on the assistant message row (otherwise the
+            # MessageLog row ends up with model=null/provider=null and the
+            # dashboard can't tell which model served the response).
+            enriched =
+              result
+              |> Map.put_new("model", Map.get(session, :model))
+              |> Map.put_new("provider", Map.get(session, :provider))
 
-      send(owner_pid, {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}})
+            send(owner_pid, {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}})
+
+          {:error, reason} ->
+            send(owner_pid, {:gateway_runner_failed, scope.session_key, run_id, reason})
+        end
+      after
+        Runner.LocalModelCoding.stop_session(session)
+      end
     else
       {:error, reason} ->
         send(owner_pid, {:gateway_runner_failed, scope.session_key, run_id, reason})
@@ -440,17 +448,25 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     }
 
     with {:ok, profile} <- AgentExecutionProfile.resolve(scope.agent_id, scope.workspace_id),
-         {:ok, session} <- Runner.LocalRelay.start_session(local_relay_config(profile, agent, scope, on_message), nil),
-         {:ok, result} <- Runner.LocalRelay.run_turn(session, prompt, work_item),
-         :ok <- Runner.LocalRelay.stop_session(session) do
-      # Annotate the result with model + provider so the gateway socket
-      # can persist them on the assistant message row.
-      enriched =
-        result
-        |> Map.put_new("model", Map.get(session, :model))
-        |> Map.put_new("provider", Map.get(session, :provider))
+         {:ok, session} <- Runner.LocalRelay.start_session(local_relay_config(profile, agent, scope, on_message), nil) do
+      try do
+        case Runner.LocalRelay.run_turn(session, prompt, work_item) do
+          {:ok, result} ->
+            # Annotate the result with model + provider so the gateway socket
+            # can persist them on the assistant message row.
+            enriched =
+              result
+              |> Map.put_new("model", Map.get(session, :model))
+              |> Map.put_new("provider", Map.get(session, :provider))
 
-      send(owner_pid, {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}})
+            send(owner_pid, {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}})
+
+          {:error, reason} ->
+            send(owner_pid, {:gateway_runner_failed, scope.session_key, run_id, reason})
+        end
+      after
+        Runner.LocalRelay.stop_session(session)
+      end
     else
       {:error, reason} ->
         send(owner_pid, {:gateway_runner_failed, scope.session_key, run_id, reason})
