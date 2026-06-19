@@ -77,6 +77,7 @@ export function registerCredentialRoutes(app: Express) {
       invalidBodyMessage: "Credential scope and key are required",
       handler: async ({ body, res, userId, accessToken }) => {
         const { key, scope } = body;
+        const alias = body.alias?.trim() || null;
         if (scope.kind === "user") {
           throw new ApiRouteError(
             400,
@@ -95,7 +96,7 @@ export function registerCredentialRoutes(app: Express) {
         if (scope.kind === "workspace" || scope.kind === "agent") {
           await requireWorkspaceAccess(userId, scope.workspaceId);
         }
-        if (scope.kind === "workspace") {
+        if (scope.kind === "workspace" || alias) {
           await requireWorkspaceAdmin(userId, scope.workspaceId);
         }
 
@@ -196,10 +197,10 @@ export function registerCredentialRoutes(app: Express) {
           );
         }
 
-        if (body.alias?.trim() && saved.credentialRowId) {
+        if (alias && saved.credentialRowId) {
           await upsertCredentialAlias({
             workspaceId: scope.workspaceId,
-            alias: body.alias.trim(),
+            alias,
             credentialId: saved.credentialRowId,
           });
         }

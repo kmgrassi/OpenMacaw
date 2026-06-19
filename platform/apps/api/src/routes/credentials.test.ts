@@ -303,6 +303,36 @@ describe("credential routes", () => {
     expect(saveModelProviderCredentialForWorkspaceInSupabase).not.toHaveBeenCalled();
   });
 
+  it("rejects agent credential alias writes from non-admin workspace members", async () => {
+    vi.mocked(assertWorkspaceAdminAccess).mockRejectedValueOnce(
+      new ApiRouteError(
+        403,
+        "workspace_admin_required",
+        "Authenticated user must be a workspace admin to manage workspace credentials",
+      ),
+    );
+
+    const response = await fetch(`${baseUrl}/api/credentials`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        scope: { kind: "agent", workspaceId: "workspace-1", agentId: "agent-1" },
+        key: { format: "api_key", provider: "openai", secret: "sk-test" },
+        alias: "default-openai",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "workspace_admin_required" },
+    });
+    expect(saveInlineCredentialForAgentInSupabase).not.toHaveBeenCalled();
+    expect(upsertCredentialAlias).not.toHaveBeenCalled();
+  });
+
   it("saves tracker workspace credentials without model-provider validation", async () => {
     vi.mocked(saveModelProviderCredentialForWorkspaceInSupabase).mockResolvedValueOnce(
       savedCredential({
