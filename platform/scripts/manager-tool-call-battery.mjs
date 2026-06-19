@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs, printHelp } from "./lib/manager-tool-call-battery/args.mjs";
 import {
   createEvalRun,
+  loadManagerRuntimePreflight,
   loadResolvedTools,
   loadToolEvidence,
   persistEvalRunCase,
@@ -64,15 +65,25 @@ async function main() {
 
   requireValue(agentId, "agentId");
   requireValue(workspaceId, "workspaceId");
+  const expectedToolSlugs = expectedToolSlugsForCases(selectedCases);
+  const runtimePreflightMode = args.suiteSlug === "local-tool-calling" ? "local_tool_calling" : "manager";
 
   if (!args.run) {
     const tools = await loadResolvedTools({ agentId, workspaceId, postgrestGet });
+    const runtimePreflight = await loadManagerRuntimePreflight({
+      agentId,
+      workspaceId,
+      expectedToolSlugs,
+      mode: runtimePreflightMode,
+      postgrestGet,
+    });
     printResult(
       {
         mode: "dry-run",
         agentId,
         workspaceId,
         apiBaseUrl,
+        runtimePreflight,
         resolvedTools: tools.map((tool) => ({
           slug: tool.slug,
           name: tool.name,
@@ -106,6 +117,19 @@ async function main() {
     new Date().toISOString().replace(/[:.]/g, "-"),
   );
   await mkdir(artifactDir, { recursive: true });
+  const runtimePreflight = await loadManagerRuntimePreflight({
+    agentId,
+    workspaceId,
+    expectedToolSlugs,
+    mode: runtimePreflightMode,
+    postgrestGet,
+  });
+  await writeJson(path.join(artifactDir, "runtime-preflight.json"), runtimePreflight);
+  if (runtimePreflight.status !== "passed") {
+    throw new Error(
+      `Manager runtime preflight failed: ${runtimePreflight.failures.join("; ")}`,
+    );
+  }
   const evalRun = battery.databaseSuiteId
     ? await createEvalRun({
         suiteId: battery.databaseSuiteId,
@@ -142,6 +166,7 @@ async function main() {
     workspaceId,
     apiBaseUrl,
     artifactDir,
+    runtimePreflight,
     results,
   };
   await writeJson(path.join(artifactDir, "result.json"), output);
@@ -269,4 +294,17 @@ async function runCase(input) {
     });
   }
   return result;
+}
+
+function expectedToolSlugsForCases(cases) {
+  return Array.from(
+    new Set(
+      cases.flatMap((testCase) => [
+        ...testCase.expectedToolSlugs,
+        ...testCase.assertions
+          .map((assertion) => assertion.toolSlug)
+          .filter(Boolean),
+      ]),
+    ),
+  ).sort();
 }
