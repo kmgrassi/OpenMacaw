@@ -137,14 +137,14 @@ export const themes: ThemePreset[] = [
 
 export const productPillars = [
   {
-    title: "Coordinate every runtime",
+    title: "Bring your own models",
     description:
-      "Run hosted agents, local model workflows, and custom execution targets from one shared control plane.",
+      "Run open models locally with Ollama, or self-host them in your own cloud, and put them to work as first-class agents.",
   },
   {
-    title: "Keep work routed",
+    title: "Mix in frontier models",
     description:
-      "Use workspace context, agent profiles, and routing rules to keep planning, coding, and review flows connected.",
+      "Route the same agents and workflows to frontier models when you want more capability — switch per agent or per task without rewiring.",
   },
   {
     title: "Operate with visibility",
@@ -173,7 +173,7 @@ export const systemLayers = [
 
 export const workflowSteps = [
   "Plan with agents that understand workspace context.",
-  "Route tasks to hosted, local, or custom runtimes.",
+  "Route tasks to your own models — local or self-hosted — or to frontier models.",
   "Watch execution health, messages, traces, and outputs.",
   "Review results and keep improving the agent system.",
 ];
@@ -199,9 +199,9 @@ export const projectComparisons: ComparisonRow[] = [
     project: "OpenMacaw",
     logoSrc: "/openmacaw-logo.png",
     highlight: true,
-    role: "Multi-tenant control plane that schedules, routes, and multiplexes many agent runtimes for a whole team.",
-    runs: "Cloud-hosted and always on, with optional outbound-only local execution.",
-    fit: "Coordinating workspaces, credentials, routing, and mixed hosted/local execution at team scale.",
+    role: "Multi-tenant control plane that orchestrates your own models — local or self-hosted — alongside frontier models across many agent runtimes for a whole team.",
+    runs: "Cloud-hosted and always on, with outbound-only execution for models on your own machine or cloud.",
+    fit: "Running your own models alongside frontier models, and coordinating workspaces, credentials, and routing at team scale.",
   },
   {
     project: "OpenClaw",

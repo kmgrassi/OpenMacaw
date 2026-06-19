@@ -4,9 +4,13 @@
 
 # OpenMacaw
 
-OpenMacaw is an open-source platform for coordinating AI agents across hosted
-and local runtimes. This repository combines the web/API platform, the runtime
-orchestrator, and the installable local helper into one source tree.
+OpenMacaw is an open-source platform for orchestrating your own models —
+run them locally or self-hosted in your own cloud — alongside frontier
+models, all from one control plane. It is built for teams that want to bring
+their own models and coordinate AI agents across those runtimes instead of
+depending on a single hosted provider. This repository combines the web/API
+platform, the runtime orchestrator, and the installable local helper into one
+source tree.
 
 > OpenMacaw is pre-release. It works for local development and self-hosting
 > experiments, but naming, docs, and packaging are still being cleaned up for
@@ -136,10 +140,13 @@ At a high level:
    connection, advertises configured local runners, and can execute supported
    local workflows without requiring inbound network access.
 
-The local runtime helper is a separate daemon for workflows that need local
-model or local tool execution (Ollama, OpenClaw, and other local runners).
-Set it up from [`local-runtime-helper/`](local-runtime-helper/README.md) after
-the core stack is running.
+The local runtime helper is how you bring your own models to the platform: a
+separate daemon for workflows that need local model or local tool execution
+(Ollama, OpenClaw, and other local runners). It lets a model running on your
+own machine — or in your own cloud — serve agent work alongside frontier
+models, without opening inbound network access. Set it up from
+[`local-runtime-helper/`](local-runtime-helper/README.md) after the core stack
+is running.
 
 ## Project status
 
