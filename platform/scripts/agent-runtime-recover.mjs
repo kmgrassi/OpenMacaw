@@ -110,7 +110,7 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage:
   pnpm run agent:runtime:recover -- --agent-id <id> --workspace-id <id>
-  pnpm run agent:runtime:recover -- --agent-id <id> --workspace-id <id> --api-base-url https://api.openmacaw.ai
+  pnpm run agent:runtime:recover -- --agent-id <id> --workspace-id <id> --api-base-url https://api.example.com
 
 Options:
   --mode <mode>         restart_runtime, stop_runtime, or full_recover. Default: restart_runtime.
