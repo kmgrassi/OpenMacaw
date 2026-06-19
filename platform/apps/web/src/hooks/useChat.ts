@@ -180,9 +180,18 @@ export function useChat(
   // feedback the message looks dropped and users re-send. Insert an optimistic
   // user bubble into the history cache and return a rollback for the failure
   // paths; the persisted message replaces it on the next history refetch.
+  //
+  // Cancel any in-flight history fetch first: if useMessagesQuery is loading or
+  // refetching when the user sends, its response would land after this write
+  // and clobber the optimistic bubble (it isn't persisted yet) until a later
+  // reconcile. cancelQueries keeps the just-rendered message in place.
   const insertOptimisticUserMessage = useCallback(
-    (targetSessionKey: SessionKey, content: string): (() => void) => {
+    async (
+      targetSessionKey: SessionKey,
+      content: string,
+    ): Promise<() => void> => {
       const queryKey = queryKeys.messages.history(agentId, targetSessionKey);
+      await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData<ChatMessagesPage>(queryKey);
       const optimisticMessage: ChatMessage = {
         role: "user",
@@ -225,16 +234,22 @@ export function useChat(
 
       // Optimistic UI first — before the prepareRuntime/chat.send round-trip —
       // so the user immediately sees their message and a pending assistant, and
-      // the composer locks (submitting) against accidental double-sends.
+      // the composer locks (submitting) against accidental double-sends. The
+      // composer-lock state is set synchronously so the lock is instant; the
+      // bubble insert awaits cancelQueries (a local op) a tick later.
       setError(null);
       setErrorCode(null);
       setStreamText("");
       setRuntimeEvents([]);
-      const rollbackOptimistic = insertOptimisticUserMessage(sessionKey, msg);
 
       const idempotencyKey = crypto.randomUUID();
       runIdRef.current = idempotencyKey;
       setActiveRunId(idempotencyKey);
+
+      const rollbackOptimistic = await insertOptimisticUserMessage(
+        sessionKey,
+        msg,
+      );
 
       const rollback = () => {
         rollbackOptimistic();
