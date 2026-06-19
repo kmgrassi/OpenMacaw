@@ -134,9 +134,10 @@ function waitForGatewaySocket({ ws, timeoutMs, onTimeout }, register) {
   return new Promise((resolve, reject) => {
     const listeners = [];
     let settled = false;
+    const timeout = setTimeout(() => onTimeout(controller), timeoutMs);
 
     const cleanup = () => {
-      if (timeout) clearTimeout(timeout);
+      clearTimeout(timeout);
       for (const [type, handler] of listeners) {
         ws.removeEventListener(type, handler);
       }
@@ -161,11 +162,6 @@ function waitForGatewaySocket({ ws, timeoutMs, onTimeout }, register) {
         settle(reject, error);
       },
     };
-
-    const timeout =
-      typeof timeoutMs === "number"
-        ? setTimeout(() => onTimeout(controller), timeoutMs)
-        : null;
 
     register(controller);
   });
