@@ -27,6 +27,7 @@ defmodule SymphonyElixir.Manager.SchedulerTest do
     Application.put_env(:symphony_elixir, :manager_scheduler_session_resolver, TestExecutionProfile)
     Application.put_env(:symphony_elixir, :launcher_gateway_config_adapter, TestGatewayConfig)
     Application.delete_env(:symphony_elixir, :manager_tool_definition_resolver)
+    Application.delete_env(:symphony_elixir, :manager_scheduler_tool_definitions)
     Application.delete_env(:symphony_elixir, :manager_scheduler_gateway_config)
 
     start_supervised!({Registry, keys: :unique, name: registry})
@@ -37,6 +38,7 @@ defmodule SymphonyElixir.Manager.SchedulerTest do
       Application.delete_env(:symphony_elixir, :manager_scheduler_gateway_config)
       Application.delete_env(:symphony_elixir, :manager_scheduler_session_resolver)
       Application.delete_env(:symphony_elixir, :manager_tool_definition_resolver)
+      Application.delete_env(:symphony_elixir, :manager_scheduler_tool_definitions)
       Application.delete_env(:symphony_elixir, :launcher_gateway_config_adapter)
     end)
 
@@ -565,6 +567,49 @@ defmodule SymphonyElixir.Manager.SchedulerTest do
                "execution_kind" => "shell"
              }
            ] = tool_definitions
+  end
+
+  test "resolved manager session refreshes when granted tool definitions change", %{registry: registry} do
+    Application.put_env(:symphony_elixir, :manager_tool_definition_resolver, TestToolDefinitionResolver)
+
+    Application.put_env(:symphony_elixir, :manager_scheduler_gateway_config, %{
+      "runners" => %{
+        "manager" => %{
+          "provider" => "local",
+          "model" => "qwen3-coder:30b"
+        }
+      }
+    })
+
+    {:ok, pid} =
+      Scheduler.start_link("workspace-1", "manager-agent-1",
+        registry: registry,
+        work_item_source: TestWorkItemSource,
+        chat_gateway: TestChatGateway,
+        runner: TestRunner,
+        clock: fn -> ~U[2026-04-25 12:00:00Z] end,
+        schedule_first_tick: false
+      )
+
+    assert_received {:manager_session_started, %{"tool_definitions" => [%{"name" => "git.run"}]}}
+
+    Application.put_env(:symphony_elixir, :manager_scheduler_tool_definitions, [
+      %{
+        "name" => "scheduled_task.list",
+        "description" => "List scheduled tasks",
+        "parameters_schema" => %{"type" => "object", "properties" => %{}},
+        "execution_kind" => "database"
+      }
+    ])
+
+    assert %{status: :running, batch: %{total: 0}} = Scheduler.tick(pid)
+
+    assert_received {:manager_session_started,
+                     %{
+                       "tool_definitions" => [
+                         %{"name" => "scheduled_task.list", "execution_kind" => "database"}
+                       ]
+                     }}
   end
 
   test "resolved manager session is reused when persisted identity is unchanged", %{

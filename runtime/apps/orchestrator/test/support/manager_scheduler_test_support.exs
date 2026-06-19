@@ -116,18 +116,19 @@ defmodule SymphonyElixir.Manager.SchedulerTestSupport do
     def resolve_for_agent("manager-agent-1") do
       {:ok,
        %{
-         tool_definitions: [
-           %{
-             "name" => "git.run",
-             "description" => "Run a git command",
-             "parameters_schema" => %{
-               "type" => "object",
-               "properties" => %{"command" => %{"type" => "string"}},
-               "required" => ["command"]
-             },
-             "execution_kind" => "shell"
-           }
-         ]
+         tool_definitions:
+           Application.get_env(:symphony_elixir, :manager_scheduler_tool_definitions, [
+             %{
+               "name" => "git.run",
+               "description" => "Run a git command",
+               "parameters_schema" => %{
+                 "type" => "object",
+                 "properties" => %{"command" => %{"type" => "string"}},
+                 "required" => ["command"]
+               },
+               "execution_kind" => "shell"
+             }
+           ])
        }}
     end
 

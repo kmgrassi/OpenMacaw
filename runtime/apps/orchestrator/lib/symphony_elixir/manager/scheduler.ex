@@ -614,6 +614,7 @@ defmodule SymphonyElixir.Manager.Scheduler do
       :credential_id,
       :provider,
       :model,
+      :tool_definitions_hash,
       :config_hash,
       :config_version
     ])
@@ -774,9 +775,19 @@ defmodule SymphonyElixir.Manager.Scheduler do
       credential_alias: Map.get(profile, :credential_alias),
       provider: profile.provider,
       model: profile.model,
+      tool_definitions_hash: tool_definitions_hash(manager_tool_definitions(profile)),
       routing_rule_id: get_in(profile, [:source_metadata, "routing_rule_id"])
     }
   end
+
+  defp tool_definitions_hash(definitions) when is_list(definitions) do
+    definitions
+    |> :erlang.term_to_binary()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+  end
+
+  defp tool_definitions_hash(_definitions), do: nil
 
   defp status_payload(state) do
     state
