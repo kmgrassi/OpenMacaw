@@ -1,6 +1,14 @@
 import { z } from "zod";
 
-import type { ProviderFailure, ProviderFailureSummaryEntry } from "../../../../contracts/provider-failures.js";
+import {
+  ProviderFailureErrorCodeSchema,
+  ProviderFailureProviderSchema,
+  ProviderFailureRunnerKindSchema,
+  type ProviderFailure,
+  type ProviderFailureSummaryEntry,
+} from "../../../../contracts/provider-failures.js";
+import { narrowSupabase } from "../lib/narrow-supabase.js";
+import { parseSupabaseRows } from "../lib/supabase-row-parsers.js";
 import { getServiceRoleSupabase, normalizeSupabaseError } from "../supabase-client.js";
 import { withRepositoryLogging } from "./logging.js";
 
@@ -15,31 +23,18 @@ const ProviderFailureRowSchema = z.object({
   agent_id: z.string().nullable(),
   work_item_id: z.string().nullable(),
   run_id: z.string().nullable(),
-  runner_kind: z.string(),
-  provider: z.string(),
+  runner_kind: ProviderFailureRunnerKindSchema,
+  provider: ProviderFailureProviderSchema,
   model: z.string(),
-  error_code: z.string(),
+  error_code: ProviderFailureErrorCodeSchema,
   status_code: z.number().int().nullable(),
   attempt: z.number().int(),
 });
 
 type ProviderFailureRow = z.infer<typeof ProviderFailureRowSchema>;
 
-type ProviderFailureTableClient = {
-  from(table: "provider_failure"): {
-    select(columns: string): ProviderFailureQueryBuilder;
-  };
-};
-
-type ProviderFailureQueryBuilder = {
-  eq(column: string, value: unknown): ProviderFailureQueryBuilder;
-  gte(column: string, value: unknown): ProviderFailureQueryBuilder;
-  order(column: string, options?: { ascending?: boolean }): ProviderFailureQueryBuilder;
-  range(from: number, to: number): PromiseLike<{ data: unknown; error: unknown }>;
-};
-
 function providerFailureTable() {
-  return (getServiceRoleSupabase() as unknown as ProviderFailureTableClient).from("provider_failure");
+  return narrowSupabase(getServiceRoleSupabase()).from<ProviderFailureRow>("provider_failure");
 }
 
 function mapProviderFailureRow(row: ProviderFailureRow): ProviderFailure {
@@ -56,11 +51,11 @@ function mapProviderFailureRow(row: ProviderFailureRow): ProviderFailure {
     errorCode: row.error_code,
     statusCode: row.status_code,
     attempt: row.attempt,
-  } as ProviderFailure;
+  };
 }
 
-function parseRows(context: string, data: unknown): ProviderFailure[] {
-  const rows = ProviderFailureRowSchema.array().parse(Array.isArray(data) ? data : []);
+function parseRows(context: string, data: ProviderFailureRow[] | ProviderFailureRow | null): ProviderFailure[] {
+  const rows = parseSupabaseRows(context, ProviderFailureRowSchema, Array.isArray(data) ? data : []);
   return rows.map(mapProviderFailureRow);
 }
 
@@ -147,7 +142,7 @@ export async function summarizeProviderFailures(input: {
             model: row.model,
             errorCode: row.errorCode,
             count: 1,
-          } as ProviderFailureSummaryEntry);
+          });
         }
 
         if (rows.length < pageSize) break;
