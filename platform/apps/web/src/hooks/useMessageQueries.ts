@@ -1,9 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  fetchAgentMessages,
-  type ChatMessage,
-  type ChatMessagesPage,
-} from "../api/messages";
+import { fetchAgentMessages, type ChatMessagesPage } from "../api/messages";
 import { invalidateRuntimeQueries } from "../api/query-invalidation";
 import { queryKeys } from "../api/query-keys";
 import type {
@@ -60,8 +56,8 @@ export function useSendMessageMutation(input: {
   sessionKey: SessionKey | string | null;
   request: GatewayRequest;
 }) {
-  const queryClient = useQueryClient();
-
+  // The optimistic user bubble + rollback live in useChat, which inserts it
+  // before the prepareRuntime round-trip so the message renders instantly.
   return useMutation({
     mutationFn: async (inputMessage: {
       message: string;
@@ -84,34 +80,6 @@ export function useSendMessageMutation(input: {
       };
       const result = await input.request<ChatSendResult>("chat.send", params);
       return { result, idempotencyKey: inputMessage.idempotencyKey };
-    },
-    onMutate: async (inputMessage) => {
-      if (!input.sessionKey) return undefined;
-      const queryKey = queryKeys.messages.history(
-        input.agentId,
-        input.sessionKey,
-      );
-      await queryClient.cancelQueries({ queryKey });
-      const previous = queryClient.getQueryData<ChatMessagesPage>(queryKey);
-      const optimisticMessage: ChatMessage = {
-        role: "user",
-        content: inputMessage.message,
-        timestamp: Date.now(),
-      };
-      queryClient.setQueryData<ChatMessagesPage>(queryKey, (current) => ({
-        messages: [...(current?.messages ?? []), optimisticMessage],
-        pageInfo: current?.pageInfo ?? {
-          limit: 30,
-          hasMore: false,
-          nextCursor: null,
-        },
-      }));
-      return { previous, queryKey };
-    },
-    onError: (_error, _message, context) => {
-      if (context?.queryKey) {
-        queryClient.setQueryData(context.queryKey, context.previous);
-      }
     },
   });
 }

@@ -7,7 +7,11 @@ import {
   PROVIDER_ERROR_CODES,
 } from "../api/ws-types";
 import { prepareRuntime } from "../api/broker-runtime";
-import { fetchAgentMessages, type ChatMessagesPage } from "../api/messages";
+import {
+  fetchAgentMessages,
+  type ChatMessage,
+  type ChatMessagesPage,
+} from "../api/messages";
 import { invalidateRuntimeQueries } from "../api/query-invalidation";
 import { queryKeys } from "../api/query-keys";
 import {
@@ -171,6 +175,33 @@ export function useChat(
     void reconcilePersistedResponse(runId, sessionKey);
   }, [connected, sessionKey, reconcilePersistedResponse]);
 
+  // Render the user's message immediately. prepareRuntime + chat.send take a
+  // beat (the agent-start round-trip alone is ~0.5s), and without instant
+  // feedback the message looks dropped and users re-send. Insert an optimistic
+  // user bubble into the history cache and return a rollback for the failure
+  // paths; the persisted message replaces it on the next history refetch.
+  const insertOptimisticUserMessage = useCallback(
+    (targetSessionKey: SessionKey, content: string): (() => void) => {
+      const queryKey = queryKeys.messages.history(agentId, targetSessionKey);
+      const previous = queryClient.getQueryData<ChatMessagesPage>(queryKey);
+      const optimisticMessage: ChatMessage = {
+        role: "user",
+        content,
+        timestamp: Date.now(),
+      };
+      queryClient.setQueryData<ChatMessagesPage>(queryKey, (current) => ({
+        messages: [...(current?.messages ?? []), optimisticMessage],
+        pageInfo: current?.pageInfo ?? {
+          limit: 30,
+          hasMore: false,
+          nextCursor: null,
+        },
+      }));
+      return () => queryClient.setQueryData(queryKey, previous);
+    },
+    [agentId, queryClient],
+  );
+
   const sendMessage = useCallback(
     async (text: string) => {
       const msg = text.trim();
@@ -180,17 +211,7 @@ export function useChat(
         return;
       }
 
-      const preparation = await prepareRuntime(agentId);
-      if (!preparation.readyToConnect) {
-        setError(
-          preparation.reasons.length > 0
-            ? `Runtime not ready: ${preparation.reasons.join(", ")}`
-            : "Runtime not ready.",
-        );
-        return;
-      }
-
-      // Fail fast: scope must be resolved before sending
+      // Fail fast: scope must be resolved before we show anything optimistic.
       if (!connected || !sessionKey || !scope) {
         console.warn("[useChat] send blocked; runtime not connected", {
           agentId,
@@ -202,14 +223,36 @@ export function useChat(
         return;
       }
 
+      // Optimistic UI first — before the prepareRuntime/chat.send round-trip —
+      // so the user immediately sees their message and a pending assistant, and
+      // the composer locks (submitting) against accidental double-sends.
       setError(null);
       setErrorCode(null);
       setStreamText("");
       setRuntimeEvents([]);
+      const rollbackOptimistic = insertOptimisticUserMessage(sessionKey, msg);
 
       const idempotencyKey = crypto.randomUUID();
       runIdRef.current = idempotencyKey;
       setActiveRunId(idempotencyKey);
+
+      const rollback = () => {
+        rollbackOptimistic();
+        setStreamText(null);
+        setActiveRunId(null);
+        runIdRef.current = null;
+      };
+
+      const preparation = await prepareRuntime(agentId);
+      if (!preparation.readyToConnect) {
+        rollback();
+        setError(
+          preparation.reasons.length > 0
+            ? `Runtime not ready: ${preparation.reasons.join(", ")}`
+            : "Runtime not ready.",
+        );
+        return;
+      }
 
       try {
         console.debug("[useChat] sending chat message", {
@@ -229,9 +272,7 @@ export function useChat(
         }
       } catch (err) {
         if (!runIdRef.current) return;
-        setStreamText(null);
-        setActiveRunId(null);
-        runIdRef.current = null;
+        rollback();
         const errMsg = (err as Error).message;
         setError(errMsg);
         // Try to extract a machine-readable error code from the rejection.
@@ -253,6 +294,7 @@ export function useChat(
     [
       agentId,
       connected,
+      insertOptimisticUserMessage,
       options.historyOnly,
       reconcilePersistedResponse,
       sessionKey,

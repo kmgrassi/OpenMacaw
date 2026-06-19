@@ -10,6 +10,16 @@ import {
 import { Badge } from "./ui/Badge";
 import { Card } from "./ui/Card";
 
+// Links rendered inside chat content open in a new tab instead of taking over
+// the app window. DOMPurify is only used here (chat markdown), so a single
+// global hook scopes cleanly to chat content.
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  if (node.tagName === "A") {
+    node.setAttribute("target", "_blank");
+    node.setAttribute("rel", "noopener noreferrer");
+  }
+});
+
 type Props = {
   role: string;
   content: string;
@@ -43,40 +53,54 @@ function PendingEllipsis() {
 function ToolCallList({ toolCalls }: { toolCalls: ToolCallDisplay[] }) {
   if (toolCalls.length === 0) return null;
 
+  const summaryLabel =
+    toolCalls.length === 1
+      ? (toolCalls[0]?.label ?? "1 tool call")
+      : `${toolCalls.length} tool calls`;
+
   return (
-    <div className="mt-2 space-y-1.5">
-      {toolCalls.map((toolCall, index) => (
-        <Card
-          key={`${toolCall.label}-${index}`}
-          padding="sm"
-          tone="info"
-          className="px-2 py-1.5 text-xs text-cyan-50"
-        >
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="font-medium">{toolCall.label}</span>
-            {toolCall.status && (
-              <Badge
-                value={toolCall.status}
-                variant="info"
-                className="px-1.5 py-0.5 text-[10px] uppercase"
-              >
-                {toolCall.status}
-              </Badge>
+    <details className="group/tools mt-2 rounded border border-slate-800 bg-black/20">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200">
+        <span className="text-[10px] text-slate-500 transition-transform group-open/tools:rotate-90">
+          ▶
+        </span>
+        <span className="text-cyan-300/80">🔧</span>
+        <span>{summaryLabel}</span>
+      </summary>
+      <div className="space-y-1.5 px-2 pb-2">
+        {toolCalls.map((toolCall, index) => (
+          <Card
+            key={`${toolCall.label}-${index}`}
+            padding="sm"
+            tone="info"
+            className="px-2 py-1.5 text-xs text-cyan-50"
+          >
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-medium">{toolCall.label}</span>
+              {toolCall.status && (
+                <Badge
+                  value={toolCall.status}
+                  variant="info"
+                  className="px-1.5 py-0.5 text-[10px] uppercase"
+                >
+                  {toolCall.status}
+                </Badge>
+              )}
+            </div>
+            {toolCall.inputSummary && (
+              <div className="mt-1 break-words font-mono text-[11px] leading-snug text-cyan-100/80">
+                Input: {toolCall.inputSummary}
+              </div>
             )}
-          </div>
-          {toolCall.inputSummary && (
-            <div className="mt-1 break-words font-mono text-[11px] leading-snug text-cyan-100/80">
-              Input: {toolCall.inputSummary}
-            </div>
-          )}
-          {toolCall.outputSummary && (
-            <div className="mt-1 break-words font-mono text-[11px] leading-snug text-cyan-100/70">
-              Output: {toolCall.outputSummary}
-            </div>
-          )}
-        </Card>
-      ))}
-    </div>
+            {toolCall.outputSummary && (
+              <div className="mt-1 break-words font-mono text-[11px] leading-snug text-cyan-100/70">
+                Output: {toolCall.outputSummary}
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
+    </details>
   );
 }
 
