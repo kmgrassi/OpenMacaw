@@ -178,44 +178,44 @@ export const useAuthStore = create<AuthState>((set) => {
     workspaces: [],
 
     init: async () => {
-      clearOtherSupabaseAuthStorage();
-      const supabase = getSupabaseClient();
-
-      // Listen for token refresh / sign out
-      supabase.auth.onAuthStateChange(async (event, session) => {
-        if (
-          (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") &&
-          session?.access_token
-        ) {
-          try {
-            await establishBrokerSession(session.access_token);
-          } catch (err) {
-            console.warn(
-              "[auth-store] broker session refresh failed:",
-              (err as Error).message,
-            );
-          }
-        }
-        if (event === "SIGNED_OUT") {
-          queryClient.clear();
-          useAgentsStore.getState().reset();
-          useOnboardingStore.getState().reset();
-          set({
-            status: "unauthenticated",
-            userId: null,
-            resolvedAgentId: null,
-            workspaceId: null,
-            onboardingReason: null,
-            defaultAgents: EMPTY_DEFAULT_AGENTS,
-            managerAgent: EMPTY_MANAGER_AGENT,
-            defaultAgentOnboarding: EMPTY_DEFAULT_AGENT_ONBOARDING,
-            error: null,
-          });
-        }
-      });
-
-      // Check existing session
       try {
+        clearOtherSupabaseAuthStorage();
+        const supabase = getSupabaseClient();
+
+        // Listen for token refresh / sign out
+        supabase.auth.onAuthStateChange(async (event, session) => {
+          if (
+            (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") &&
+            session?.access_token
+          ) {
+            try {
+              await establishBrokerSession(session.access_token);
+            } catch (err) {
+              console.warn(
+                "[auth-store] broker session refresh failed:",
+                (err as Error).message,
+              );
+            }
+          }
+          if (event === "SIGNED_OUT") {
+            queryClient.clear();
+            useAgentsStore.getState().reset();
+            useOnboardingStore.getState().reset();
+            set({
+              status: "unauthenticated",
+              userId: null,
+              resolvedAgentId: null,
+              workspaceId: null,
+              onboardingReason: null,
+              defaultAgents: EMPTY_DEFAULT_AGENTS,
+              managerAgent: EMPTY_MANAGER_AGENT,
+              defaultAgentOnboarding: EMPTY_DEFAULT_AGENT_ONBOARDING,
+              error: null,
+            });
+          }
+        });
+
+        // Check existing session
         const { data } = await supabase.auth.getSession();
         if (!data.session?.access_token) {
           queryClient.clear();

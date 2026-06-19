@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
+import { getSupabaseConfigStatus } from "../api/supabase";
 import { Button } from "./ui/Button";
 import { Card } from "./ui/Card";
 import { Input } from "./ui/Input";
@@ -12,6 +13,8 @@ type Props = {
 };
 
 export function SignUp({ onSignUp, error, loading }: Props) {
+  const supabaseConfig = getSupabaseConfigStatus();
+  const authDisabled = !supabaseConfig.configured;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -56,7 +59,7 @@ export function SignUp({ onSignUp, error, loading }: Props) {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            disabled={loading}
+            disabled={authDisabled || loading}
           />
           <Input
             label="Password"
@@ -65,7 +68,7 @@ export function SignUp({ onSignUp, error, loading }: Props) {
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            disabled={loading}
+            disabled={authDisabled || loading}
           />
           <Input
             label="Confirm password"
@@ -75,8 +78,14 @@ export function SignUp({ onSignUp, error, loading }: Props) {
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-            disabled={loading}
+            disabled={authDisabled || loading}
           />
+
+          {!supabaseConfig.configured && (
+            <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+              {supabaseConfig.message}
+            </p>
+          )}
 
           {displayError && (
             <p
@@ -93,7 +102,13 @@ export function SignUp({ onSignUp, error, loading }: Props) {
           <Button
             type="button"
             onClick={handleSubmit}
-            disabled={loading || !email.trim() || !password || !confirmPassword}
+            disabled={
+              authDisabled ||
+              loading ||
+              !email.trim() ||
+              !password ||
+              !confirmPassword
+            }
             className="w-full"
           >
             {loading ? "Creating account..." : "Create account"}

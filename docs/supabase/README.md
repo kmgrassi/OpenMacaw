@@ -16,28 +16,42 @@ Do not add new OpenMacaw migrations to the historical `harper-server` repo.
 
 ## Local Development Quick Start
 
-For local development you do not need a hosted Supabase project. Install
-[Docker](https://docs.docker.com/get-docker/) and the
+For local development you do not need a hosted Supabase project. `./openmacaw
+run` can start the app stack without Supabase and will print a setup note when
+the env files are missing, but login and database-backed agent workflows need
+Supabase.
+
+Install [Docker](https://docs.docker.com/get-docker/) and the
 [Supabase CLI](https://supabase.com/docs/guides/local-development), then from
 `platform/`:
 
 ```sh
-supabase start      # starts local Postgres, auth, and Studio
-supabase db reset   # applies everything in supabase/migrations/
-supabase status     # prints the local URL and keys
+supabase start          # starts local Postgres, auth, and Studio
+supabase migration up --local
+supabase status -o env  # prints the local URL and keys
 ```
 
-Copy the values from `supabase status` into the **Required** section of
-`platform/.env` (created from `platform/.env.example`):
+Copy the values into the **Required** section of `platform/.env`:
 
 - API URL → `SUPABASE_URL` and `VITE_SUPABASE_DEV_URL`
   (typically `http://127.0.0.1:54321`)
 - `service_role` key → `SUPABASE_SERVICE_ROLE_KEY`
 - `anon` key → `VITE_SUPABASE_DEV_ANON_KEY`
 
+Copy the same API URL and service role key into `runtime/.env`.
+
+You can also opt into all-in-one local setup from the repository root:
+
+```sh
+OPENMACAW_AUTO_SUPABASE=1 ./openmacaw run
+```
+
+That starts local Supabase when needed, applies pending migrations from
+`platform/supabase/migrations/`, creates `platform/.env` and `runtime/.env`
+from their example files when needed, and fills in the local Supabase URL/keys.
+
 Create a login user in Supabase Studio (`http://127.0.0.1:54323`) under
-**Authentication → Users → Add user**. You can now start the stack with
-`./openmacaw run` from the repository root.
+**Authentication → Users → Add user**.
 
 The rest of this document covers creating and maintaining a **hosted**
 Supabase project and the reviewed migration workflow.

@@ -46,6 +46,15 @@ function resolveSupabaseConfig() {
 
 let client: SupabaseClient<Database> | null = null;
 
+export class SupabaseConfigError extends Error {
+  readonly code = "supabase_config_missing";
+
+  constructor(message = supabaseConfigMissingMessage()) {
+    super(message);
+    this.name = "SupabaseConfigError";
+  }
+}
+
 function supabaseProjectRefFromUrl(urlString: string): string {
   // Preferred path: pull the `<ref>` out of `<ref>.supabase.co`. Matches the
   // hosted-Supabase project URL pattern and keeps the storageKey short.
@@ -87,6 +96,25 @@ function supabaseStorageKey() {
   };
 }
 
+function supabaseConfigMissingMessage() {
+  return "Supabase is not configured. Set the Supabase URL and anon key in platform/.env, then restart ./openmacaw run.";
+}
+
+export function getSupabaseConfigStatus() {
+  const config = supabaseStorageKey();
+  const missing = [];
+
+  if (!config.url) missing.push("Supabase URL");
+  if (!config.anonKey) missing.push("Supabase anon key");
+
+  return {
+    ...config,
+    configured: missing.length === 0,
+    missing,
+    message: missing.length > 0 ? supabaseConfigMissingMessage() : null,
+  };
+}
+
 function isSupabaseAuthStorageKey(key: string): boolean {
   return /^sb-[a-z0-9-]+-auth-token$/i.test(key);
 }
@@ -117,7 +145,10 @@ export function clearAllSupabaseAuthStorage() {
 
 export function getSupabaseClient() {
   if (!client) {
-    const config = supabaseStorageKey();
+    const config = getSupabaseConfigStatus();
+    if (!config.configured) {
+      throw new SupabaseConfigError(config.message ?? undefined);
+    }
     clearOtherSupabaseAuthStorage();
     console.info(
       `[client-auth] Supabase env=${config.envName} project_ref=${config.projectRef}`,

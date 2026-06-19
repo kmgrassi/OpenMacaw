@@ -16,8 +16,10 @@ Repo-level orientation for agents. Each subsystem has its own guide
 ## Local development
 
 From the repo root: `./openmacaw run` starts the platform API (3100), web
-(5173), runtime orchestrator (4000), and launcher (4100). Also
-`./openmacaw doctor | status | stop`. See `README.md`.
+(5173), runtime orchestrator (4000), and launcher (4100). It warns and
+continues when Supabase is not configured; use
+`OPENMACAW_AUTO_SUPABASE=1 ./openmacaw run` for opt-in local Supabase setup.
+Also `./openmacaw doctor | status | stop`. See `README.md`.
 
 ## Pull requests
 
