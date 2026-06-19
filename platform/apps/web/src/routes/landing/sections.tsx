@@ -118,19 +118,19 @@ export function HeroSection({
                 className="h-1.5 w-1.5 rounded-full"
                 style={{ backgroundColor: theme.accent }}
               />
-              Open-source AI agent coordination
+              Open-source model orchestration
             </p>
             <h1 className="max-w-4xl text-5xl font-semibold leading-[0.98] tracking-tight sm:text-6xl lg:text-7xl">
-              One control plane for hosted and local AI agents.
+              Orchestrate your own models alongside frontier models.
             </h1>
             <p
               className="mt-6 max-w-2xl text-lg font-normal leading-8 sm:text-xl sm:leading-9"
               style={{ color: theme.muted }}
             >
-              OpenMacaw lets your team put AI agents to work around the clock —
-              running them in the cloud, or on your own computer when you'd
-              rather keep things local — all from one place where you can see
-              exactly what they're doing.
+              OpenMacaw is for teams that want to run their own models — on your
+              own computer, or self-hosted in your own cloud — and put them to
+              work as agents alongside frontier models, all from one place where
+              you can see exactly what they're doing.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <a
@@ -223,7 +223,7 @@ export function HeroSection({
                           Runtime dashboard
                         </div>
                         <div className="mt-2 text-sm text-slate-400">
-                          Hosted, local, and custom execution targets
+                          Your own models, frontier models, custom targets
                         </div>
                       </div>
                       <div
@@ -238,7 +238,7 @@ export function HeroSection({
                     </div>
                     <div className="grid gap-3 sm:grid-cols-3">
                       {[
-                        ["Route", "Hosted, local, or custom runner."],
+                        ["Route", "Your own model or a frontier model."],
                         ["Run", "Live status, traces, and chat."],
                         ["Review", "Outputs, credentials, and history."],
                       ].map(([label, value]) => (
@@ -335,11 +335,10 @@ export function ProductPillarsSection({ theme }: ThemeProps) {
             className="text-sm font-semibold uppercase tracking-[0.14em]"
             style={{ color: theme.accent }}
           >
-            Built for agent operations
+            Built for bring-your-own-model teams
           </p>
           <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
-            Bring coordination, runtime control, and local execution into one
-            workflow.
+            Run your own models, and reach for the frontier when you want.
           </h2>
         </div>
 
@@ -426,19 +425,19 @@ export function LocalFirstSection({ theme }: ThemeProps) {
             className="text-sm font-semibold uppercase tracking-[0.14em]"
             style={{ color: theme.accent }}
           >
-            Local-first when it matters
+            Your models, your infrastructure
           </p>
           <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
-            Connect local runners without opening inbound access to your
+            Connect your own models without opening inbound access to your
             machine.
           </h2>
         </div>
         <div className="text-sm leading-7" style={{ color: theme.muted }}>
           <p>
-            The local runtime helper runs as a daemon on a user machine, opens
-            an outbound relay connection, advertises configured local runners,
-            and can execute supported workflows without requiring inbound
-            network access.
+            The local runtime helper runs as a daemon on your own machine (or in
+            your own cloud), opens an outbound relay connection, advertises your
+            configured local models and runners, and can execute supported
+            workflows without requiring inbound network access.
           </p>
           <p className="mt-5">
             Full end-to-end behavior can include the platform, runtime, helper,
