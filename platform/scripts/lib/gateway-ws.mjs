@@ -8,38 +8,22 @@ export function waitForSocketOpen(
       `gateway websocket closed before open (${event.code}) ${event.reason}`,
   },
 ) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error(timeoutMessage));
-    }, timeoutMs);
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      ws.removeEventListener("open", onOpen);
-      ws.removeEventListener("error", onError);
-      ws.removeEventListener("close", onClose);
-    };
-
-    const onOpen = () => {
-      cleanup();
-      resolve();
-    };
-
-    const onError = () => {
-      cleanup();
-      reject(new Error(errorMessage));
-    };
-
-    const onClose = (event) => {
-      cleanup();
-      reject(new Error(closeMessage(event)));
-    };
-
-    ws.addEventListener("open", onOpen, { once: true });
-    ws.addEventListener("error", onError, { once: true });
-    ws.addEventListener("close", onClose, { once: true });
-  });
+  return waitForGatewaySocket(
+    {
+      ws,
+      timeoutMs,
+      onTimeout: ({ reject }) => reject(new Error(timeoutMessage)),
+    },
+    ({ listen, resolve, reject }) => {
+      listen("open", () => resolve(), { once: true });
+      listen("error", () => reject(new Error(errorMessage)), { once: true });
+      listen(
+        "close",
+        (event) => reject(new Error(closeMessage(event))),
+        { once: true },
+      );
+    },
+  );
 }
 
 export function waitForGatewayHello({
@@ -53,44 +37,31 @@ export function waitForGatewayHello({
     `gateway closed during connect (${event.code}) ${event.reason}`,
   rejectedMessage = "gateway connect rejected",
 }) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error(timeoutMessage));
-    }, timeoutMs);
+  return waitForGatewaySocket(
+    {
+      ws,
+      timeoutMs,
+      onTimeout: ({ reject }) => reject(new Error(timeoutMessage)),
+    },
+    ({ listen, resolve, reject }) => {
+      listen("close", (event) => reject(new Error(closeMessage(event))));
+      listen("message", (event) => {
+        const frame = readFrame(event, parseFrame, onFrame);
+        if (frame?.type === "hello-ok") {
+          resolve(frame);
+          return;
+        }
 
-    const cleanup = () => {
-      clearTimeout(timeout);
-      ws.removeEventListener("message", onMessage);
-      ws.removeEventListener("close", onClose);
-    };
-
-    const onClose = (event) => {
-      cleanup();
-      reject(new Error(closeMessage(event)));
-    };
-
-    const onMessage = (event) => {
-      const frame = readFrame(event, parseFrame, onFrame);
-      if (frame?.type === "hello-ok") {
-        cleanup();
-        resolve(frame);
-        return;
-      }
-
-      if (
-        frame?.type === "res" &&
-        frame.id === requestId &&
-        frame.ok === false
-      ) {
-        cleanup();
-        reject(new Error(frame.error?.message ?? rejectedMessage));
-      }
-    };
-
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("close", onClose);
-  });
+        if (
+          frame?.type === "res" &&
+          frame.id === requestId &&
+          frame.ok === false
+        ) {
+          reject(new Error(frame.error?.message ?? rejectedMessage));
+        }
+      });
+    },
+  );
 }
 
 export function waitForGatewayResponse({
@@ -105,43 +76,31 @@ export function waitForGatewayResponse({
   rejectedMessage = "chat.send rejected",
   malformedMessage = "chat.send returned a malformed response",
 }) {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      reject(new Error(timeoutMessage));
-    }, timeoutMs);
+  return waitForGatewaySocket(
+    {
+      ws,
+      timeoutMs,
+      onTimeout: ({ reject }) => reject(new Error(timeoutMessage)),
+    },
+    ({ listen, resolve, reject }) => {
+      listen("close", (event) => reject(new Error(closeMessage(event))));
+      listen("message", (event) => {
+        const frame = readFrame(event, parseFrame, onFrame);
+        if (frame?.type !== "res" || frame.id !== requestId) return;
 
-    const cleanup = () => {
-      clearTimeout(timeout);
-      ws.removeEventListener("message", onMessage);
-      ws.removeEventListener("close", onClose);
-    };
+        if (frame.ok === false) {
+          reject(new Error(frame.error?.message ?? rejectedMessage));
+          return;
+        }
+        if (frame.ok !== true) {
+          reject(new Error(malformedMessage));
+          return;
+        }
 
-    const onClose = (event) => {
-      cleanup();
-      reject(new Error(closeMessage(event)));
-    };
-
-    const onMessage = (event) => {
-      const frame = readFrame(event, parseFrame, onFrame);
-      if (frame?.type !== "res" || frame.id !== requestId) return;
-
-      cleanup();
-      if (frame.ok === false) {
-        reject(new Error(frame.error?.message ?? rejectedMessage));
-        return;
-      }
-      if (frame.ok !== true) {
-        reject(new Error(malformedMessage));
-        return;
-      }
-
-      resolve(frame.payload ?? {});
-    };
-
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("close", onClose);
-  });
+        resolve(frame.payload ?? {});
+      });
+    },
+  );
 }
 
 export function waitForGatewayEvent({
@@ -152,34 +111,63 @@ export function waitForGatewayEvent({
   onFrameResult,
   fallbackResult,
 }) {
-  return new Promise((resolve) => {
-    const timeout = setTimeout(() => {
-      cleanup();
-      resolve(fallbackResult());
-    }, timeoutMs);
+  return waitForGatewaySocket(
+    {
+      ws,
+      timeoutMs,
+      onTimeout: ({ resolve }) => resolve(fallbackResult()),
+    },
+    ({ listen, resolve }) => {
+      listen("close", () => resolve(fallbackResult()));
+      listen("message", (event) => {
+        const frame = readFrame(event, parseFrame, onFrame);
+        const result = onFrameResult(frame);
+        if (result === undefined) return;
+
+        resolve(result);
+      });
+    },
+  );
+}
+
+function waitForGatewaySocket({ ws, timeoutMs, onTimeout }, register) {
+  return new Promise((resolve, reject) => {
+    const listeners = [];
+    let settled = false;
 
     const cleanup = () => {
-      clearTimeout(timeout);
-      ws.removeEventListener("message", onMessage);
-      ws.removeEventListener("close", onClose);
+      if (timeout) clearTimeout(timeout);
+      for (const [type, handler] of listeners) {
+        ws.removeEventListener(type, handler);
+      }
     };
 
-    const onClose = () => {
+    const settle = (callback, value) => {
+      if (settled) return;
+      settled = true;
       cleanup();
-      resolve(fallbackResult());
+      callback(value);
     };
 
-    const onMessage = (event) => {
-      const frame = readFrame(event, parseFrame, onFrame);
-      const result = onFrameResult(frame);
-      if (result === undefined) return;
-
-      cleanup();
-      resolve(result);
+    const controller = {
+      listen(type, handler, options) {
+        listeners.push([type, handler]);
+        ws.addEventListener(type, handler, options);
+      },
+      resolve(value) {
+        settle(resolve, value);
+      },
+      reject(error) {
+        settle(reject, error);
+      },
     };
 
-    ws.addEventListener("message", onMessage);
-    ws.addEventListener("close", onClose);
+    const timeout =
+      typeof timeoutMs === "number"
+        ? setTimeout(() => onTimeout(controller), timeoutMs)
+        : null;
+
+    register(controller);
   });
 }
 
