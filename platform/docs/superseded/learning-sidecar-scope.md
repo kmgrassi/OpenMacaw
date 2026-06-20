@@ -1,5 +1,8 @@
 # Learning Sidecar Scope
 
+> Superseded by
+> [`../active/learning-agent-redesign-scope.md`](../active/learning-agent-redesign-scope.md).
+
 A Hermes-style learning layer adapted for the parallel-agent stack
 (parallel-agent-platform + parallel-agent-runtime + harper-server).
 Workspace-scoped rather than personal, advisory rather than self-modifying,

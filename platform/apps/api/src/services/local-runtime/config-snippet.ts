@@ -7,10 +7,8 @@ import type { Tables } from "@kmgrassi/supabase-schema";
 
 export const LOCAL_RUNTIME_HEARTBEAT_INTERVAL_MS = 30_000;
 const HELPER_ONLINE_WINDOW_MS = LOCAL_RUNTIME_HEARTBEAT_INTERVAL_MS * 2;
-const HELPER_DOCTOR_COMMAND =
-  "local-runtime-helper doctor --config ~/.config/openmacaw/runtime.toml";
-const HELPER_START_COMMAND =
-  "local-runtime-helper start --config ~/.config/openmacaw/runtime.toml";
+const HELPER_DOCTOR_COMMAND = "local-runtime-helper doctor --config ~/.config/openmacaw/runtime.toml";
+const HELPER_START_COMMAND = "local-runtime-helper start --config ~/.config/openmacaw/runtime.toml";
 
 export type LocalRuntimeMachineRow = Pick<
   Tables<"local_runtime_machine">,

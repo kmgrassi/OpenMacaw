@@ -15,11 +15,10 @@ rotates — rather than a complete dump.
 
 Companions it builds on (do not re-invent these):
 
-- **[learning-sidecar-scope.md](./learning-sidecar-scope.md)** — the
-  Reflector pattern (LLM reads a finished run, emits structured
-  insights), the `memory_items` store, the `memory.search` tool, and
-  the out-of-band `scheduled_task` dispatch. This observer is a second
-  reflection *kind* that reuses that machinery.
+- **[learning-agent-redesign-scope.md](./learning-agent-redesign-scope.md)** —
+  the learning meta-agent pattern (an agent reads another agent's
+  transcript and acts through normal tools), the `memory_items` store,
+  the `memory.search` tool, and server-side transcript sampling.
 - **[../../parallel-agent-runtime/docs/closed-loop-agent-observability.md](https://github.com/kmgrassi/parallel-agent-runtime/blob/main/docs/closed-loop-agent-observability.md)**
   — the correlation chain (`trace_id` / `run_id` / `turn_id` /
   `tool_call_id` / `provider_request_id`) and the principle that
@@ -63,7 +62,7 @@ scheduled_task tick (hourly / configurable)
    tagged observer=fleet_sample, source_run_id linked)
         │
         ▼
-   Planning / manager agent reads it (memory.search / pinned context)
+   Planning / manager agent reads it (memory.search)
    and decides what to do. The observer advises; it does not mutate.
 ```
 
@@ -80,20 +79,20 @@ scheduled_task tick (hourly / configurable)
 - **Advisory by default.** v1 output is a recommendation written to
   `memory_items`. Acting on it is the consuming agent's job. Optional
   tool-calling actions are a later track (E), behind the same
-  governance stance as the learning sidecar (propose, don't silently
+  governance stance as the learning meta-agent (propose, don't silently
   mutate).
 
 ## Existing foundation (what we don't build)
 
 | Need | Already exists | Verdict |
 |---|---|---|
-| Periodic tick | `scheduled_task` + `scheduled_task_run`; extensible `delivery.kind` | PRESENT — add a `fleet_sample` kind |
+| Periodic tick | `scheduled_task` + `scheduled_task_run` with `scheduled_agent_message` delivery | PRESENT — schedule the observer/learning agent |
 | Which agents are active | `broker_run` (`agent_id`, `workspace_id`, `status`, `started_at`) | PRESENT |
 | Most recent run + tokens | `broker_run` newest by `started_at`; `broker_task.input_tokens/output_tokens/total_tokens` | PRESENT |
 | Message slice | `message` (`model`, `provider`, `runner_kind`, `run_id`, `created_at`) | PRESENT |
 | Insight store | `memory_items` (workspace/agent scope, `source_run_id`, `tags`, `importance`) | PRESENT |
-| Hand-off to other agents | `memory.search` tool + pinned-context block (learning-sidecar Track C) | PRESENT / in-flight |
-| Out-of-band LLM job dispatch | learning-sidecar reflection dispatch (`scheduled_task` → platform handler) | in-flight (Track B0a/B0b/B2) |
+| Hand-off to other agents | `memory.search` tool and planner hand-off | PRESENT / in-flight |
+| Out-of-band LLM job dispatch | scheduled learning/observer agent message | in-flight via learning-agent redesign |
 
 The only genuinely new pieces are **the rotation cursor**, **the
 sampling/extraction step**, **the inspector prompt**, and (later) **a
@@ -128,7 +127,7 @@ absent). No separate cursor state needed.
 
 Tracks A–C have no ordering dependency on each other once the
 `fleet_sample` migration lands; they can be built in parallel and wired
-together at the end. D depends on the learning-sidecar `memory.search`
+together at the end. D depends on the universal `memory.search`
 surface. E is optional/later.
 
 ### Track A — Selection + rotation (platform-api)
@@ -146,29 +145,27 @@ surface. E is optional/later.
   usage), shaped for the inspector prompt.
 - **Independent.** Pure read + assembly.
 
-### Track C — Inspector / recommender (reflection kind)
-- New `scheduled_task` delivery kind `fleet_sample` (extends the
-  discriminated union the learning sidecar introduces in B0a/B0b).
+### Track C — Inspector / recommender
+- Scheduled observer/learning-agent message for fleet sampling.
 - Inspector prompt: messages + token usage + model used → recommendation
   JSON or `nothing_notable`.
 - Writes the recommendation to `memory_items`
   (`tags: { observer: "fleet_sample" }`, `source_run_id`, `importance`)
-  via the sidecar's service-role memory-write endpoint (Track A3 there).
-- **Depends on:** learning-sidecar reflection dispatch (B0a/B0b/B2). Can
-  stub the write to a tagged `memory_items` row until that lands.
+  via `memory.create`.
+- **Depends on:** learning-agent transcript sampling and universal memory
+  tools.
 
 ### Track D — Consumption by planning / manager agent
 - Ensure the planning / manager agent surfaces `observer=fleet_sample`
-  recommendations — a tag-filtered `memory.search`, or include the
-  highest-importance recent ones in pinned context.
-- **Depends on:** learning-sidecar `memory.search` tool (C2).
+  recommendations through `memory.search`.
+- **Depends on:** universal `memory.search`.
 
 ### Track E — Streamlining actions (optional, later)
 - Let the observer (or the consuming agent) take bounded actions on a
   recommendation: open a note, flag for human review, or — once the
   intelligent-routing surfaces exist — *propose* a routing-rule change
   for human approval. Same "propose, don't silently mutate" governance
-  as the learning sidecar's skill PRs.
+  as the learning meta-agent's draft skill flow.
 
 ## Config / flags
 

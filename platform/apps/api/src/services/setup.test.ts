@@ -268,51 +268,6 @@ describe("default-agent auth bootstrap", () => {
     });
   });
 
-  it("seeds learning sidecar scheduled tasks for learning-enabled workspaces", async () => {
-    const state = setupSupabaseMock({
-      workspaces: [workspace()],
-      memberships: [
-        { workspace_id: workspaceId, user_id: userId, role: "owner", created_at: "2026-04-25T00:00:00.000Z" },
-      ],
-      workspaceSettings: [{ workspace_id: workspaceId, learning_enabled: true }],
-    });
-
-    await listSetupAuthState("access-token", userId);
-    await listSetupAuthState("access-token", userId);
-
-    const createdPlanningAgent = state.agents.find((row) => row.type === "planning");
-    const createdManagerAgent = state.agents.find((row) => row.type === "manager");
-    const distillationTask = state.scheduledTasks.find((row) => rowKind(row.delivery) === "learning_distillation");
-    const operabilityTask = state.scheduledTasks.find(
-      (row) => rowKind(row.metadata) === "learning_operability_remediation",
-    );
-
-    expect(state.scheduledTasks).toHaveLength(3);
-    expect(distillationTask).toMatchObject({
-      workspace_id: workspaceId,
-      agent_id: createdManagerAgent?.id,
-      title: "Nightly learning distillation",
-      enabled: true,
-      delivery: { kind: "learning_distillation", windowDays: 7 },
-      metadata: { kind: "learning_distillation", source: "workspace_learning_sidecar_seed" },
-    });
-    expect(operabilityTask).toMatchObject({
-      workspace_id: workspaceId,
-      agent_id: createdPlanningAgent?.id,
-      title: "Learning operability remediation",
-      enabled: true,
-      instructions: expect.stringContaining(
-        `/api/workspaces/${workspaceId}/learning/operability-remediation?threshold=2&limit=20`,
-      ),
-      delivery: {
-        kind: "scheduled_agent_message",
-        sessionStrategy: "scheduled_task",
-        metadata: { kind: "learning_operability_remediation" },
-      },
-      metadata: { kind: "learning_operability_remediation", source: "workspace_learning_sidecar_seed" },
-    });
-  });
-
   it("resolves a configured existing agent before incomplete bootstrapped defaults", async () => {
     const existingAgentId = "77777777-7777-4777-8777-777777777777";
     setupSupabaseMock({

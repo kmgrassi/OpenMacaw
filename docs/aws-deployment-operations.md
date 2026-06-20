@@ -354,9 +354,7 @@ The deploy config must provide:
 - CORS origins for the web client;
 - Supabase URL;
 - service-role-key SSM ARN when server-side Supabase access is required;
-- for production learning-sidecar distillation:
-  `openai_api_key_ssm_arn`, `learning_distillation_model`, and a stable
-  `learning_embedding_model`;
+- a stable `learning_embedding_model` when memory embeddings are enabled;
 - either shared platform state pointers or explicit VPC/subnet/ALB/ECS values.
 
 For existing infrastructure, prefer:
@@ -374,14 +372,7 @@ For existing infrastructure, prefer:
 That lets the existing shared platform own public edge infrastructure while
 OpenMacaw owns the platform API service deployment.
 
-Reflection and distillation use different credential paths. Reflection reads
-the target workspace's stored provider credential from the database; setting
-platform task env vars alone does not make reflection work for a workspace with
-no stored credential. Distillation is platform-side and requires the API task to
-receive `OPENAI_API_KEY` from `openai_api_key_ssm_arn` plus
-`LEARNING_DISTILLATION_MODEL` from `learning_distillation_model`.
-
-Keep `learning_embedding_model` stable after enabling learning in production.
+Keep `learning_embedding_model` stable after enabling memory embeddings in production.
 Changing it later leaves old and new `memory_items.embedding` vectors in
 different embedding spaces, degrading cosine similarity.
 
@@ -401,11 +392,6 @@ The deploy config must provide:
 - shared platform state pointers or explicit VPC/subnet/ECS values;
 - Supabase URL and SSM-backed Supabase anon key, JWT secret, and
   service-role-key values as needed;
-- for production learning-sidecar jobs:
-  `container_environment.PLATFORM_LEARNING_HANDLER_ENDPOINT` pointing at the
-  platform API base URL reachable from the runtime, and
-  `container_secrets.PLATFORM_LEARNING_HANDLER_API_KEY` using the same SSM
-  parameter ARN as `supabase_service_role_key_ssm_arn`;
 - Cloud Map service discovery values for VPC-internal API-to-launcher routing;
 - EFS workspace mount values when persistent runtime workspaces are enabled.
 

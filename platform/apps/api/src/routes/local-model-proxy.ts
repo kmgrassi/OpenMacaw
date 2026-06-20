@@ -16,8 +16,6 @@ import {
 import { resolveExecutionProfile } from "../services/execution-profile-resolver.js";
 import { getLocalChatToolResolutionForAgent } from "../services/local-chat-agent-tools.js";
 import { resolveLocalEndpoint } from "../services/local-model-proxy/endpoint.js";
-import { buildPinnedMemoryPromptBlock } from "../services/learning/pinned-memory.js";
-import { MEMORY_SEARCH_TOOL_SLUG } from "../services/learning/memory-tool.js";
 import { pipeStreamingResponse, writeCompletionAsSse } from "../services/local-model-proxy/streaming.js";
 import { chatWithTools, requestMaxToolIterations } from "../services/local-model-proxy/tool-loop.js";
 import type { ChatMessage } from "../services/local-model-proxy/types.js";
@@ -85,17 +83,7 @@ export function registerLocalModelProxyRoutes(app: Express) {
         supabase: getUserScopedSupabase(accessToken),
       });
       const tools = toolResolution.tools;
-      const pinnedMemoryBlock = tools.some((tool) => tool.slug === MEMORY_SEARCH_TOOL_SLUG)
-        ? await buildPinnedMemoryPromptBlock({
-            agentId,
-            workspaceId: resolution.profile.workspaceId,
-            sessionId: typeof req.body?.sessionId === "string" ? req.body.sessionId : null,
-            supabase: getUserScopedSupabase(accessToken),
-          })
-        : null;
-      const chatMessages = pinnedMemoryBlock
-        ? ([{ role: "system", content: pinnedMemoryBlock }, ...(messages as ChatMessage[])] as ChatMessage[])
-        : (messages as ChatMessage[]);
+      const chatMessages = messages as ChatMessage[];
 
       if (
         isLocalCodingRunnerKind(resolution.profile.runnerKind) &&

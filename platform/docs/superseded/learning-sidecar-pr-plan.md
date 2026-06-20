@@ -1,5 +1,8 @@
 # Learning Sidecar — Implementation PR Plan
 
+> Superseded by
+> [`../active/learning-agent-redesign-scope.md`](../active/learning-agent-redesign-scope.md).
+
 Implementation sequence for
 [`learning-sidecar-scope.md`](./learning-sidecar-scope.md). Migrations
 land in `harper-server`, schema + API + retrieval injection in
@@ -635,9 +638,9 @@ Repeating from the scope doc for visibility in the PR plan:
 
 | Repo | Doc | Owns |
 | --- | --- | --- |
-| `parallel-agent-platform` (this repo) | `docs/active/learning-sidecar-scope.md` | Canonical design |
-| `parallel-agent-platform` (this repo) | `docs/active/learning-sidecar-pr-plan.md` (this doc) | PR sequence across all repos |
-| `parallel-agent-runtime` | `docs/learning-sidecar-runtime-scope.md` | B0b + B1 (Elixir dispatcher + finalize hook) |
+| `parallel-agent-platform` (this repo) | `docs/superseded/learning-sidecar-scope.md` | Canonical design |
+| `parallel-agent-platform` (this repo) | `docs/superseded/learning-sidecar-pr-plan.md` (this doc) | PR sequence across all repos |
+| `parallel-agent-platform` (this repo) | `docs/superseded/learning-sidecar-runtime-scope.md` | B0b + B1 (Elixir dispatcher + finalize hook) |
 | `local-runtime-helper` | `docs/learning-sidecar-helper-scope.md` | "No-op" rationale — explains why the helper doesn't need changes for v1 and what hypothetical futures would require it |
 
 Each cross-repo PR should link back to **this PR plan** as the source

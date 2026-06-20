@@ -1,5 +1,8 @@
 # Learning Sidecar — Runtime Scope
 
+> Superseded by
+> [`../active/learning-agent-redesign-scope.md`](../active/learning-agent-redesign-scope.md).
+
 Runtime-side companion to the Hermes-style learning sidecar scoped in
 `parallel-agent-platform`. This doc owns the Elixir orchestrator
 changes that let the platform's `memory_items` table be populated
@@ -8,9 +11,9 @@ after agent runs and let new scheduled-task kinds dispatch correctly.
 Cross-repo companions:
 
 - **Platform** (canonical scope + write/read APIs + tools):
-  `parallel-agent-platform/docs/active/learning-sidecar-scope.md`
+  `parallel-agent-platform/docs/superseded/learning-sidecar-scope.md`
 - **Platform** (PR plan across all repos):
-  `parallel-agent-platform/docs/active/learning-sidecar-pr-plan.md`
+  `parallel-agent-platform/docs/superseded/learning-sidecar-pr-plan.md`
 - **Helper** (no work required — explanation):
   `local-runtime-helper/docs/learning-sidecar-helper-scope.md`
 
