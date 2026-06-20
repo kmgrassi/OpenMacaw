@@ -25,6 +25,11 @@ type AgentHealthBannerProps = {
    * whether to clear its "show banner" state or keep it visible.
    */
   onDismiss?: () => void;
+  /**
+   * Called by the transient-close CTA to reconnect the dropped gateway
+   * context immediately instead of waiting for the background reconnect timer.
+   */
+  onReconnect?: () => Promise<void> | void;
 };
 
 /**
@@ -51,13 +56,41 @@ export function AgentHealthBanner({
   reason,
   closeCode,
   onDismiss,
+  onReconnect,
 }: AgentHealthBannerProps) {
   const navigate = useNavigate();
   const [showRaw, setShowRaw] = useState(false);
+  const [isRechecking, setIsRechecking] = useState(false);
+  const [recheckError, setRecheckError] = useState<string | null>(null);
   const { data, isLoading, error, refetch } = useAgentDiagnostic(
     agentId,
     workspaceId,
   );
+
+  async function handleRecheck() {
+    if (isRechecking) return;
+    setIsRechecking(true);
+    setRecheckError(null);
+
+    const reconnect = async () => {
+      if (onReconnect) await onReconnect();
+    };
+    const results = await Promise.allSettled([refetch(), reconnect()]);
+    const rejected = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+
+    if (rejected) {
+      setRecheckError(
+        rejected.reason instanceof Error
+          ? rejected.reason.message
+          : String(rejected.reason),
+      );
+    } else if (onReconnect) {
+      onDismiss?.();
+    }
+    setIsRechecking(false);
+  }
 
   if (isLoading && !data) {
     return (
@@ -90,7 +123,8 @@ export function AgentHealthBanner({
             type="button"
             size="sm"
             variant="secondary"
-            onClick={() => void refetch()}
+            loading={isRechecking}
+            onClick={() => void handleRecheck()}
           >
             Retry diagnostic
           </Button>
@@ -102,6 +136,9 @@ export function AgentHealthBanner({
           couldn't reach the diagnostic endpoint to learn why.
         </p>
         <p className="mt-1 text-xs opacity-80">{error.message}</p>
+        {recheckError && (
+          <p className="mt-1 text-xs text-red-200">{recheckError}</p>
+        )}
       </StatusBanner>
     );
   }
@@ -188,12 +225,16 @@ export function AgentHealthBanner({
           {renderRawToggle}
           <button
             type="button"
-            onClick={() => void refetch()}
+            onClick={() => void handleRecheck()}
+            disabled={isRechecking}
             className="text-xs font-medium underline decoration-dotted underline-offset-2 hover:opacity-80"
           >
-            Re-run diagnostic
+            {isRechecking ? "Re-running diagnostic..." : "Re-run diagnostic"}
           </button>
         </div>
+        {recheckError && (
+          <p className="mt-2 text-xs text-red-200">{recheckError}</p>
+        )}
         {renderRawBlock}
       </StatusBanner>
     );
@@ -216,17 +257,13 @@ export function AgentHealthBanner({
             type="button"
             size="sm"
             variant="secondary"
-            onClick={() => void refetch()}
+            loading={isRechecking}
+            onClick={() => void handleRecheck()}
           >
             Re-check
           </Button>
           {onDismiss && (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={onDismiss}
-            >
+            <Button type="button" size="sm" variant="ghost" onClick={onDismiss}>
               Dismiss
             </Button>
           )}
@@ -243,6 +280,9 @@ export function AgentHealthBanner({
         )}
       </p>
       <div className="mt-3">{renderRawToggle}</div>
+      {recheckError && (
+        <p className="mt-2 text-xs text-red-200">{recheckError}</p>
+      )}
       {renderRawBlock}
     </StatusBanner>
   );
