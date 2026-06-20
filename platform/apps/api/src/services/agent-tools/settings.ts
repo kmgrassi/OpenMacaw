@@ -27,6 +27,16 @@ function grantSourceToResolvedSource(mode: "include" | "exclude") {
   return mode;
 }
 
+function runtimeSystemTool(tool: (typeof MEMORY_TOOLS)[number]): ResolvedAgentTool {
+  return {
+    ...tool,
+    name: tool.functionName,
+    workspaceId: null,
+    source: "system",
+    enabledForAgent: true,
+  } as ResolvedAgentTool;
+}
+
 export async function getResolvedToolsForAgent(input: {
   accessToken: string;
   userId: string;
@@ -39,15 +49,7 @@ export async function getResolvedToolsForAgent(input: {
     workspaceId,
     supabase: getServiceRoleSupabase(),
   });
-  const systemTools: ResolvedAgentTool[] = MEMORY_TOOLS.map(
-    (tool) =>
-      ({
-        ...tool,
-        workspaceId: null,
-        source: "system",
-        enabledForAgent: true,
-      }) as ResolvedAgentTool,
-  );
+  const systemTools: ResolvedAgentTool[] = MEMORY_TOOLS.map(runtimeSystemTool);
 
   return {
     bundles: [],

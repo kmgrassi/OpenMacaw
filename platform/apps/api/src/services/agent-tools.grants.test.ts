@@ -54,6 +54,19 @@ describe("agent tool grants", () => {
     ]);
   });
 
+  it("uses callable names for universal runtime memory tools", async () => {
+    const tools = await getToolsForAgent({ accessToken, userId, agentId, workspaceId });
+
+    expect(
+      tools
+        .filter((resolvedTool) => resolvedTool.slug.startsWith("memory."))
+        .map((resolvedTool) => [resolvedTool.slug, resolvedTool.name]),
+    ).toEqual([
+      ["memory.create", "memory_create"],
+      ["memory.search", "memory_search"],
+    ]);
+  });
+
   it("prevents assigning disabled tool definitions", async () => {
     harness.tables.tool[0] = tool({ enabled: false });
     harness.tables.agent_tool_grant = [];
