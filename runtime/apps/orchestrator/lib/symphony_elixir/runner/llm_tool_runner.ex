@@ -9,6 +9,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   alias SymphonyElixir.LocalRelay.Registry, as: LocalRelayRegistry
   alias SymphonyElixir.AgentInventory.StoredCredential
   alias SymphonyElixir.Manager.Prompt, as: ManagerPrompt
+  alias SymphonyElixir.Learning.Prompt, as: LearningPrompt
   alias SymphonyElixir.Manager.ModelClient
   alias SymphonyElixir.Planner.ToolNameMapping
   alias SymphonyElixir.Runner.Observability
@@ -140,6 +141,10 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
         "manager" ->
           ManagerPrompt.load!() <>
             "\n\nCurrent time: #{DateTime.utc_now() |> DateTime.to_iso8601()}. Workspace timezone: Etc/UTC. When a user asks to pause or defer a work_item to a specific time, call snooze with until set to the resolved absolute ISO timestamp."
+
+        "learning" ->
+          LearningPrompt.load!() <>
+            "\n\nCurrent time: #{DateTime.utc_now() |> DateTime.to_iso8601()}. Workspace timezone: Etc/UTC."
 
         _other ->
           config_value(config, "prompt") || "You are a helpful agent. Use the available tools when needed."
@@ -524,6 +529,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   defp tool_bundle(config) do
     case config_value(config, "tool_bundle") || agent_type(config) do
       "manager" -> :manager
+      "learning" -> :learning
       "planning" -> :planner
       "planner" -> :planner
       value when is_atom(value) -> value

@@ -1,9 +1,7 @@
 import { z } from "zod";
 
 export const LearningCostKindSchema = z.enum([
-  "reflection",
   "retrieval",
-  "distillation",
 ]);
 
 export const LearningCostTotalsSchema = z.object({

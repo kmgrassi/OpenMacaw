@@ -5,7 +5,9 @@ defmodule SymphonyElixir.AgentInventory.Agent do
 
   @coding "coding"
   @planning "planning"
+  @learning "learning"
   @custom "custom"
+  @supported_kinds ~w(coding planning manager learning router custom)
 
   @type kind :: String.t()
 
@@ -107,6 +109,9 @@ defmodule SymphonyElixir.AgentInventory.Agent do
   @spec planning?(t() | map() | String.t() | nil) :: boolean()
   def planning?(agent), do: kind(agent) == @planning
 
+  @spec learning?(t() | map() | String.t() | nil) :: boolean()
+  def learning?(agent), do: kind(agent) == @learning
+
   @spec custom?(t() | map() | String.t() | nil) :: boolean()
   def custom?(agent), do: kind(agent) == @custom
 
@@ -123,7 +128,8 @@ defmodule SymphonyElixir.AgentInventory.Agent do
   defp normalize_type(value) when is_binary(value) do
     case String.trim(value) do
       "" -> @coding
-      kind -> kind
+      kind when kind in @supported_kinds -> kind
+      _other -> @coding
     end
   end
 

@@ -62,7 +62,17 @@ func TestHTTPChecksUseContextDeadline(t *testing.T) {
 	}
 }
 
+func TestCmdDoctorHelpReturnsSuccess(t *testing.T) {
+	t.Parallel()
+
+	if got := cmdDoctor([]string{"--help"}); got != 0 {
+		t.Fatalf("cmdDoctor(--help) = %d, want 0", got)
+	}
+}
+
 func TestCmdDoctorJSONOutput(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{"id":"qwen2.5-coder:latest"}]}`))

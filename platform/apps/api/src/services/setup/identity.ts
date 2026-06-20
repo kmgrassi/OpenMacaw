@@ -24,16 +24,12 @@ export function workspaceRouterAgentId(workspaceId: string) {
   return deterministicUuid(`workspace-router-agent:${workspaceId}`);
 }
 
+export function workspaceLearningAgentId(workspaceId: string) {
+  return deterministicUuid(`workspace-learning-agent:${workspaceId}`);
+}
+
 export function workspaceRouterOptimizationTaskId(workspaceId: string, agentId: string) {
   return deterministicUuid(`workspace-router-optimization-task:${workspaceId}:${agentId}`);
-}
-
-export function workspaceLearningDistillationTaskId(workspaceId: string, agentId: string) {
-  return deterministicUuid(`workspace-learning-distillation-task:${workspaceId}:${agentId}`);
-}
-
-export function workspaceOperabilityRemediationTaskId(workspaceId: string) {
-  return deterministicUuid(`workspace-operability-remediation-task:${workspaceId}`);
 }
 
 export function requireCurrentUser(userId: string) {

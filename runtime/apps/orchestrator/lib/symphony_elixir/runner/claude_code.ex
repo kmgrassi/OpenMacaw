@@ -10,6 +10,7 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
   @behaviour SymphonyElixir.Runner
 
   alias SymphonyElixir.{ClaudeCode.Bridge, Config, PathSafety, WorkItem}
+  alias SymphonyElixir.Runner.SkillMaterializer
   alias SymphonyElixir.Runner.WorkerBridgeRouting
 
   @impl true
@@ -28,6 +29,7 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
 
       true ->
         with {:ok, cwd} <- validate_workspace_cwd(workspace, config),
+             :ok <- SkillMaterializer.materialize("claude_code", config, cwd),
              :ok <- validate_credentials(config) do
           options = normalize_options(config)
           Bridge.start_session(cwd, options)

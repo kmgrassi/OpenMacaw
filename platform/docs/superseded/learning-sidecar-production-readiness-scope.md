@@ -1,12 +1,15 @@
 # Learning Sidecar — Production Readiness Scope
 
-Status: **active**. Owns the work to get the self-improving / learning
+> Superseded by
+> [`../active/learning-agent-redesign-scope.md`](../active/learning-agent-redesign-scope.md).
+
+Status: **superseded**. Owned the work to get the self-improving / learning
 loop actually running in production. Companion to the design docs it does
 **not** replace:
 
 - [`learning-sidecar-scope.md`](./learning-sidecar-scope.md) — canonical design
 - [`learning-sidecar-pr-plan.md`](./learning-sidecar-pr-plan.md) — original build sequence
-- [`../../../runtime/docs/learning-sidecar-runtime-scope.md`](../../../runtime/docs/learning-sidecar-runtime-scope.md) — runtime hooks
+- [`learning-sidecar-runtime-scope.md`](./learning-sidecar-runtime-scope.md) — runtime hooks
 - [`agent-persistent-context-scope.md`](./agent-persistent-context-scope.md) — agent self-update channel
 - [`fleet-sampling-observer-scope.md`](./fleet-sampling-observer-scope.md) — always-on advisory loop
 - [`../../../docs/openmacaw-vs-openclaw-hermes.md`](../../../docs/openmacaw-vs-openclaw-hermes.md) — positioning vs. Hermes
@@ -260,7 +263,7 @@ env list covers both:
   workspace initially (the design's dark-launch stance). This is now enforced by
   migration `20260615120000_learning_sidecar_dark_launch.sql` and the platform
   contract default; use the rollout runbook to confirm rows before deploy:
-  [`../reference/learning-sidecar-production-rollout.md`](../reference/learning-sidecar-production-rollout.md).
+  [`learning-sidecar-production-rollout.md`](./learning-sidecar-production-rollout.md).
 - Verify reflection: ensure the test workspace has a stored provider credential
   (reflection fails `reflection_credential_missing` without one — see P4) →
   complete an agent run → confirm a `learning_reflection` scheduled-task row is
@@ -271,7 +274,7 @@ env list covers both:
   runtime path fire) → confirm skill-candidate memories written.
 - Add a dashboard / log query for learning-job HTTP status so a future 404 is
   visible immediately, not silent. The production query lives in
-  [`../reference/learning-sidecar-production-rollout.md`](../reference/learning-sidecar-production-rollout.md#5-learning-job-status-query).
+  [`learning-sidecar-production-rollout.md`](./learning-sidecar-production-rollout.md#5-learning-job-status-query).
 
 ### P6 — Feed tool-call events into reflection (operability learning) — **priority**
 
@@ -552,7 +555,7 @@ Sequencing: P7 depends on P6 (something to route) and P1 (jobs must run).
    cross-repo drift check guards the contract.
 5. Learning is enabled for the internal workspace with the documented config,
    and there is a log/metric surface for learning-job HTTP status
-   ([rollout runbook](../reference/learning-sidecar-production-rollout.md)).
+   ([rollout runbook](./learning-sidecar-production-rollout.md)).
 6. Reflection ingests `agent_tool_call_event` and produces operability-tagged
    memories for tool/config failures (missing tool, wrong column/argument, DB
    rejection) — verified by a run with a real failed tool call yielding such a

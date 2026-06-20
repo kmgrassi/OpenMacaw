@@ -2,7 +2,9 @@ import { z } from "zod";
 
 const IsoDateTimeSchema = z.string().datetime({ offset: true });
 
-export const SkillStatusSchema = z.enum(["draft", "approved", "archived"]);
+export const SKILL_STATUSES = ["draft", "approved", "archived"] as const;
+
+export const SkillStatusSchema = z.enum(SKILL_STATUSES);
 
 export const SkillNameSchema = z
   .string()
@@ -19,7 +21,7 @@ export const SkillSchema = z.object({
   workspaceId: z.string().uuid(),
   agentId: z.string().uuid(),
   name: SkillNameSchema,
-  description: z.string().max(1024),
+  description: z.string().min(1).max(1024),
   body: z.string().trim().min(1),
   status: SkillStatusSchema,
   copiedFromSkillId: z.string().uuid().nullable(),
@@ -43,6 +45,32 @@ export const SkillCreateToolResponseSchema = z.object({
   skill: SkillSchema,
 });
 
+export const SkillListQuerySchema = z.object({
+  agentId: z.string().uuid().optional(),
+  status: SkillStatusSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+
+export const SkillListResponseSchema = z.object({
+  skills: z.array(SkillSchema),
+});
+
+export const SkillUpdateRequestSchema = z
+  .object({
+    name: SkillNameSchema.optional(),
+    description: z.string().trim().min(1).max(1024).optional(),
+    body: z.string().trim().min(1).optional(),
+    status: SkillStatusSchema.optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one skill field is required",
+  });
+
+export const SkillResponseSchema = z.object({
+  skill: SkillSchema,
+});
+
 export type SkillStatus = z.infer<typeof SkillStatusSchema>;
 export type Skill = z.infer<typeof SkillSchema>;
 export type SkillCreateToolRequest = z.infer<
@@ -51,3 +79,7 @@ export type SkillCreateToolRequest = z.infer<
 export type SkillCreateToolResponse = z.infer<
   typeof SkillCreateToolResponseSchema
 >;
+export type SkillListQuery = z.infer<typeof SkillListQuerySchema>;
+export type SkillListResponse = z.infer<typeof SkillListResponseSchema>;
+export type SkillUpdateRequest = z.infer<typeof SkillUpdateRequestSchema>;
+export type SkillResponse = z.infer<typeof SkillResponseSchema>;
