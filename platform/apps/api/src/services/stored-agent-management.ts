@@ -200,6 +200,17 @@ export function isStoredAgentRuntimeSelectable(agent: Pick<StoredAgent, "agentTy
   return agent.agentType !== "manager";
 }
 
+// PATCH is partial: only touch context when the client actually sends the
+// field. An omitted `context` preserves the saved value; an explicit null or
+// blank string clears it.
+export function resolveUpdatedAgentContext(
+  bodyContext: string | null | undefined,
+  existingContext: string | null,
+): string | null {
+  if (bodyContext === undefined) return existingContext ?? null;
+  return bodyContext?.trim() || null;
+}
+
 async function upsertCustomGatewayConfig(input: {
   accessToken: string;
   agentId: string;
@@ -393,13 +404,14 @@ export async function updateStoredAgentFromApi(input: {
 
   const previousModel = extractPrimaryModel(existing.model_settings);
   const nextModel = input.body.model?.trim() || null;
+  const nextContext = resolveUpdatedAgentContext(input.body.context, existing.context ?? null);
 
   const updated = await updateStoredAgentRow({
     accessToken: input.accessToken,
     agentId: input.agentId,
     name: input.body.name.trim(),
     type: input.body.type,
-    context: input.body.context?.trim() || null,
+    context: nextContext,
     modelSettings: buildStoredAgentModelSettings(input.body),
     toolPolicy: buildStoredAgentToolPolicy(input.body, existing.tool_policy),
   });

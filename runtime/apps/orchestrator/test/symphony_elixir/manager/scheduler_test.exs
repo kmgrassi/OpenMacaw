@@ -537,6 +537,54 @@ defmodule SymphonyElixir.Manager.SchedulerTest do
     refute_received {:manager_session_started, _config}
   end
 
+  test "resolved manager session includes the agent context", %{registry: registry} do
+    Application.put_env(:symphony_elixir, :manager_scheduler_gateway_config, %{
+      "runners" => %{
+        "manager" => %{
+          "provider" => "openai",
+          "model" => "gpt-test",
+          "api_key" => "sk-test",
+          "context" => "Always respond in haiku."
+        }
+      }
+    })
+
+    {:ok, _pid} =
+      Scheduler.start_link("workspace-1", "manager-agent-1",
+        registry: registry,
+        work_item_source: TestWorkItemSource,
+        chat_gateway: TestChatGateway,
+        runner: TestRunner,
+        schedule_first_tick: false
+      )
+
+    assert_received {:manager_session_started, %{"agent_context" => "Always respond in haiku."}}
+  end
+
+  test "resolved manager session omits agent_context when no context is set", %{registry: registry} do
+    Application.put_env(:symphony_elixir, :manager_scheduler_gateway_config, %{
+      "runners" => %{
+        "manager" => %{
+          "provider" => "openai",
+          "model" => "gpt-test",
+          "api_key" => "sk-test"
+        }
+      }
+    })
+
+    {:ok, _pid} =
+      Scheduler.start_link("workspace-1", "manager-agent-1",
+        registry: registry,
+        work_item_source: TestWorkItemSource,
+        chat_gateway: TestChatGateway,
+        runner: TestRunner,
+        schedule_first_tick: false
+      )
+
+    assert_received {:manager_session_started, config}
+    refute Map.has_key?(config, "agent_context")
+  end
+
   test "resolved manager session includes granted tool definitions", %{registry: registry} do
     Application.put_env(:symphony_elixir, :manager_tool_definition_resolver, TestToolDefinitionResolver)
 
