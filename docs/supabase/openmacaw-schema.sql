@@ -370,30 +370,6 @@ create table if not exists public.memory_items (
   primary key (id)
 );
 
-create table if not exists public.skill (
-  id uuid primary key default gen_random_uuid(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  agent_id uuid not null references public.agent(id) on delete cascade,
-  name text not null,
-  description text not null,
-  body text not null,
-  status text not null default 'draft',
-  copied_from_skill_id uuid references public.skill(id) on delete set null,
-  created_by_agent_id uuid references public.agent(id) on delete set null,
-  created_by_user_id uuid references public."user"(id) on delete set null,
-  source_run_id uuid,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint skill_name_format check (
-    char_length(name) between 1 and 64
-    and name ~ '^[a-z0-9-]+$'
-    and name not in ('claude', 'anthropic')
-  ),
-  constraint skill_description_length check (char_length(description) between 1 and 1024),
-  constraint skill_body_nonempty check (char_length(body) > 0),
-  constraint skill_status_check check (status in ('draft', 'approved', 'archived'))
-);
-
 create table if not exists public.message (
   agent_id uuid,
   content text,
@@ -863,6 +839,30 @@ create table if not exists public.workspaces (
   name text not null,
   owner_user_id uuid not null,
   primary key (id)
+);
+
+create table if not exists public.skill (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  agent_id uuid not null references public.agent(id) on delete cascade,
+  name text not null,
+  description text not null,
+  body text not null,
+  status text not null default 'draft',
+  copied_from_skill_id uuid references public.skill(id) on delete set null,
+  created_by_agent_id uuid references public.agent(id) on delete set null,
+  created_by_user_id uuid references public."user"(id) on delete set null,
+  source_run_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint skill_name_format check (
+    char_length(name) between 1 and 64
+    and name ~ '^[a-z0-9-]+$'
+    and name not in ('claude', 'anthropic')
+  ),
+  constraint skill_description_length check (char_length(description) between 1 and 1024),
+  constraint skill_body_nonempty check (char_length(body) > 0),
+  constraint skill_status_check check (status in ('draft', 'approved', 'archived'))
 );
 
 create table if not exists public.work_item_comments (
