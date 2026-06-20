@@ -1,26 +1,12 @@
-create table if not exists public.skill (
-  id uuid primary key default gen_random_uuid(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
-  agent_id uuid not null references public.agent(id) on delete cascade,
-  name text not null,
-  description text not null default '',
-  body text not null,
-  status text not null default 'draft',
-  copied_from_skill_id uuid references public.skill(id) on delete set null,
-  created_by_agent_id uuid references public.agent(id) on delete set null,
-  created_by_user_id uuid references public."user"(id) on delete set null,
-  source_run_id text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint skill_name_format_check check (
-    name ~ '^[a-z0-9-]{1,64}$'
-    and name not in ('claude', 'anthropic')
-  ),
-  constraint skill_description_length_check check (char_length(description) <= 1024),
-  constraint skill_body_not_empty_check check (length(trim(body)) > 0),
-  constraint skill_status_check check (status in ('draft', 'approved', 'archived')),
-  constraint skill_agent_name_unique unique (agent_id, name)
-);
+alter table public.skill
+  alter column description set default '';
+
+drop index if exists public.skill_source_run_idx;
+alter table public.skill
+  alter column source_run_id type text using source_run_id::text;
+create index if not exists skill_source_run_idx
+  on public.skill (source_run_id)
+  where source_run_id is not null;
 
 create index if not exists skill_workspace_agent_status_idx
   on public.skill (workspace_id, agent_id, status, updated_at desc);
@@ -29,13 +15,9 @@ create index if not exists skill_copied_from_skill_idx
   on public.skill (copied_from_skill_id)
   where copied_from_skill_id is not null;
 
-drop trigger if exists set_updated_at on public.skill;
-create trigger set_updated_at
-  before update on public.skill
-  for each row execute function public.set_updated_at();
-
 alter table public.skill enable row level security;
 
+drop policy if exists openmacaw_workspace_member_access on public.skill;
 drop policy if exists skill_workspace_member_access on public.skill;
 create policy skill_workspace_member_access
   on public.skill
