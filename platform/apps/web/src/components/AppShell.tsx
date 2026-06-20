@@ -326,7 +326,9 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
             onClick={closeMobile}
             aria-label="Close navigation"
           />
-          <div className="relative h-full shadow-xl">{renderSidebar(false)}</div>
+          <div className="relative h-full w-72 shadow-xl">
+            {renderSidebar(false)}
+          </div>
         </div>
       )}
 
