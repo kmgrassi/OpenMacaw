@@ -13,6 +13,7 @@ import {
   type DiagnosticsAuthSummary,
 } from "../lib/diagnostics-export";
 import { useAuthStore } from "../stores/auth";
+import { copyTextToClipboard } from "../lib/clipboard";
 import { Button } from "./ui/Button";
 
 type Props = {
@@ -20,23 +21,6 @@ type Props = {
   agentDiagnostic?: AgentDiagnosticResponse | null;
   label?: string;
 };
-
-async function copyText(text: string) {
-  if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text);
-    return;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "true");
-  textarea.style.position = "fixed";
-  textarea.style.left = "-9999px";
-  document.body.appendChild(textarea);
-  textarea.select();
-  document.execCommand("copy");
-  document.body.removeChild(textarea);
-}
 
 export function DiagnosticsExportButton({
   agentHealth,
@@ -128,7 +112,7 @@ export function DiagnosticsExportButton({
         agentDiagnostic: resolvedAgentDiagnostic,
         browserConsoleErrors: getCapturedBrowserConsoleErrors(),
       });
-      await copyText(formatDiagnosticsExport(payload));
+      await copyTextToClipboard(formatDiagnosticsExport(payload));
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
     } catch (err) {
