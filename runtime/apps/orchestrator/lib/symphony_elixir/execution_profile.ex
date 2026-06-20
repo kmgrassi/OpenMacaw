@@ -95,7 +95,9 @@ defmodule SymphonyElixir.ExecutionProfile do
   back to `Runner.LocalRelay`'s default (`"openai_compatible"`).
   """
   @spec local_relay_target_runner_kind(String.t() | nil) :: String.t() | nil
-  def local_relay_target_runner_kind(provider) when provider in ~w(openclaw codex computer_use), do: provider
+  def local_relay_target_runner_kind(provider) when provider in ~w(openclaw codex computer_use),
+    do: provider
+
   def local_relay_target_runner_kind(_provider), do: nil
 
   defp supplied_profile(%WorkItem{} = work_item, runner_config, opts) do
@@ -290,7 +292,9 @@ defmodule SymphonyElixir.ExecutionProfile do
     runner_kind =
       profile
       |> explicit_runner_kind()
-      |> normalize_family_runner_kind(Map.get(profile, "role") || Map.get(profile, "tool_profile"))
+      |> normalize_family_runner_kind(
+        Map.get(profile, "role") || Map.get(profile, "tool_profile")
+      )
 
     provider =
       normalize_string(Map.get(profile, "provider") || Map.get(profile, "model_provider"))
@@ -389,7 +393,10 @@ defmodule SymphonyElixir.ExecutionProfile do
     Map.put(
       profile,
       "runner_kind",
-      normalize_family_runner_kind(runner_kind, Map.get(profile, "role") || Map.get(profile, "tool_profile"))
+      normalize_family_runner_kind(
+        runner_kind,
+        Map.get(profile, "role") || Map.get(profile, "tool_profile")
+      )
     )
   end
 
@@ -401,6 +408,7 @@ defmodule SymphonyElixir.ExecutionProfile do
 
     case {runner_kind, role} do
       {"llm_tool_runner", "manager"} -> "manager"
+      {"llm_tool_runner", "learning"} -> "manager"
       {"llm_tool_runner", "planning"} -> "planner"
       {"llm_tool_runner", "planner"} -> "planner"
       _ -> runner_kind
@@ -512,8 +520,11 @@ defmodule SymphonyElixir.ExecutionProfile do
 
   defp normalize_keys(map) when is_map(map) do
     Map.new(map, fn
-      {key, value} when is_atom(key) -> {canonical_key(Atom.to_string(key)), normalize_value(value)}
-      {key, value} -> {canonical_key(key), normalize_value(value)}
+      {key, value} when is_atom(key) ->
+        {canonical_key(Atom.to_string(key)), normalize_value(value)}
+
+      {key, value} ->
+        {canonical_key(key), normalize_value(value)}
     end)
   end
 

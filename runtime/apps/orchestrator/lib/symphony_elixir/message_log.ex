@@ -77,6 +77,46 @@ defmodule SymphonyElixir.MessageLog do
     end
   end
 
+  @spec list_workspace_messages(String.t(), keyword()) ::
+          {:ok, list(map()), map()} | :disabled | {:error, term()}
+  def list_workspace_messages(workspace_id, opts \\ [])
+      when is_binary(workspace_id) and is_list(opts) do
+    with {:ok, config} <- resolve_config() do
+      limit = normalize_limit(Keyword.get(opts, :limit))
+
+      query =
+        %{
+          "select" => message_select(Keyword.get(opts, :include_tool_calls, false)),
+          "workspace_id" => "eq.#{workspace_id}",
+          "order" => "created_at.desc,id.desc",
+          "limit" => Integer.to_string(limit)
+        }
+        |> maybe_put_filter("agent_id", Keyword.get(opts, :agent_id))
+        |> maybe_put_filter("session_id", Keyword.get(opts, :session_id))
+        |> maybe_put_cursor(Keyword.get(opts, :before), Keyword.get(opts, :before_id))
+
+      case PostgRESTClient.get(client(config), @message_table, query,
+             log_metadata:
+               log_metadata("message_log.list_workspace_messages", @message_table,
+                 workspace_id: workspace_id,
+                 agent_id: Keyword.get(opts, :agent_id),
+                 session_thread_id: Keyword.get(opts, :session_id)
+               )
+           ) do
+        {:ok, rows} when is_list(rows) ->
+          display_names = display_names_for_rows(config, rows)
+          messages = Enum.map(rows, &message_payload(&1, display_names))
+          {:ok, messages, pagination_payload(messages, limit)}
+
+        {:ok, body} ->
+          {:error, {:invalid_response, body}}
+
+        {:error, _reason} = error ->
+          error
+      end
+    end
+  end
+
   @spec resolve_user_display_names([String.t()]) ::
           {:ok, %{String.t() => String.t()}} | :disabled | {:error, term()}
   def resolve_user_display_names(user_ids) when is_list(user_ids) do
@@ -108,7 +148,14 @@ defmodule SymphonyElixir.MessageLog do
     record_assistant_message(scope, session_thread_id, content, run_id, metadata, [])
   end
 
-  @spec record_assistant_message(scope(), String.t(), String.t(), String.t() | nil, map(), keyword()) ::
+  @spec record_assistant_message(
+          scope(),
+          String.t(),
+          String.t(),
+          String.t() | nil,
+          map(),
+          keyword()
+        ) ::
           result()
   def record_assistant_message(scope, session_thread_id, content, run_id, metadata, opts)
       when is_map(scope) and is_binary(session_thread_id) and is_binary(content) and
@@ -133,7 +180,10 @@ defmodule SymphonyElixir.MessageLog do
         "limit" => "1"
       }
 
-    case PostgRESTClient.get(client(config), @session_table, query, log_metadata: scope_log_metadata(scope, "message_log.fetch_session_thread", @session_table)) do
+    case PostgRESTClient.get(client(config), @session_table, query,
+           log_metadata:
+             scope_log_metadata(scope, "message_log.fetch_session_thread", @session_table)
+         ) do
       {:ok, [%{"id" => thread_id} | _]} when is_binary(thread_id) ->
         {:ok, thread_id}
 
@@ -163,7 +213,8 @@ defmodule SymphonyElixir.MessageLog do
     case PostgRESTClient.post(client(config), @session_table, payload,
            prefer: "return=representation",
            query: %{"select" => "id"},
-           log_metadata: scope_log_metadata(scope, "message_log.create_session_thread", @session_table)
+           log_metadata:
+             scope_log_metadata(scope, "message_log.create_session_thread", @session_table)
          ) do
       {:ok, [%{"id" => thread_id} | _]} when is_binary(thread_id) ->
         {:ok, thread_id}
@@ -194,7 +245,10 @@ defmodule SymphonyElixir.MessageLog do
              %{"id" => "eq.#{thread_id}"},
              payload,
              prefer: "return=minimal",
-             log_metadata: scope_log_metadata(scope, "message_log.patch_session_thread", @session_table, session_thread_id: thread_id)
+             log_metadata:
+               scope_log_metadata(scope, "message_log.patch_session_thread", @session_table,
+                 session_thread_id: thread_id
+               )
            ) do
         {:ok, _body} -> {:ok, thread_id}
         {:error, _reason} = error -> error
@@ -225,7 +279,14 @@ defmodule SymphonyElixir.MessageLog do
       tool_calls = Keyword.get(opts, :tool_calls, [])
 
       if role == :assistant and tool_calls != [] do
-        insert_message_with_tool_calls(config, scope, session_thread_id, payload, opts, tool_calls)
+        insert_message_with_tool_calls(
+          config,
+          scope,
+          session_thread_id,
+          payload,
+          opts,
+          tool_calls
+        )
       else
         case PostgRESTClient.post(client(config), @message_table, payload,
                prefer: "return=minimal",
@@ -253,8 +314,24 @@ defmodule SymphonyElixir.MessageLog do
              )
          ) do
       {:ok, [%{"id" => message_id} | _]} when is_binary(message_id) ->
-        record_tool_calls(config, scope, session_thread_id, message_id, Keyword.get(opts, :run_id), tool_calls)
-        record_agent_tool_call_events(config, scope, session_thread_id, message_id, Keyword.get(opts, :run_id), tool_calls)
+        record_tool_calls(
+          config,
+          scope,
+          session_thread_id,
+          message_id,
+          Keyword.get(opts, :run_id),
+          tool_calls
+        )
+
+        record_agent_tool_call_events(
+          config,
+          scope,
+          session_thread_id,
+          message_id,
+          Keyword.get(opts, :run_id),
+          tool_calls
+        )
+
         :ok
 
       {:ok, body} ->
@@ -291,18 +368,30 @@ defmodule SymphonyElixir.MessageLog do
     end
   end
 
-  defp record_agent_tool_call_events(config, scope, session_thread_id, message_id, run_id, tool_calls) do
+  defp record_agent_tool_call_events(
+         config,
+         scope,
+         session_thread_id,
+         message_id,
+         run_id,
+         tool_calls
+       ) do
     rows =
       tool_calls
       |> Enum.with_index()
-      |> Enum.map(fn {call, index} -> agent_tool_call_event_row(scope, message_id, run_id, call, index) end)
+      |> Enum.map(fn {call, index} ->
+        agent_tool_call_event_row(scope, message_id, run_id, call, index)
+      end)
       |> Enum.reject(&is_nil/1)
 
     if rows != [] do
       case PostgRESTClient.post(client(config), @agent_tool_call_event_table, rows,
              prefer: "return=minimal",
              log_metadata:
-               scope_log_metadata(scope, "message_log.record_agent_tool_call_events", @agent_tool_call_event_table,
+               scope_log_metadata(
+                 scope,
+                 "message_log.record_agent_tool_call_events",
+                 @agent_tool_call_event_table,
                  session_thread_id: session_thread_id,
                  run_id: run_id,
                  message_id: message_id
@@ -410,10 +499,17 @@ defmodule SymphonyElixir.MessageLog do
 
   defp output_summary(%{} = output) do
     case map_value(output, :output) || map_value(output, :message) || map_value(output, :result) do
-      value when is_binary(value) -> String.slice(value, 0, 500)
-      value when is_map(value) or is_list(value) -> value |> Jason.encode!() |> String.slice(0, 500)
-      value when not is_nil(value) -> value |> to_string() |> String.slice(0, 500)
-      _ -> nil
+      value when is_binary(value) ->
+        String.slice(value, 0, 500)
+
+      value when is_map(value) or is_list(value) ->
+        value |> Jason.encode!() |> String.slice(0, 500)
+
+      value when not is_nil(value) ->
+        value |> to_string() |> String.slice(0, 500)
+
+      _ ->
+        nil
     end
   end
 
@@ -542,7 +638,12 @@ defmodule SymphonyElixir.MessageLog do
         "id" => "in.(#{Enum.join(ids, ",")})"
       }
 
-      case PostgRESTClient.get(client(config), @user_table, query, log_metadata: log_metadata("message_log.resolve_user_display_names", @user_table, user_count: length(ids))) do
+      case PostgRESTClient.get(client(config), @user_table, query,
+             log_metadata:
+               log_metadata("message_log.resolve_user_display_names", @user_table,
+                 user_count: length(ids)
+               )
+           ) do
         {:ok, rows} when is_list(rows) ->
           {:ok, display_name_map(rows)}
 
@@ -654,7 +755,11 @@ defmodule SymphonyElixir.MessageLog do
 
   defp maybe_put_cursor(query, before, before_id)
        when is_binary(before) and is_binary(before_id) and before_id != "" do
-    Map.put(query, "or", "(created_at.lt.#{before},and(created_at.eq.#{before},id.lt.#{before_id}))")
+    Map.put(
+      query,
+      "or",
+      "(created_at.lt.#{before},and(created_at.eq.#{before},id.lt.#{before_id}))"
+    )
   end
 
   defp maybe_put_cursor(query, before, _before_id) when is_binary(before) do

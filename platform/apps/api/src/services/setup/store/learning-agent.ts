@@ -9,6 +9,7 @@ import { pickClaimableAgent, requireAgentRow } from "./agent-row-helpers.js";
 import { DEFAULT_AGENT_SELECT } from "./selects.js";
 
 const LEARNING_TASK_KIND = "learning_meta_agent_daily_review";
+const LEGACY_LEARNING_TASK_KINDS = new Set(["learning_distillation", "learning_operability_remediation"]);
 const LEARNING_TASK_TITLE = "Learning agent transcript review";
 const LEARNING_TASK_TIMEZONE = "Etc/UTC";
 const LEARNING_TASK_SCHEDULE = { kind: "every", interval: 1, unit: "day", at: "03:30" } as const;
@@ -25,12 +26,11 @@ const LEARNING_TASK_DELIVERY = {
 } as const;
 
 export const DEFAULT_LEARNING_AGENT_INSTRUCTIONS = [
-  "Review one randomly sampled recent transcript for this workspace.",
-  "Use agent_run.read when you need more context than the scheduled sample metadata provides.",
-  "For durable facts worth remembering, call memory.create.",
-  "For reusable procedures or corrections, call skill.create as a draft for the agent whose transcript you reviewed.",
-  "For bugs or operability defects, hand off a concrete remediation request to the planning agent instead of storing it as memory.",
-  "Explain what you found and what actions you took. Change nothing when the transcript has no useful learning signal.",
+  "Review the transcript sample attached to this scheduled message.",
+  "Identify durable facts worth remembering, reusable procedures or corrections, and bugs or operability defects.",
+  "Report concrete suggested memory, skill, or planning-agent follow-up actions in your response.",
+  "Do not claim to have persisted memory, created skills, or handed off work unless a tool call succeeds.",
+  "If no transcript sample is attached, say no recent transcript sample was available and take no further action.",
 ].join("\n");
 
 async function findClaimableWorkspaceLearningAgent(accessToken: string, workspaceId: string) {
@@ -158,6 +158,19 @@ function metadataKind(metadata: unknown) {
   return typeof kind === "string" ? kind : null;
 }
 
+function deliveryKind(delivery: unknown) {
+  if (!delivery || typeof delivery !== "object" || Array.isArray(delivery)) return null;
+  const kind = (delivery as Record<string, unknown>).kind;
+  return typeof kind === "string" ? kind : null;
+}
+
+function learningTaskMatches(row: { metadata?: unknown; delivery?: unknown }, enabled: boolean) {
+  const kind = metadataKind(row.metadata);
+  if (kind === LEARNING_TASK_KIND) return true;
+  if (enabled) return false;
+  return LEGACY_LEARNING_TASK_KINDS.has(kind ?? "") || LEGACY_LEARNING_TASK_KINDS.has(deliveryKind(row.delivery) ?? "");
+}
+
 function isDuplicateKeyError(error: unknown) {
   return (error as { code?: unknown } | null)?.code === "23505";
 }
@@ -170,12 +183,12 @@ export async function setLearningMetaAgentScheduledTaskEnabled(input: {
   const supabase = getServiceRoleSupabase();
   const { data: existing, error: existingError } = await supabase
     .from("scheduled_task")
-    .select("id, metadata")
+    .select("id, delivery, metadata")
     .eq("workspace_id", input.workspaceId);
 
   if (existingError) throw normalizeSupabaseError("learning scheduled_task query", existingError);
   const taskIds = (existing ?? [])
-    .filter((row) => metadataKind((row as { metadata?: unknown }).metadata) === LEARNING_TASK_KIND)
+    .filter((row) => learningTaskMatches(row as { metadata?: unknown; delivery?: unknown }, input.enabled))
     .map((row) => (row as { id?: unknown }).id)
     .filter((id): id is string => typeof id === "string" && id.trim().length > 0);
   if (taskIds.length === 0) return;

@@ -4,7 +4,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   routing rules and dispatches to the matching runner module:
 
     * planning agent type   -> `Runner.Planner`
-    * manager agent type    -> `Runner.LlmToolRunner`
+    * manager/learning type -> `Runner.LlmToolRunner`
     * `local_model_coding`  -> `Runner.LocalModelCoding`
     * `local_relay`         -> `Runner.LocalRelay`
     * everything else       -> `Codex.AppServer`
@@ -12,7 +12,17 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
 
   require Logger
 
-  alias SymphonyElixir.{AgentInventory, AgentInventory.Agent, Codex.AppServer, ExecutionProfile, Runner, ToolRegistry, WorkItem, Workspace}
+  alias SymphonyElixir.{
+    AgentInventory,
+    AgentInventory.Agent,
+    Codex.AppServer,
+    ExecutionProfile,
+    Runner,
+    ToolRegistry,
+    WorkItem,
+    Workspace
+  }
+
   alias SymphonyElixir.AgentInventory.StoredCredential
   alias SymphonyElixir.Gateway.AgentExecutionProfile
   alias SymphonyElixir.WorkerBridge.SecretResolver
@@ -24,13 +34,16 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         Logger.info("ChatRunner.dispatch agent_id=#{scope.agent_id} branch=planner")
         run_planner(agent, scope, prompt, run_id, owner_pid)
 
-      Agent.kind?(agent, "manager") ->
-        Logger.info("ChatRunner.dispatch agent_id=#{scope.agent_id} branch=manager")
+      Agent.kind?(agent, "manager") or Agent.kind?(agent, "learning") ->
+        Logger.info("ChatRunner.dispatch agent_id=#{scope.agent_id} branch=llm_tool_runner")
         run_manager(agent, scope, prompt, run_id, owner_pid)
 
       true ->
         kind = resolved_runner_kind(scope)
-        Logger.info("ChatRunner.dispatch agent_id=#{scope.agent_id} resolved_runner_kind=#{inspect(kind)}")
+
+        Logger.info(
+          "ChatRunner.dispatch agent_id=#{scope.agent_id} resolved_runner_kind=#{inspect(kind)}"
+        )
 
         case kind do
           "local_model_coding" ->
@@ -54,7 +67,9 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         kind
 
       {:error, reason} ->
-        Logger.warning("ChatRunner.resolved_runner_kind agent=#{agent_id} workspace=#{workspace_id} fallback_to=codex reason=#{inspect(reason)}")
+        Logger.warning(
+          "ChatRunner.resolved_runner_kind agent=#{agent_id} workspace=#{workspace_id} fallback_to=codex reason=#{inspect(reason)}"
+        )
 
         nil
     end
@@ -180,7 +195,10 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
                 |> Map.put_new("model", model)
                 |> Map.put_new("provider", provider)
 
-              send(owner_pid, {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}})
+              send(
+                owner_pid,
+                {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}}
+              )
 
             {:error, reason} ->
               send(owner_pid, {:gateway_runner_failed, scope.session_key, run_id, reason})
@@ -190,12 +208,19 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         end
 
       {:idle, reason, _details} ->
-        Logger.warning("ChatRunner.run_manager idle agent=#{scope.agent_id} workspace=#{scope.workspace_id} reason=#{inspect(reason)}")
+        Logger.warning(
+          "ChatRunner.run_manager idle agent=#{scope.agent_id} workspace=#{scope.workspace_id} reason=#{inspect(reason)}"
+        )
 
-        send(owner_pid, {:gateway_runner_failed, scope.session_key, run_id, {:agent_idle, reason}})
+        send(
+          owner_pid,
+          {:gateway_runner_failed, scope.session_key, run_id, {:agent_idle, reason}}
+        )
 
       {:error, reason, _details} ->
-        Logger.warning("ChatRunner.run_manager error agent=#{scope.agent_id} workspace=#{scope.workspace_id} reason=#{inspect(reason)}")
+        Logger.warning(
+          "ChatRunner.run_manager error agent=#{scope.agent_id} workspace=#{scope.workspace_id} reason=#{inspect(reason)}"
+        )
 
         send(owner_pid, {:gateway_runner_failed, scope.session_key, run_id, reason})
     end
@@ -237,7 +262,8 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         {:idle, :credential_missing, %{status: :idle_awaiting_credential}}
 
       {:error, {:credential_unresolved, reason}} ->
-        {:idle, :credential_unresolved, %{status: :idle_awaiting_credential, reason: inspect(reason)}}
+        {:idle, :credential_unresolved,
+         %{status: :idle_awaiting_credential, reason: inspect(reason)}}
 
       {:error, {:provider_unsupported, provider}} ->
         {:idle, :provider_unsupported, %{status: :idle_awaiting_config, provider: provider}}
@@ -278,7 +304,9 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         config
 
       {:error, reason} ->
-        Logger.warning("ChatRunner could not resolve planner credentials agent=#{inspect(agent_id(agent))} reason=#{inspect(reason)}")
+        Logger.warning(
+          "ChatRunner could not resolve planner credentials agent=#{inspect(agent_id(agent))} reason=#{inspect(reason)}"
+        )
 
         config
     end
@@ -291,7 +319,9 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
           {:ok, Map.merge(env_map, acc)}
 
         {:error, reason} ->
-          Logger.warning("ChatRunner skipped planner credential #{inspect(credential.id)} env_var=#{inspect(credential.env_var)} reason=#{inspect(reason)}")
+          Logger.warning(
+            "ChatRunner skipped planner credential #{inspect(credential.id)} env_var=#{inspect(credential.env_var)} reason=#{inspect(reason)}"
+          )
 
           {:ok, acc}
       end
@@ -353,7 +383,8 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   end
 
   defp resolve_manager_tool_definitions(agent_id) when is_binary(agent_id) and agent_id != "" do
-    resolver = Application.get_env(:symphony_elixir, :manager_tool_definition_resolver, ToolRegistry)
+    resolver =
+      Application.get_env(:symphony_elixir, :manager_tool_definition_resolver, ToolRegistry)
 
     case resolver.resolve_for_agent(agent_id) do
       {:ok, %{tool_definitions: definitions}} when is_list(definitions) -> {:ok, definitions}
@@ -414,7 +445,10 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
               |> Map.put_new("model", Map.get(session, :model))
               |> Map.put_new("provider", Map.get(session, :provider))
 
-            send(owner_pid, {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}})
+            send(
+              owner_pid,
+              {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}}
+            )
 
           {:error, reason} ->
             send(owner_pid, {:gateway_runner_failed, scope.session_key, run_id, reason})
@@ -482,7 +516,11 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     }
 
     with {:ok, profile} <- AgentExecutionProfile.resolve(scope.agent_id, scope.workspace_id),
-         {:ok, session} <- Runner.LocalRelay.start_session(local_relay_config(profile, agent, scope, on_message), nil) do
+         {:ok, session} <-
+           Runner.LocalRelay.start_session(
+             local_relay_config(profile, agent, scope, on_message),
+             nil
+           ) do
       try do
         case Runner.LocalRelay.run_turn(session, prompt, work_item) do
           {:ok, result} ->
@@ -493,7 +531,10 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
               |> Map.put_new("model", Map.get(session, :model))
               |> Map.put_new("provider", Map.get(session, :provider))
 
-            send(owner_pid, {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}})
+            send(
+              owner_pid,
+              {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}}
+            )
 
           {:error, reason} ->
             send(owner_pid, {:gateway_runner_failed, scope.session_key, run_id, reason})
@@ -547,7 +588,8 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       # A provider naming a helper-advertisable runtime (openclaw et al.)
       # selects which registered helper runner serves the dispatch; nil
       # falls back to Runner.LocalRelay's "openai_compatible" default.
-      "target_runner_kind" => ExecutionProfile.local_relay_target_runner_kind(Map.get(profile, :provider)),
+      "target_runner_kind" =>
+        ExecutionProfile.local_relay_target_runner_kind(Map.get(profile, :provider)),
       "credential_ref" => Map.get(profile, :credential_ref),
       "workspace_root" => local_workspace_root(profile),
       "tool_definitions" => local_relay_tool_definitions(profile),
@@ -559,7 +601,8 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     }
   end
 
-  defp history_window(scope), do: Map.get(scope, :history_window) || Map.get(scope, "history_window")
+  defp history_window(scope),
+    do: Map.get(scope, :history_window) || Map.get(scope, "history_window")
 
   defp agent_context(agent) do
     case Map.get(agent, :context) || Map.get(agent, "context") do
@@ -635,7 +678,8 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     route_properties = %{
       "repository_path" => %{
         "type" => ["string", "null"],
-        "description" => "Optional absolute local repository checkout path. If omitted, the runtime-provided local_workspace_root is used."
+        "description" =>
+          "Optional absolute local repository checkout path. If omitted, the runtime-provided local_workspace_root is used."
       },
       "cwd" => %{
         "type" => ["string", "null"],
