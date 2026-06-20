@@ -121,7 +121,7 @@ export function registerStoredAgentCredentialRoutes(app: Express, launcherClient
     apiRoute({
       requireAuth: true,
       bodySchema: StoredCredentialLaunchRequestSchema,
-      invalidBodyMessage: "workspaceId and cwd are required",
+      invalidBodyMessage: "workspaceId is required",
       handler: (context) => launchStoredCredential(context, launcherClient),
       onError: (res, error) => {
         if (isLauncherError(error)) {

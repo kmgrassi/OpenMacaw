@@ -15,11 +15,7 @@ import { requireWorkspaceIdFromRequest } from "./request-parsers.js";
 
 export async function launchStoredCredential(context: AuthenticatedApiRouteContext, launcherClient: LauncherClient) {
   const { req, res, accessToken, userId } = context;
-  const cwd = typeof req.body?.cwd === "string" ? req.body.cwd.trim() : "";
   const workspaceId = requireWorkspaceIdFromRequest(req);
-  if (!cwd) {
-    return res.status(400).json(errorPayload("invalid_request", "A worker cwd is required"));
-  }
 
   const agentId = requireRouteParam(req, "agentId");
   const credentialId = requireRouteParam(req, "credentialId");
@@ -53,7 +49,7 @@ export async function launchStoredCredential(context: AuthenticatedApiRouteConte
           sessionId: null,
           status: "skipped_validation_failed",
           command: null,
-          cwd,
+          cwd: null,
         },
         execution_profile: executionProfile,
       }),
@@ -65,7 +61,6 @@ export async function launchStoredCredential(context: AuthenticatedApiRouteConte
     credential: selected,
     workspaceId,
     secretValue: validatedCredential.secretValue,
-    cwd,
     handoff,
     launcherClient,
   });
@@ -83,7 +78,6 @@ export async function launchStoredCredential(context: AuthenticatedApiRouteConte
 
 export async function activateStoredAgent(context: AuthenticatedApiRouteContext, launcherClient: LauncherClient) {
   const { req, res, accessToken, userId } = context;
-  const cwd = typeof req.body?.cwd === "string" ? req.body.cwd.trim() : "";
   const workspaceId = requireWorkspaceIdFromRequest(req);
   const agentId = requireRouteParam(req, "agentId");
   await requireStoredAgent({ accessToken, userId, agentId, workspaceId });
@@ -121,27 +115,11 @@ export async function activateStoredAgent(context: AuthenticatedApiRouteContext,
     );
   }
 
-  if (!cwd) {
-    return res.status(400).json(
-      errorPayload(
-        "worker_cwd_required",
-        "A worker cwd is required to launch after credential validation",
-        StoredCredentialActivationResponseSchema.parse({
-          credential: validatedCredential.credential,
-          validation: validatedCredential.validation,
-          launch: null,
-          execution_profile: executionProfile,
-        }),
-      ),
-    );
-  }
-
   const launchResult = await createStoredCredentialLaunch({
     agentId,
     credential: selected,
     workspaceId,
     secretValue: validatedCredential.secretValue,
-    cwd,
     handoff,
     launcherClient,
   });

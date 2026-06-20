@@ -6,7 +6,6 @@ import {
   type StoredCredentialActivationResponse,
 } from "../../api/credentials";
 import { Card } from "../ui/Card";
-import { Input } from "../ui/Input";
 import { Button } from "../ui/Button";
 import { Badge } from "../ui/Badge";
 import { useAuthStore } from "../../stores/auth";
@@ -41,9 +40,6 @@ export function AgentWorkerLaunch({
   const [error, setError] = useState<string | null>(null);
   const [launchingId, setLaunchingId] = useState<string | null>(null);
   const [launchResult, setLaunchResult] = useState<string | null>(null);
-  const [workerCwd, setWorkerCwd] = useState(
-    import.meta.env.VITE_WORKER_BRIDGE_DEFAULT_CWD || "",
-  );
   const [handoff, setHandoff] = useState<SelectedCodingHandoff | null>(null);
 
   useEffect(() => {
@@ -79,7 +75,6 @@ export function AgentWorkerLaunch({
   );
 
   async function handleLaunch(credential: SavedCredential) {
-    if (!workerCwd.trim()) return;
     setLaunchingId(credential.id);
     setError(null);
     setLaunchResult(null);
@@ -93,7 +88,6 @@ export function AgentWorkerLaunch({
         await launchSavedCredential(
           agentId,
           credential.id,
-          workerCwd.trim(),
           workspaceId,
           agentType === "coding" ? handoff : null,
         );
@@ -120,13 +114,6 @@ export function AgentWorkerLaunch({
         Saved Credentials
       </h4>
       <div className="space-y-3">
-        <Input
-          label="Worker Workspace Path"
-          value={workerCwd}
-          onChange={(e) => setWorkerCwd(e.target.value)}
-          placeholder="/tmp/symphony_workspaces/ISSUE-123"
-        />
-
         {agentType === "coding" && (
           <PlanReviewHandoff
             workspaceId={workspaceId}
@@ -178,7 +165,7 @@ export function AgentWorkerLaunch({
 
                 <Button
                   size="sm"
-                  disabled={!launchableNow || !workerCwd.trim()}
+                  disabled={!launchableNow}
                   loading={launchingId === credential.id}
                   onClick={() => void handleLaunch(credential)}
                 >
@@ -199,8 +186,8 @@ export function AgentWorkerLaunch({
         {!loading && launchable.length > 0 && (
           <p className="text-xs text-slate-500">
             Credentials are displayed without revealing secret values. Launch
-            happens through the local API, which reads the stored secret
-            server-side.
+            happens through the local API, which reads the stored secret and
+            resolves the authorized worker workspace server-side.
           </p>
         )}
       </div>

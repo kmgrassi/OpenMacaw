@@ -238,13 +238,11 @@ export const CodingHandoffRequestSchema = z.object({
 
 export const StoredCredentialLaunchRequestSchema = z.object({
   workspaceId: z.string().min(1),
-  cwd: z.string().trim().min(1),
   handoff: CodingHandoffRequestSchema.nullable().optional(),
 });
 
 export const StoredAgentActivationRequestSchema = z.object({
   workspaceId: z.string().min(1),
-  cwd: z.string().trim().min(1).optional(),
   handoff: CodingHandoffRequestSchema.nullable().optional(),
 });
 

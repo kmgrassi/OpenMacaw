@@ -71,7 +71,6 @@ export async function createStoredCredentialLaunch(input: {
   credential: ResolvedSavedCredential;
   workspaceId: string;
   secretValue: string;
-  cwd: string;
   handoff: CodingHandoff;
   launcherClient: LauncherClient;
 }): Promise<{
@@ -97,7 +96,6 @@ export async function createStoredCredentialLaunch(input: {
   try {
     result = await input.launcherClient.createWorkerBridgeSession({
       kind: "codex",
-      cwd: input.cwd,
       env: codingHandoffEnv(input.handoff),
       credentials: {
         [input.credential.envVar]: {
@@ -127,7 +125,7 @@ export async function createStoredCredentialLaunch(input: {
       sessionId: launchBody.data?.id ?? null,
       status: launchBody.data?.status ?? (result.status >= 200 && result.status < 300 ? "started" : "failed"),
       command: launchBody.data?.command ?? null,
-      cwd: launchBody.data?.cwd ?? input.cwd,
+      cwd: launchBody.data?.cwd ?? null,
     },
   };
 }
