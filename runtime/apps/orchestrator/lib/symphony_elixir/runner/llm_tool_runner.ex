@@ -188,6 +188,9 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
       emit_message(session, event, %{
         run_id: run_id,
         payload: %{
+          "tool_name" => tool,
+          "tool_call_id" => tool_call_id,
+          "arguments" => arguments,
           "params" =>
             %{"tool" => tool, "callId" => tool_call_id}
             |> maybe_put_payload_field("errorCode", Map.get(result, "error_code"))

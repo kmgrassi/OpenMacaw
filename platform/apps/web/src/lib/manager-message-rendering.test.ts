@@ -82,6 +82,35 @@ describe("getManagerSchedulerMessageDisplay", () => {
     ]);
   });
 
+  it("does not render an empty arguments wrapper for helper tool calls", () => {
+    const display = getManagerSchedulerMessageDisplay(
+      JSON.stringify({ due_tasks: [{ id: "task-1" }] }),
+      { source: "manager_scheduler", kind: "due_tasks" },
+      [
+        {
+          id: "tool-call-1",
+          input: JSON.stringify({
+            call_id: "call-1",
+            tool_name: "git.run",
+            input: { arguments: {} },
+          }),
+          output: JSON.stringify({
+            status: "ok",
+            output: JSON.stringify({
+              argv: ["gh", "pr", "list"],
+              cwd: "/Users/kevingrassi/Desktop/repos/openmacaw",
+              ok: true,
+            }),
+          }),
+        },
+      ],
+    );
+
+    expect(display?.toolCalls[0]?.inputSummary).toBe(
+      '{"command":"gh pr list","cwd":"/Users/kevingrassi/Desktop/repos/openmacaw"}',
+    );
+  });
+
   it("falls back to the due_tasks array count when ids are absent", () => {
     const display = getManagerSchedulerMessageDisplay(
       JSON.stringify({ due_tasks: [{ id: "task-1" }] }),

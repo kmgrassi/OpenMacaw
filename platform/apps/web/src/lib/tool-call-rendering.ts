@@ -37,6 +37,66 @@ function compact(value: unknown): string | undefined {
     : serialized;
 }
 
+function compactNonEmpty(value: unknown): string | undefined {
+  if (isEmptyStructuredValue(value)) return undefined;
+  return compact(value);
+}
+
+function isEmptyStructuredValue(value: unknown): boolean {
+  if (value == null) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (Array.isArray(value)) return value.length === 0;
+  const record = asRecord(value);
+  return record
+    ? Object.keys(record).length === 0 ||
+        Object.values(record).every(isEmptyStructuredValue)
+    : false;
+}
+
+function parseEmbeddedJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function toolArguments(inputRecord: Record<string, unknown> | null) {
+  const nestedInput = asRecord(inputRecord?.input);
+  return (
+    nonEmptyValue(inputRecord?.arguments) ??
+    nonEmptyValue(nestedInput?.arguments) ??
+    nonEmptyValue(inputRecord?.input)
+  );
+}
+
+function nonEmptyValue(value: unknown): unknown | undefined {
+  return isEmptyStructuredValue(value) ? undefined : value;
+}
+
+function inferredExecutionArguments(
+  label: string,
+  outputRecord: Record<string, unknown> | null,
+) {
+  if (label !== "git.run") return undefined;
+  const output = parseEmbeddedJson(outputRecord?.output);
+  const nestedOutput = asRecord(output);
+  const argv = nestedOutput?.argv;
+  const cwd = nestedOutput?.cwd;
+  if (!Array.isArray(argv) && typeof cwd !== "string") return undefined;
+
+  const command = Array.isArray(argv)
+    ? argv.filter((part): part is string => typeof part === "string").join(" ")
+    : undefined;
+  return {
+    ...(command ? { command } : {}),
+    ...(typeof cwd === "string" && cwd.trim() ? { cwd } : {}),
+  };
+}
+
 function stringField(
   record: Record<string, unknown> | null,
   ...fields: string[]
@@ -75,21 +135,26 @@ export function formatPersistedToolCall(
   const output = parseJson(toolCall.output);
   const inputRecord = asRecord(input);
   const outputRecord = asRecord(output);
-  const nestedInput = asRecord(inputRecord?.input);
   const nestedOutput = asRecord(outputRecord?.output);
   const label =
     stringField(inputRecord, "tool_name", "toolName", "name") ??
-    stringField(nestedInput, "name", "tool_name", "toolName") ??
+    stringField(
+      asRecord(inputRecord?.input),
+      "name",
+      "tool_name",
+      "toolName",
+    ) ??
     `Tool call ${index + 1}`;
 
   const status =
     stringField(outputRecord, "status", "state") ??
     stringField(nestedOutput, "status", "state");
   const errorCode = stringField(outputRecord, "error_code", "errorCode");
+  const inferredArguments = inferredExecutionArguments(label, outputRecord);
   const inputSummary =
-    compact(asRecord(nestedInput)?.arguments) ??
-    compact(inputRecord?.input) ??
-    compact(input);
+    compactNonEmpty(toolArguments(inputRecord)) ??
+    compactNonEmpty(inferredArguments) ??
+    compactNonEmpty(input);
   const outputSummary =
     compact(
       nestedOutput?.error ?? nestedOutput?.result ?? outputRecord?.output,
