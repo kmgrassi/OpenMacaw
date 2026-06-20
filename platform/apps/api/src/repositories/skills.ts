@@ -33,6 +33,23 @@ const SkillRowSchema = z.object({
 
 type SkillRow = z.infer<typeof SkillRowSchema>;
 
+export const MaterializedSkillSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  body: z.string(),
+  updatedAt: z.string().nullable(),
+});
+
+export const SkillsSnapshotSchema = z.object({
+  version: z.literal(1),
+  agentId: z.string(),
+  workspaceId: z.string(),
+  skills: z.array(MaterializedSkillSchema),
+});
+
+export type SkillsSnapshot = z.infer<typeof SkillsSnapshotSchema>;
+
 const SKILL_SELECT =
   "id,workspace_id,agent_id,name,description,body,status,copied_from_skill_id,created_by_agent_id,created_by_user_id,source_run_id,created_at,updated_at" as const;
 
@@ -164,6 +181,49 @@ export async function updateSkillForWorkspace(input: {
 
       if (error) throw normalizeSupabaseError("skill update", error);
       return toSkill(parseSupabaseRow("skill update", SkillRowSchema, data));
+    },
+  );
+}
+
+export async function resolveApprovedSkillsSnapshot(input: {
+  agentId: string;
+  workspaceId: string;
+}): Promise<SkillsSnapshot> {
+  return withRepositoryLogging(
+    {
+      repository: "skills",
+      method: "resolveApprovedSkillsSnapshot",
+      table: "skill",
+      operation: "select",
+      expectedCardinality: "zero_or_more",
+      access: "service_role",
+      workspaceId: input.workspaceId,
+    },
+    async () => {
+      const { data, error } = await skillTable()
+        .select(SKILL_SELECT)
+        .eq("agent_id", input.agentId)
+        .eq("workspace_id", input.workspaceId)
+        .eq("status", "approved")
+        .order("name", { ascending: true })
+        .limit(1000);
+
+      if (error) throw normalizeSupabaseError("skill approved list", error);
+
+      const rows = parseSupabaseRows("skill approved list", SkillRowSchema, Array.isArray(data) ? data : []);
+
+      return SkillsSnapshotSchema.parse({
+        version: 1,
+        agentId: input.agentId,
+        workspaceId: input.workspaceId,
+        skills: rows.map((row) => ({
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          body: row.body,
+          updatedAt: row.updated_at,
+        })),
+      });
     },
   );
 }

@@ -30,6 +30,7 @@ defmodule SymphonyElixir.WorkerBridge.Server do
   alias SymphonyElixir.AgentInventory
   alias SymphonyElixir.AgentInventory.{Agent, StoredCredential}
   alias SymphonyElixir.RuntimeLease
+  alias SymphonyElixir.Runner.SkillMaterializer
   alias SymphonyElixir.{Config, PathSafety, Time}
 
   alias SymphonyElixir.WorkerBridge.{
@@ -107,6 +108,7 @@ defmodule SymphonyElixir.WorkerBridge.Server do
          {:ok, resolved_env} <- resolve_env(params),
          id = session_id(),
          {:ok, workspace_path, resources} <- resolve_workspace_path(params, id),
+         :ok <- SkillMaterializer.materialize(params["kind"], params, workspace_path),
          {:ok, launch_spec} <- build_launch_spec(params, resolved_env, workspace_path, resources),
          {:ok, port} <- state.port_opener.(launch_spec) do
       entry = build_session_entry(id, params, resolved_env, launch_spec, port, authorized_resources)
