@@ -175,7 +175,7 @@ it does *not* retrain model weights
 
 OpenMacaw adopts the *blueprint* as an optional **learning sidecar**, with
 deliberate substitutions
-([`learning-sidecar-scope.md`](../platform/docs/active/learning-sidecar-scope.md)):
+([`learning-sidecar-scope.md`](../platform/docs/superseded/learning-sidecar-scope.md)):
 
 | Dimension | Hermes Agent | OpenMacaw learning sidecar |
 |---|---|---|

@@ -2,16 +2,7 @@ import type { Json, Tables } from "@kmgrassi/supabase-schema";
 
 import { getServiceRoleSupabase, normalizeSupabaseError } from "../supabase-client.js";
 
-export const LEARNING_TASK_TYPES = [
-  "learning_reflection",
-  "learning_retrieval",
-  "learning_distillation",
-  "reflection",
-  "retrieval",
-  "distillation",
-  "memory_search",
-  "memory.search",
-] as const;
+export const LEARNING_TASK_TYPES = ["learning_retrieval", "retrieval", "memory_search", "memory.search"] as const;
 
 export type LearningBrokerRunRow = Pick<
   Tables<"broker_run">,

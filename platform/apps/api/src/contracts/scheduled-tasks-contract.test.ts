@@ -16,7 +16,6 @@ import {
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const agentId = "22222222-2222-4222-8222-222222222222";
 const scheduledTaskId = "33333333-3333-4333-8333-333333333333";
-const runId = "44444444-4444-4444-8444-444444444444";
 const sourceWorkItemId = "55555555-5555-4555-8555-555555555555";
 const userId = "66666666-6666-4666-8666-666666666666";
 const now = "2026-05-14T13:00:00.000Z";
@@ -154,62 +153,7 @@ describe("scheduled task contracts", () => {
       kind: "scheduled_agent_message",
       sessionStrategy: "scheduled_task",
     });
-    expect(
-      ScheduledTaskDeliverySchema.parse({
-        kind: "learning_reflection",
-        sourceRunId: runId,
-        sourceTaskId: null,
-      }),
-    ).toEqual({
-      kind: "learning_reflection",
-      sourceRunId: runId,
-      sourceTaskId: null,
-    });
-    expect(
-      ScheduledTaskDeliverySchema.parse({
-        kind: "learning_distillation",
-      }),
-    ).toEqual({
-      kind: "learning_distillation",
-      windowDays: 7,
-    });
     expect(ScheduledTaskDeliverySchema.safeParse({ kind: "unknown" }).success).toBe(false);
-
-    expect(
-      ScheduledTaskDeliverySchema.parse({
-        kind: "learning_reflection",
-        sourceRunId: "run-123",
-        sourceTaskId: null,
-        metadata: { trigger: "run_finalized" },
-      }),
-    ).toEqual({
-      kind: "learning_reflection",
-      sourceRunId: "run-123",
-      sourceTaskId: null,
-      metadata: { trigger: "run_finalized" },
-    });
-
-    expect(
-      ScheduledTaskDeliverySchema.parse({
-        kind: "learning_distillation",
-      }),
-    ).toEqual({
-      kind: "learning_distillation",
-      windowDays: 7,
-    });
-
-    expect(
-      ScheduledTaskDeliverySchema.parse({
-        kind: "learning_distillation",
-        windowDays: 14,
-        metadata: { source: "nightly" },
-      }),
-    ).toEqual({
-      kind: "learning_distillation",
-      windowDays: 14,
-      metadata: { source: "nightly" },
-    });
-
     expect(ScheduledTaskDeliverySchema.safeParse({ kind: "learning_reflection" }).success).toBe(false);
     expect(
       ScheduledTaskDeliverySchema.safeParse({
@@ -252,64 +196,6 @@ describe("scheduled task contracts", () => {
               "sessionStrategy": {
                 "const": "scheduled_task",
                 "type": "string",
-              },
-            },
-            "required": [
-              "kind",
-            ],
-            "type": "object",
-          },
-          {
-            "properties": {
-              "kind": {
-                "const": "learning_reflection",
-                "type": "string",
-              },
-              "metadata": {
-                "additionalProperties": {},
-                "propertyNames": {
-                  "type": "string",
-                },
-                "type": "object",
-              },
-              "sourceRunId": {
-                "type": "string",
-              },
-              "sourceTaskId": {
-                "anyOf": [
-                  {
-                    "type": "string",
-                  },
-                  {
-                    "type": "null",
-                  },
-                ],
-              },
-            },
-            "required": [
-              "kind",
-              "sourceRunId",
-            ],
-            "type": "object",
-          },
-          {
-            "properties": {
-              "kind": {
-                "const": "learning_distillation",
-                "type": "string",
-              },
-              "metadata": {
-                "additionalProperties": {},
-                "propertyNames": {
-                  "type": "string",
-                },
-                "type": "object",
-              },
-              "windowDays": {
-                "default": 7,
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991,
-                "type": "integer",
               },
             },
             "required": [

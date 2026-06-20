@@ -17,7 +17,6 @@ import { registerCredentialValidationRoutes } from "./routes/credential-validati
 import { registerDevAgentTriggerMessageRoutes } from "./routes/dev-agent-trigger-message.js";
 import { registerDevToolInvocationRoutes } from "./routes/dev-tool-invocation.js";
 import { registerHealthRoutes } from "./routes/health.js";
-import { registerLearningSkillPrRoutes } from "./routes/learning-skill-prs.js";
 import { registerManagerAgentRoutes } from "./routes/manager-agent.js";
 import { registerManagerAgentSmokeRoutes } from "./routes/manager-agent-smoke.js";
 import { registerMemoryItemRoutes } from "./routes/memory-items.js";
@@ -39,7 +38,6 @@ import { registerLocalDirectoryRoutes } from "./routes/local-directory.js";
 import { registerLocalModelsRoutes } from "./routes/local-models.js";
 import { registerLocalModelProxyRoutes } from "./routes/local-model-proxy.js";
 import { registerLocalRuntimeRoutes } from "./routes/local-runtime.js";
-import { registerLearningRoutes } from "./routes/learning.js";
 import { registerLearningCostRoutes } from "./routes/learning-cost.js";
 import { registerLearningMemoryRoutes } from "./routes/learning-memory.js";
 import { registerStoredAgentRoutes } from "./routes/stored-agents.js";
@@ -52,7 +50,6 @@ import { handleApiRouteError } from "./http.js";
 export function shouldRequireJwtAuth(req: express.Request) {
   if (req.method === "POST" && req.path === "/memory/items") return false;
   if (req.method === "POST" && /^\/work-items\/[^/]+\/cutovers$/.test(req.path)) return false;
-  if (req.method === "POST" && /^\/learning\/jobs\/[^/]+$/.test(req.path)) return false;
   return !req.path.startsWith("/webhooks/") && !req.path.startsWith("/internal/scheduled-tasks/");
 }
 
@@ -103,13 +100,11 @@ export function createApp(config: ApiConfig) {
   registerAgentToolRoutes(app);
   registerDevAgentTriggerMessageRoutes(app, launcherClient);
   registerLocalRuntimeRoutes(app, launcherRequest);
-  registerLearningRoutes(app);
   registerLearningCostRoutes(app);
   registerLearningMemoryRoutes(app);
   registerLocalModelProxyRoutes(app);
   registerLocalDirectoryRoutes(app);
   registerLocalModelsRoutes(app);
-  registerLearningSkillPrRoutes(app, config);
   registerAgentDashboardRoutes(app);
   registerAgentDispatchProbeRoutes(app, launcherClient);
   registerPlanReviewRoutes(app);

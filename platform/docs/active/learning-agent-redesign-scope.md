@@ -6,14 +6,12 @@ Status: **active**. Reframes the learning system away from a memory-centric
 transcripts and acts on what it finds.
 
 > **Supersedes (as this lands):** the `learning-sidecar-*` series —
-> [`learning-sidecar-scope.md`](./learning-sidecar-scope.md),
-> [`learning-sidecar-pr-plan.md`](./learning-sidecar-pr-plan.md),
-> [`learning-sidecar-production-readiness-scope.md`](./learning-sidecar-production-readiness-scope.md),
-> [`../reference/learning-sidecar-production-rollout.md`](../reference/learning-sidecar-production-rollout.md),
+> [`learning-sidecar-scope.md`](../superseded/learning-sidecar-scope.md),
+> [`learning-sidecar-pr-plan.md`](../superseded/learning-sidecar-pr-plan.md),
+> [`learning-sidecar-production-readiness-scope.md`](../superseded/learning-sidecar-production-readiness-scope.md),
+> [`learning-sidecar-production-rollout.md`](../superseded/learning-sidecar-production-rollout.md),
 > and the runtime
-> [`learning-sidecar-runtime-scope.md`](../../../runtime/docs/learning-sidecar-runtime-scope.md).
-> Move them to `docs/superseded/` with a pointer when the first PR of this
-> series merges.
+> [`learning-sidecar-runtime-scope.md`](../superseded/learning-sidecar-runtime-scope.md).
 
 External reference: Claude **Agent Skills** —
 <https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview>.

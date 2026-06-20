@@ -3,7 +3,6 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import type {
   ScheduledTaskCancelResponse,
   ScheduledTaskCreateRequest,
-  ScheduledTaskDelivery,
   ScheduledTaskListResponse,
   ScheduledTaskProjection,
   ScheduledTaskResponse,
@@ -20,9 +19,7 @@ import {
   ScheduledTaskScheduleSchema,
 } from "../../../../contracts/scheduled-tasks.js";
 import { ApiRouteError } from "../http.js";
-import { reflectRunToMemories, type ReflectRunResult } from "./learning/reflector.js";
 import { executeSupabaseRows, getServiceRoleSupabase } from "../supabase-client.js";
-import { distillWorkspaceSkills, type LearningDistillationResult } from "./learning/distiller.js";
 import { computeScheduledTaskNextRunAt } from "./scheduled-tasks/schedule-calculator.js";
 
 type JsonRecord = Record<string, unknown>;
@@ -209,10 +206,7 @@ function isUserVisibleScheduledTaskRow(row: ScheduledTaskRow) {
   return true;
 }
 
-function fallbackScheduledTaskTitle(row: ScheduledTaskRow) {
-  const parsed = ScheduledTaskDeliverySchema.safeParse(row.delivery);
-  if (parsed.success && parsed.data.kind === "learning_reflection") return "Learning reflection";
-  if (parsed.success && parsed.data.kind === "learning_distillation") return "Learning distillation";
+function fallbackScheduledTaskTitle(_row: ScheduledTaskRow) {
   return "Scheduled task";
 }
 
@@ -505,36 +499,10 @@ export async function dispatchScheduledTaskForWorkspace(params: {
   return dispatchScheduledTaskDelivery(mapScheduledTaskRow(existing));
 }
 
-export type ScheduledTaskDeliveryDispatchResult =
-  | { kind: "scheduled_agent_message"; status: "not_handled" }
-  | { kind: "learning_reflection"; status: "completed"; result: ReflectRunResult }
-  | ({ kind: "learning_distillation"; status: "completed" } & LearningDistillationResult);
-
-export async function dispatchLearningScheduledTaskDelivery(params: {
-  workspaceId: string;
-  delivery: Extract<ScheduledTaskDelivery, { kind: "learning_reflection" | "learning_distillation" }>;
-}): Promise<Exclude<ScheduledTaskDeliveryDispatchResult, { kind: "scheduled_agent_message" }>> {
-  if (params.delivery.kind === "learning_reflection") {
-    const result = await reflectRunToMemories({
-      sourceRunId: params.delivery.sourceRunId,
-      sourceTaskId: params.delivery.sourceTaskId ?? null,
-    });
-    return { kind: "learning_reflection", status: "completed", result };
-  }
-
-  const result = await distillWorkspaceSkills(params.workspaceId, params.delivery.windowDays);
-  return { kind: "learning_distillation", status: "completed", ...result };
-}
+export type ScheduledTaskDeliveryDispatchResult = { kind: "scheduled_agent_message"; status: "not_handled" };
 
 export async function dispatchScheduledTaskDelivery(
-  scheduledTask: ScheduledTaskProjection,
+  _scheduledTask: ScheduledTaskProjection,
 ): Promise<ScheduledTaskDeliveryDispatchResult> {
-  if (scheduledTask.delivery.kind === "scheduled_agent_message") {
-    return { kind: "scheduled_agent_message", status: "not_handled" };
-  }
-
-  return dispatchLearningScheduledTaskDelivery({
-    workspaceId: scheduledTask.workspaceId,
-    delivery: scheduledTask.delivery,
-  });
+  return { kind: "scheduled_agent_message", status: "not_handled" };
 }

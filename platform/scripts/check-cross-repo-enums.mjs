@@ -194,9 +194,7 @@ function extractRuntimeLearningDeliveryKinds(source) {
   );
   const kindsMatch = source.match(/@learning_kinds\s+\[([^\]]+)\]/m);
   if (!kindsMatch) {
-    throw new Error(
-      `Could not find @learning_kinds in ${RUNTIME_SCHEDULED_TASK_DELIVERY}`,
-    );
+    return [];
   }
   return kindsMatch[1]
     .split(",")

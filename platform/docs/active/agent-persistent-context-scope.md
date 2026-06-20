@@ -185,7 +185,7 @@ instructions.
 Token budget: `agent.context` is unbounded in the DB today. Add an
 8,000-character application-layer cap with a clear validation error.
 (Long context erodes attention; if a workspace needs more, the
-learning-sidecar memory items system is a better home.)
+universal memory items system is a better home.)
 
 ### `agent_context.update` tool
 
@@ -341,7 +341,7 @@ shapes:
 
 - Per-workspace `workspace.context` field that the runtime prepends
   to per-agent context.
-- Workspace memory items (from the learning-sidecar scope) that
+- Workspace memory items (from the learning-agent redesign scope) that
   every agent retrieves.
 
 **Tentative answer**: defer workspace-level context until a use case
@@ -392,7 +392,7 @@ later if asked.
   extension.
 - **Per-conversation context** (different context for different
   message threads on the same agent). Not a real use case yet.
-- **Learning-sidecar integration** — the `memory_items` system is
+- **Memory integration** — the `memory_items` system is
   the right home for *retrieved* context (per-situation). This scope
   is for *standing* context that applies to every turn. Two different
   surfaces; don't conflate.
