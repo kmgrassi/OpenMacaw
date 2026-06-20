@@ -548,4 +548,29 @@ describe("agent control routes", () => {
       credentialRef: { type: "credential_id", value: "credential-1" },
     });
   });
+
+  it("rejects identity-scoped worker bridge launches that try to override cwd", async () => {
+    launcherClient.createWorkerBridgeSession = vi.fn();
+
+    const response = await fetch(`${baseUrl}/api/worker-bridge/sessions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        kind: "codex",
+        agent_id: targetAgentId,
+        workspace_id: workspaceId,
+        credential_id: "credential-1",
+        cwd: "/tmp/other-workspace",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "worker_bridge_identity_workspace_forbidden" },
+    });
+    expect(launcherClient.createWorkerBridgeSession).not.toHaveBeenCalled();
+  });
 });
