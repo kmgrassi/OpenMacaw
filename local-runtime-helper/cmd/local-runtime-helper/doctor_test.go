@@ -63,6 +63,8 @@ func TestHTTPChecksUseContextDeadline(t *testing.T) {
 }
 
 func TestCmdDoctorJSONOutput(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"data":[{"id":"qwen2.5-coder:latest"}]}`))

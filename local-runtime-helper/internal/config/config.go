@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -259,7 +260,11 @@ func Write(cfg Config, opts WriteOptions) (string, error) {
 	}
 	defer file.Close()
 
-	if _, err := file.Write(renderRegistrationTOML(cfg)); err != nil {
+	data, err := renderRegistrationTOML(cfg)
+	if err != nil {
+		return "", err
+	}
+	if _, err := file.Write(data); err != nil {
 		return "", fmt.Errorf("write config file: %w", err)
 	}
 	if err := file.Chmod(0o600); err != nil {
@@ -319,10 +324,21 @@ func ensureConfigDir(dir string) error {
 	return nil
 }
 
-func renderRegistrationTOML(cfg Config) []byte {
+func renderRegistrationTOML(cfg Config) ([]byte, error) {
 	var b bytes.Buffer
-	b.WriteString("# OpenMacaw local runtime helper config.\n")
-	b.WriteString("# Written by `local-runtime-helper register`.\n\n")
+	if err := writeRegistrationTOML(&b, cfg); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+func writeRegistrationTOML(w io.Writer, cfg Config) error {
+	if _, err := io.WriteString(w, "# OpenMacaw local runtime helper config.\n"); err != nil {
+		return fmt.Errorf("write registration TOML header: %w", err)
+	}
+	if _, err := io.WriteString(w, "# Written by `local-runtime-helper register`.\n\n"); err != nil {
+		return fmt.Errorf("write registration TOML header: %w", err)
+	}
 
 	registration := struct {
 		Machine MachineConfig `toml:"machine"`
@@ -333,10 +349,10 @@ func renderRegistrationTOML(cfg Config) []byte {
 		Cloud:   cfg.Cloud,
 		Runners: cfg.Runners,
 	}
-	if err := toml.NewEncoder(&b).Encode(registration); err != nil {
-		panic(fmt.Sprintf("encode registration TOML: %v", err))
+	if err := toml.NewEncoder(w).Encode(registration); err != nil {
+		return fmt.Errorf("encode registration TOML: %w", err)
 	}
-	return b.Bytes()
+	return nil
 }
 
 func requireNonEmpty(issues *[]ValidationIssue, field, value string) {
