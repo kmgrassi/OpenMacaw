@@ -65,6 +65,7 @@ function setupMocks() {
     name: "Coding Agent",
     status: "active",
     type: "coding",
+    context: null,
     model_settings: {},
     tool_policy: {},
     created_by_user_id: userId,

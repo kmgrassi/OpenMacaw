@@ -200,7 +200,11 @@ defmodule SymphonyElixir.AgentRunner do
   defp maybe_merge_execution_profile(config, _profile), do: config
 
   defp maybe_put_agent_context(config, runner, profile)
-       when runner in [SymphonyElixir.Runner.LocalRelay, SymphonyElixir.Runner.LocalModelCoding] and is_map(profile) do
+       when runner in [
+              SymphonyElixir.Runner.LocalRelay,
+              SymphonyElixir.Runner.LocalModelCoding,
+              SymphonyElixir.Runner.LlmToolRunner
+            ] and is_map(profile) do
     if has_agent_context?(config) do
       config
     else

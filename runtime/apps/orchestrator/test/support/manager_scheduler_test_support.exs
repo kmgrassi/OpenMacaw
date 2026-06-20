@@ -154,7 +154,8 @@ defmodule SymphonyElixir.Manager.SchedulerTestSupport do
             provider: Map.get(config, "provider"),
             model: Map.get(config, "model"),
             api_key: Map.get(config, "api_key") || local_api_key(config),
-            credential_id: Map.get(config, "credential_id")
+            credential_id: Map.get(config, "credential_id"),
+            context: Map.get(config, "context")
           }
 
           resolve_credential(profile, config, opts)

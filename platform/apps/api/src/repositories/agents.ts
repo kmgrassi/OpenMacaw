@@ -21,6 +21,7 @@ const StoredAgentRowSchema = z.object({
   name: z.string().nullable(),
   workspace_id: z.string(),
   type: z.string().nullable(),
+  context: z.string().nullable().default(null),
   model_settings: ModelSettingsSchema,
   tool_policy: ToolPolicySchema,
 });
@@ -48,8 +49,8 @@ export type StoredAgentGatewayConfigRow = z.infer<typeof StoredAgentGatewayConfi
 export type SetupAgentRow = z.infer<typeof SetupAgentRowSchema>;
 
 const SETUP_AGENT_SELECT =
-  "id,workspace_id,name,status,type,model_settings,tool_policy,created_by_user_id,updated_at" as const;
-const STORED_AGENT_SELECT = "id,name,workspace_id,type,model_settings,tool_policy" as const;
+  "id,workspace_id,name,status,type,context,model_settings,tool_policy,created_by_user_id,updated_at" as const;
+const STORED_AGENT_SELECT = "id,name,workspace_id,type,context,model_settings,tool_policy" as const;
 const STORED_AGENT_GATEWAY_CONFIG_SELECT = "id,scope_id,version,config_hash,config_json" as const;
 
 function clientForAccessToken(accessToken?: string) {
@@ -237,6 +238,7 @@ export async function createStoredAgentRow(input: {
   userId: string;
   name: string;
   type: string;
+  context: string | null;
   modelSettings: ModelSettings;
   toolPolicy: ToolPolicy;
 }) {
@@ -260,6 +262,7 @@ export async function createStoredAgentRow(input: {
           workspace_id: input.workspaceId,
           created_by_user_id: input.userId,
           type: input.type,
+          context: input.context,
           model_settings: toDatabaseJson(modelSettings),
           tool_policy: toDatabaseJson(toolPolicy),
           status: "active",
@@ -278,6 +281,7 @@ export async function updateStoredAgentRow(input: {
   agentId: string;
   name: string;
   type: string;
+  context: string | null;
   modelSettings: ModelSettings;
   toolPolicy: ToolPolicy;
 }): Promise<StoredAgentRow | null> {
@@ -298,6 +302,7 @@ export async function updateStoredAgentRow(input: {
         .update({
           name: input.name,
           type: input.type,
+          context: input.context,
           model_settings: toDatabaseJson(modelSettings),
           tool_policy: toDatabaseJson(toolPolicy),
           updated_at: new Date().toISOString(),

@@ -41,7 +41,8 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
           optional(:credential_alias) => String.t() | nil,
           optional(:credential_scope) => String.t() | nil,
           optional(:api_key) => String.t() | nil,
-          optional(:user_id) => String.t() | nil
+          optional(:user_id) => String.t() | nil,
+          optional(:context) => String.t()
         }
 
   @spec resolve(String.t(), String.t()) :: {:ok, resolution()} | {:error, term()}
@@ -59,7 +60,8 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
          {:ok, profile} <- profile_from_rule(rule, agent_id, workspace_id, agent),
          :ok <- validate_profile_policy(profile),
          {:ok, profile} <- attach_credential(profile, rule, workspace_id, agent_inventory, secret_resolver),
-         {:ok, profile} <- attach_agent_user(profile, agent_id, workspace_id, agent_inventory) do
+         {:ok, profile} <- attach_agent_user(profile, agent_id, workspace_id, agent_inventory),
+         {:ok, profile} <- attach_agent_context(profile, agent) do
       {:ok, profile}
     end
   end
@@ -448,6 +450,15 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
         {:ok, profile}
     end
   end
+
+  defp attach_agent_context(profile, %Agent{context: context}) when is_binary(context) do
+    case String.trim(context) do
+      "" -> {:ok, profile}
+      trimmed -> {:ok, Map.put(profile, :context, trimmed)}
+    end
+  end
+
+  defp attach_agent_context(profile, _agent), do: {:ok, profile}
 
   defp atomize_profile(profile) do
     profile

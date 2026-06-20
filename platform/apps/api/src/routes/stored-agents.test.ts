@@ -69,6 +69,7 @@ const agent: StoredAgent = {
   agentType: "coding",
   model: "gpt-5",
   provider: "openai",
+  context: null,
   runnerKind: "codex",
   hasCredentials: false,
   isResolved: true,

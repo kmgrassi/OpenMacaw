@@ -77,6 +77,7 @@ export function agent(workspace = workspaceId, toolPolicy: SetupAgent["tool_poli
     name: "Coding Agent",
     status: "ready",
     type: "coding" as const,
+    context: null,
     model_settings: {},
     tool_policy: toolPolicy,
     created_by_user_id: userId,

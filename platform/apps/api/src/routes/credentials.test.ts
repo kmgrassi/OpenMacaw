@@ -100,6 +100,7 @@ describe("credential routes", () => {
         agentType: "coding",
         model: "openai/gpt-5.2",
         provider: "openai",
+        context: null,
         hasCredentials: false,
         isResolved: true,
         configurationStatus: null,

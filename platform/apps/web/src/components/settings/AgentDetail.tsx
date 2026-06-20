@@ -32,6 +32,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
   const [name, setName] = useState(agent.name);
   const [agentType, setAgentType] = useState<AgentType>(agent.agentType);
   const [model, setModel] = useState(agent.model ?? "");
+  const [context, setContext] = useState(agent.context ?? "");
   const [planningDestination, setPlanningDestination] =
     useState<PlanningDestination>(agent.planningDestination ?? "database");
   const [customBackendType, setCustomBackendType] = useState(
@@ -93,6 +94,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
     name.trim() !== agent.name ||
     agentType !== agent.agentType ||
     model.trim() !== (agent.model ?? "") ||
+    context.trim() !== (agent.context ?? "") ||
     (agentType === "planning" &&
       planningDestination !== (agent.planningDestination ?? "database")) ||
     (agentType === "custom" &&
@@ -124,6 +126,7 @@ export function AgentDetail({ agent }: { agent: Agent }) {
           name: name.trim(),
           type: agentType,
           model: model.trim() || null,
+          context: context.trim() || null,
           planningDestination,
           customTarget:
             agentType === "custom"
@@ -202,6 +205,8 @@ export function AgentDetail({ agent }: { agent: Agent }) {
             setAgentType={setAgentType}
             model={model}
             setModel={setModel}
+            context={context}
+            setContext={setContext}
             planningDestination={planningDestination}
             setPlanningDestination={setPlanningDestination}
             customBackendType={customBackendType}
