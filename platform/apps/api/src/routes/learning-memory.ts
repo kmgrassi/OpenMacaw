@@ -7,6 +7,7 @@ import {
 import { ApiRouteError, apiRoute, handleApiRouteError, requireRouteParam } from "../http.js";
 import { logEvent } from "../logger.js";
 import { workspaceHasEmbeddedMemories } from "../repositories/learning-memory.js";
+import { getWorkspaceSettingsRow } from "../repositories/workspace-settings.js";
 import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
 
 async function requireWorkspaceAccess(userId: string, workspaceId: string) {
@@ -24,13 +25,6 @@ async function requireWorkspaceAccess(userId: string, workspaceId: string) {
   }
 }
 
-function learningSidecarEnabled() {
-  // The per-workspace settings table is not present in this schema yet.
-  // Keep the API response shaped for workspace settings so the web UI
-  // does not need to change when that storage lands.
-  return process.env.LEARNING_SIDECAR_ENABLED !== "false";
-}
-
 export function registerLearningMemoryRoutes(app: Express) {
   app.get(
     "/api/workspaces/:workspaceId/learning/memory-status",
@@ -39,11 +33,14 @@ export function registerLearningMemoryRoutes(app: Express) {
       handler: async ({ req, res, userId }) => {
         const workspaceId = requireRouteParam(req, "workspaceId");
         await requireWorkspaceAccess(userId ?? "", workspaceId);
-        const hasEmbeddedMemories = await workspaceHasEmbeddedMemories(workspaceId);
+        const [settingsRow, hasEmbeddedMemories] = await Promise.all([
+          getWorkspaceSettingsRow(workspaceId),
+          workspaceHasEmbeddedMemories(workspaceId),
+        ]);
         return res.status(200).json(
           LearningMemoryStatusResponseSchema.parse({
             workspaceId,
-            learningEnabled: learningSidecarEnabled(),
+            learningEnabled: settingsRow?.learning_enabled ?? false,
             hasEmbeddedMemories,
           }),
         );
