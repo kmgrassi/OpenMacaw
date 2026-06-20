@@ -41,6 +41,16 @@ create table if not exists public.agent (
 );
 comment on table public.agent is 'OpenMacaw runtime bridge table.';
 
+alter table public.agent
+  drop constraint if exists agent_type_check;
+
+alter table public.agent
+  add constraint agent_type_check
+  check (
+    type is null
+    or type in ('coding', 'planning', 'manager', 'learning', 'router', 'custom')
+  );
+
 create table if not exists public.agent_default_assignment (
   agent_id uuid not null,
   created_at timestamptz default now(),

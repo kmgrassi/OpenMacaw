@@ -39,6 +39,8 @@ const RUNTIME_EXECUTION_PROFILE =
 const RUNTIME_TRACKER = "apps/orchestrator/lib/symphony_elixir/tracker.ex";
 const RUNTIME_AGENT_PROBE =
   "apps/orchestrator/lib/symphony_elixir/diagnostic/agent_probe.ex";
+const RUNTIME_AGENT_INVENTORY =
+  "apps/orchestrator/lib/symphony_elixir/agent_inventory/agent.ex";
 const RUNTIME_SCHEDULED_TASK_DELIVERY =
   "apps/orchestrator/lib/symphony_elixir/scheduled_task/delivery.ex";
 const RUNTIME_NORMALIZED_RUNNER_KIND_ALIASES = {
@@ -181,6 +183,18 @@ function extractTsZodDiscriminatedUnionKinds(source, name) {
   const match = source.match(re);
   if (!match) throw new Error(`Could not find ${name} discriminated union`);
   return [...match[1].matchAll(/kind:\s*z\.literal\("([^"]+)"\)/g)].map(
+    (valueMatch) => valueMatch[1],
+  );
+}
+
+function extractTsZodEnumValues(source, name) {
+  const re = new RegExp(
+    `export const ${name}\\s*=\\s*z\\.enum\\(\\[([\\s\\S]*?)\\]\\);`,
+    "m",
+  );
+  const match = source.match(re);
+  if (!match) throw new Error(`Could not find ${name} z.enum`);
+  return [...match[1].matchAll(/"([^"]+)"/g)].map(
     (valueMatch) => valueMatch[1],
   );
 }
@@ -486,6 +500,11 @@ async function main() {
     scheduledTasks,
     "ScheduledTaskDeliverySchema",
   ).filter((kind) => kind.startsWith("learning_"));
+  const agentContract = readPlatformContract("contracts/agents.ts");
+  const platformAgentTypes = extractTsZodEnumValues(
+    agentContract,
+    "AgentTypeSchema",
+  );
 
   console.log(
     `  platform KNOWN_EXECUTION_PROVIDER_IDS: ${platformExecutionProviders.length}`,
@@ -511,9 +530,15 @@ async function main() {
   console.log(
     `  platform learning delivery kinds:       ${platformLearningDeliveryKinds.length}`,
   );
+  console.log(
+    `  platform agent types:                  ${platformAgentTypes.length}`,
+  );
 
   const localRuntimeDelivery = readLocalRuntimeSource(
     RUNTIME_SCHEDULED_TASK_DELIVERY,
+  );
+  const localRuntimeAgentInventory = readLocalRuntimeSource(
+    RUNTIME_AGENT_INVENTORY,
   );
   const localLearningDeliveryOk = localRuntimeDelivery
     ? assertSameSet({
@@ -527,13 +552,28 @@ async function main() {
       `  warning: local ${RUNTIME_SCHEDULED_TASK_DELIVERY} not found; remote runtime check will run when CROSS_REPO_GITHUB_TOKEN is set`,
     );
   }
+  const localAgentTypesOk = localRuntimeAgentInventory
+    ? assertSameSet({
+        name: "local runtime AgentInventory @supported_kinds = platform AgentTypeSchema",
+        left: platformAgentTypes,
+        right: extractElixirAttrList(
+          localRuntimeAgentInventory,
+          "supported_kinds",
+        ),
+      })
+    : true;
+  if (!localRuntimeAgentInventory) {
+    console.warn(
+      `  warning: local ${RUNTIME_AGENT_INVENTORY} not found; remote runtime check will run when CROSS_REPO_GITHUB_TOKEN is set`,
+    );
+  }
 
   const localModelTierOk = assertSuperset({
     name: "PROVIDER_REGISTRY keys ⊇ MODEL_TIER_REGISTRY providers",
     allowed: platformRegisteredProviders,
     required: modelTierRegistryProviders,
   });
-  if (!localModelTierOk || !localLearningDeliveryOk) {
+  if (!localModelTierOk || !localLearningDeliveryOk || !localAgentTypesOk) {
     process.exit(1);
   }
 
@@ -631,6 +671,9 @@ async function main() {
   const runtimeAgentProbe = await fetchText(
     `${RUNTIME_RAW}/${RUNTIME_AGENT_PROBE}`,
   );
+  const runtimeAgentInventory = await fetchText(
+    `${RUNTIME_RAW}/${RUNTIME_AGENT_INVENTORY}`,
+  );
   const runtimeScheduledTaskDelivery = await fetchText(
     `${RUNTIME_RAW}/${RUNTIME_SCHEDULED_TASK_DELIVERY}`,
   );
@@ -652,6 +695,10 @@ async function main() {
   );
   const runtimeLearningDeliveryKinds = extractRuntimeLearningDeliveryKinds(
     runtimeScheduledTaskDelivery,
+  );
+  const runtimeAgentTypes = extractElixirAttrList(
+    runtimeAgentInventory,
+    "supported_kinds",
   );
 
   console.log("\nRuntime allowlist coverage of platform writes:");
@@ -688,6 +735,11 @@ async function main() {
       name: "runtime scheduled_task delivery @learning_kinds = platform learning delivery kinds",
       left: platformLearningDeliveryKinds,
       right: runtimeLearningDeliveryKinds,
+    }),
+    assertSameSet({
+      name: "runtime AgentInventory @supported_kinds = platform AgentTypeSchema",
+      left: platformAgentTypes,
+      right: runtimeAgentTypes,
     }),
   ].every(Boolean);
 

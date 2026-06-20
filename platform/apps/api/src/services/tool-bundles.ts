@@ -51,6 +51,14 @@ export const DEFAULT_CODING_TOOL_SLUGS = [...DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS]
 
 export const DEFAULT_MANAGER_TOOL_SLUGS = [GIT_COMMAND_TOOL_SLUG, ...DEFAULT_CODING_TOOL_SLUGS] as const;
 
+export const DEFAULT_LEARNING_TOOL_SLUGS = [
+  "agent_run.read",
+  "memory.search",
+  "memory.create",
+  "skill.create",
+  "scheduled_task.create",
+] as const;
+
 export const LOCAL_MODEL_CODING_TOOL_SLUGS = [
   "repo.read_file",
   "repo.list",
@@ -79,6 +87,9 @@ const TOOL_BUNDLES: Record<ToolProfile, ToolBundleDefinition> = {
   manager: {
     defaultToolSlugs: DEFAULT_MANAGER_TOOL_SLUGS,
   },
+  learning: {
+    defaultToolSlugs: DEFAULT_LEARNING_TOOL_SLUGS,
+  },
   router: {
     defaultToolSlugs: ROUTER_TOOL_SLUGS,
   },
@@ -88,7 +99,13 @@ const TOOL_BUNDLES: Record<ToolProfile, ToolBundleDefinition> = {
 } as const satisfies Record<ToolProfile, ToolBundleDefinition>;
 
 export function toolProfileForAgentType(agentType: string | null | undefined): ToolProfile {
-  if (agentType === "planning" || agentType === "coding" || agentType === "manager" || agentType === "router") {
+  if (
+    agentType === "planning" ||
+    agentType === "coding" ||
+    agentType === "manager" ||
+    agentType === "learning" ||
+    agentType === "router"
+  ) {
     return agentType;
   }
   return "none";

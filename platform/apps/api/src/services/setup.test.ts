@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getServiceRoleSupabase, getSupabaseForAccessToken, getUserScopedSupabase } from "../supabase-client.js";
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 import { getAgentHealth, getSetup, listSetupAuthState } from "./setup.js";
-import { DEFAULT_MANAGER_TOOL_SLUGS } from "./tool-bundles.js";
+import { DEFAULT_LEARNING_TOOL_SLUGS, DEFAULT_MANAGER_TOOL_SLUGS } from "./tool-bundles.js";
 
 vi.mock("../supabase-client.js", () => ({
   getServiceRoleSupabase: vi.fn(),
@@ -31,6 +31,7 @@ const codingAgentId = "55555555-5555-4555-8555-555555555555";
 const managerAgentId = "66666666-6666-4666-8666-666666666666";
 const routerAgentId = "77777777-7777-4777-8777-777777777777";
 const managerTemplateId = "88888888-8888-4888-8888-888888888888";
+const learningTemplateId = "99999999-9999-4999-8999-999999999998";
 
 type Row = Record<string, unknown>;
 
@@ -58,9 +59,10 @@ function toolId(slug: string) {
   return `tool-${slug.replaceAll(".", "-")}`;
 }
 
-function managerToolCatalog() {
+function defaultToolCatalog() {
+  const toolSlugs = [...new Set([...DEFAULT_MANAGER_TOOL_SLUGS, ...DEFAULT_LEARNING_TOOL_SLUGS])];
   return {
-    tool: DEFAULT_MANAGER_TOOL_SLUGS.map((slug) => ({
+    tool: toolSlugs.map((slug) => ({
       id: toolId(slug),
       workspace_id: null,
       slug,
@@ -73,11 +75,23 @@ function managerToolCatalog() {
         slug: "manager",
         enabled: true,
       },
+      {
+        id: learningTemplateId,
+        workspace_id: null,
+        slug: "learning",
+        enabled: true,
+      },
     ],
-    tool_policy_template_tool: DEFAULT_MANAGER_TOOL_SLUGS.map((slug) => ({
-      template_id: managerTemplateId,
-      tool_id: toolId(slug),
-    })),
+    tool_policy_template_tool: [
+      ...DEFAULT_MANAGER_TOOL_SLUGS.map((slug) => ({
+        template_id: managerTemplateId,
+        tool_id: toolId(slug),
+      })),
+      ...DEFAULT_LEARNING_TOOL_SLUGS.map((slug) => ({
+        template_id: learningTemplateId,
+        tool_id: toolId(slug),
+      })),
+    ],
     agent_tool_grant: [] as Row[],
   };
 }
@@ -114,7 +128,7 @@ function setupSupabaseMock(input?: {
     workspaceSettings: [...(input?.workspaceSettings ?? [])],
     agentToolGrants: [] as Row[],
   };
-  const managerCatalog = managerToolCatalog();
+  const toolCatalog = defaultToolCatalog();
 
   const supabaseTables = {
     workspaces: state.workspaces,
@@ -146,9 +160,9 @@ function setupSupabaseMock(input?: {
     })),
     scheduled_task: state.scheduledTasks,
     workspace_settings: state.workspaceSettings,
-    tool: managerCatalog.tool,
-    tool_policy_template: managerCatalog.tool_policy_template,
-    tool_policy_template_tool: managerCatalog.tool_policy_template_tool,
+    tool: toolCatalog.tool,
+    tool_policy_template: toolCatalog.tool_policy_template,
+    tool_policy_template_tool: toolCatalog.tool_policy_template_tool,
     agent_tool_grant: state.agentToolGrants,
   };
   const supabaseClient = createMockSupabaseClient(supabaseTables);
@@ -172,6 +186,7 @@ describe("default-agent auth bootstrap", () => {
     const createdPlanningAgent = state.agents.find((row) => row.type === "planning");
     const createdCodingAgent = state.agents.find((row) => row.type === "coding");
     const createdManagerAgent = state.agents.find((row) => row.type === "manager");
+    const createdLearningAgent = state.agents.find((row) => row.type === "learning");
     const createdRouterAgent = state.agents.find((row) => row.type === "router");
     const routerTask = state.scheduledTasks.find((row) => rowKind(row.metadata) === "router_optimization");
 
@@ -179,6 +194,7 @@ describe("default-agent auth bootstrap", () => {
     expect(first.defaultAgents.planning?.agentId).toBe(createdPlanningAgent?.id);
     expect(first.defaultAgents.coding?.agentId).toBe(createdCodingAgent?.id);
     expect(first.managerAgent.agentId).toBe(createdManagerAgent?.id);
+    expect(first.agents.find((row) => row.id === createdLearningAgent?.id)?.type).toBe("learning");
     expect(first.agents.find((row) => row.id === createdRouterAgent?.id)?.type).toBe("router");
     expect(first.managerAgent).toMatchObject({
       configured: false,
@@ -201,15 +217,24 @@ describe("default-agent auth bootstrap", () => {
     });
     expect(second.defaultAgents.coding?.agentId).toBe(createdCodingAgent?.id);
     expect(second.managerAgent.agentId).toBe(createdManagerAgent?.id);
-    expect(state.agents).toHaveLength(4);
+    expect(state.agents).toHaveLength(5);
     expect(state.assignments).toHaveLength(2);
     expect(state.assignments.map((row) => row.role)).toEqual(["planning", "coding"]);
     expect(state.workspaces[0]?.id).toBe("workspaces-1");
     expect(state.workspaces[0]?.id).not.toBe(userId);
-    expect(state.agents.map((row) => row.id)).toHaveLength(4);
-    expect(state.agentToolGrants.map((grant) => grant.tool_id).sort()).toEqual(
-      DEFAULT_MANAGER_TOOL_SLUGS.map(toolId).sort(),
-    );
+    expect(state.agents.map((row) => row.id)).toHaveLength(5);
+    expect(
+      state.agentToolGrants
+        .filter((grant) => grant.agent_id === createdManagerAgent?.id)
+        .map((grant) => grant.tool_id)
+        .sort(),
+    ).toEqual(DEFAULT_MANAGER_TOOL_SLUGS.map(toolId).sort());
+    expect(
+      state.agentToolGrants
+        .filter((grant) => grant.agent_id === createdLearningAgent?.id)
+        .map((grant) => grant.tool_id)
+        .sort(),
+    ).toEqual(DEFAULT_LEARNING_TOOL_SLUGS.map(toolId).sort());
     expect(state.scheduledTasks).toHaveLength(1);
     expect(routerTask).toMatchObject({
       workspace_id: state.workspaces[0]?.id,
@@ -356,7 +381,7 @@ describe("default-agent auth bootstrap", () => {
     expect(authState.defaultAgents.coding?.agentId).toBe(state.agents.find((row) => row.type === "coding")?.id);
     expect(authState.managerAgent.agentId).toBe(state.agents.find((row) => row.type === "manager")?.id);
     expect(new Set(state.workspaces.map((row) => row.id)).size).toBe(1);
-    expect(new Set(state.agents.map((row) => row.id)).size).toBe(4);
+    expect(new Set(state.agents.map((row) => row.id)).size).toBe(5);
     expect(state.assignments).toHaveLength(2);
     expect(state.scheduledTasks).toHaveLength(1);
   });
@@ -389,7 +414,7 @@ describe("default-agent auth bootstrap", () => {
       { role: "coding", agent_id: codingAgentId, provisioning_source: "claimed_existing" },
     ]);
     expect(state.assignments).toHaveLength(2);
-    expect(state.agents).toHaveLength(5);
+    expect(state.agents).toHaveLength(6);
     expect(state.scheduledTasks).toHaveLength(1);
   });
 
@@ -420,6 +445,7 @@ describe("default-agent auth bootstrap", () => {
       planningAgentId,
       authState.defaultAgents.coding?.agentId,
       authState.managerAgent.agentId,
+      state.agents.find((row) => row.type === "learning")?.id,
       state.agents.find((row) => row.type === "router")?.id,
     ]);
     expect(state.scheduledTasks).toHaveLength(1);

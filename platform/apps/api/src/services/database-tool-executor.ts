@@ -16,6 +16,7 @@ import {
   updateScheduledTask,
 } from "./database-tool-executor/scheduled-tasks.js";
 import { listRoutingRules, readRoutingRuleTool, updateRoutingRule } from "./database-tool-executor/routing-rules.js";
+import { readAgentRunTool } from "./database-tool-executor/agent-runs.js";
 import { executeSchemaAwareRows, queryFrom } from "./database-tool-executor/schema-aware-query.js";
 import {
   asRecord,
@@ -173,6 +174,9 @@ export async function executeDatabaseTool(
       );
       return { status: 200, output: jsonOutput({ providerFailures }) };
     }
+
+    case "agent_run.read":
+      return readAgentRunTool(args, workspaceId, context);
 
     case "memory.search": {
       const agentId = context?.agentId?.trim() || "";
