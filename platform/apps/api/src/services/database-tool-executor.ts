@@ -17,7 +17,9 @@ import {
   updateScheduledTask,
 } from "./database-tool-executor/scheduled-tasks.js";
 import { listRoutingRules, readRoutingRuleTool, updateRoutingRule } from "./database-tool-executor/routing-rules.js";
+import { readAgentRunTool } from "./database-tool-executor/agent-runs.js";
 import { executeSchemaAwareRows, queryFrom } from "./database-tool-executor/schema-aware-query.js";
+import { createSkill } from "./database-tool-executor/skills.js";
 import {
   asRecord,
   jsonOutput,
@@ -175,6 +177,9 @@ export async function executeDatabaseTool(
       return { status: 200, output: jsonOutput({ providerFailures }) };
     }
 
+    case "agent_run.read":
+      return readAgentRunTool(args, workspaceId, context);
+
     case "memory.search": {
       const agentId = context?.agentId?.trim() || "";
       if (!agentId) throw new ApiRouteError(400, "runtime_context_required", "agent_id is required in runtime context");
@@ -203,6 +208,9 @@ export async function executeDatabaseTool(
         }),
       };
     }
+
+    case "skill.create":
+      return createSkill(args, workspaceId, context);
 
     case "memory.create": {
       const agentId = context?.agentId?.trim() || "";

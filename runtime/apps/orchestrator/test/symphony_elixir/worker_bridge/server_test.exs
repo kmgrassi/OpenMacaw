@@ -116,6 +116,35 @@ defmodule SymphonyElixir.WorkerBridge.ServerTest do
     assert fetched.id == session.id
   end
 
+  test "materializes approved skills before launching worker process" do
+    cwd = create_workspace_dir!("worker_bridge_skills")
+    on_exit(fn -> File.rm_rf(cwd) end)
+
+    assert {:ok, session} =
+             Server.start_session(%{
+               "kind" => "codex",
+               "command" => "sleep 5",
+               "cwd" => cwd,
+               "skills_snapshot" => %{
+                 "version" => 1,
+                 "agentId" => "agent-1",
+                 "workspaceId" => "workspace-1",
+                 "skills" => [
+                   %{
+                     "id" => "skill-1",
+                     "name" => "api-debugging",
+                     "description" => "Debug APIs",
+                     "body" => "Inspect logs."
+                   }
+                 ]
+               }
+             })
+
+    assert session.status == "running"
+    skill_path = Path.join([cwd, ".codex", "skills", "api-debugging", "SKILL.md"])
+    assert File.read!(skill_path) =~ "Inspect logs."
+  end
+
   test "prepares a workspace from repository intent" do
     repo_path =
       Path.join(
@@ -211,8 +240,7 @@ defmodule SymphonyElixir.WorkerBridge.ServerTest do
                  resource("repo-2", "grant-2", "v1")
                  |> Map.merge(%{"alias" => "second_repo", "url" => second_repo, "ref" => "main"})
                ],
-               "command" =>
-                 "test -f resources/first_repo/README.md && test -f resources/second_repo/SECOND.md && test -n \"$SYMPHONY_RESOURCE_CONTEXT\" && sleep 5"
+               "command" => "test -f resources/first_repo/README.md && test -f resources/second_repo/SECOND.md && test -n \"$SYMPHONY_RESOURCE_CONTEXT\" && sleep 5"
              })
 
     assert is_binary(session.cwd)
@@ -275,20 +303,15 @@ defmodule SymphonyElixir.WorkerBridge.ServerTest do
          resource("repo-runtime", "grant-runtime", "v1"),
          ["grant", "workspace_id"],
          "workspace-2"
-       ), "workspace_write",
-       {:resource_grant_workspace_mismatch, "repo-runtime", "grant-runtime"}},
-      {put_in(resource("repo-runtime", "grant-runtime", "v1"), ["grant", "agent_id"], "agent-2"),
-       "workspace_write", {:resource_grant_agent_mismatch, "repo-runtime", "grant-runtime"}},
-      {put_in(resource("repo-runtime", "grant-runtime", "v1"), ["grant", "enabled"], false),
-       "workspace_write", {:resource_grant_disabled, "repo-runtime", "grant-runtime"}},
+       ), "workspace_write", {:resource_grant_workspace_mismatch, "repo-runtime", "grant-runtime"}},
+      {put_in(resource("repo-runtime", "grant-runtime", "v1"), ["grant", "agent_id"], "agent-2"), "workspace_write", {:resource_grant_agent_mismatch, "repo-runtime", "grant-runtime"}},
+      {put_in(resource("repo-runtime", "grant-runtime", "v1"), ["grant", "enabled"], false), "workspace_write", {:resource_grant_disabled, "repo-runtime", "grant-runtime"}},
       {put_in(
          resource("repo-runtime", "grant-runtime", "v1"),
          ["grant", "mode"],
          "planning_readonly"
-       ), "workspace_write",
-       {:resource_grant_mode_denied, "repo-runtime", "grant-runtime", "workspace_write"}},
-      {put_in(resource("repo-runtime", "grant-runtime", "v1"), ["grant", "credential_ref"], %{}),
-       "planning_readonly", {:missing_resource_credential, "repo-runtime", "grant-runtime"}}
+       ), "workspace_write", {:resource_grant_mode_denied, "repo-runtime", "grant-runtime", "workspace_write"}},
+      {put_in(resource("repo-runtime", "grant-runtime", "v1"), ["grant", "credential_ref"], %{}), "planning_readonly", {:missing_resource_credential, "repo-runtime", "grant-runtime"}}
     ]
 
     for {resource, execution_mode, reason} <- denials do
@@ -386,9 +409,7 @@ defmodule SymphonyElixir.WorkerBridge.ServerTest do
       "repo-runtime" => grant("grant-runtime", "v2", mode: "workspace_write")
     })
 
-    assert {:error,
-            {:resource_authorization_revoked,
-             {:resource_grant_mode_denied, "repo-runtime", "grant-runtime", "planning_readonly"}}} =
+    assert {:error, {:resource_authorization_revoked, {:resource_grant_mode_denied, "repo-runtime", "grant-runtime", "planning_readonly"}}} =
              Server.authorize_tool_call(session.id)
   end
 
@@ -514,8 +535,7 @@ defmodule SymphonyElixir.WorkerBridge.ServerTest do
 
     assert session.env_keys == ["OPENAI_API_KEY"]
 
-    assert_receive {:resolved_secret_ref, "arn:aws:secretsmanager:us-east-1:123:secret:test",
-                    ["OPENAI_API_KEY", "openai_api_key", "api_key"]}
+    assert_receive {:resolved_secret_ref, "arn:aws:secretsmanager:us-east-1:123:secret:test", ["OPENAI_API_KEY", "openai_api_key", "api_key"]}
   end
 
   test "returns an error when the agent inventory adapter raises" do

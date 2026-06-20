@@ -19,6 +19,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     escalate_to_human
     snooze
     mark_done
+    skill.create
     scheduled_task.create
     scheduled_task.read
     scheduled_task.update

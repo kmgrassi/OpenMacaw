@@ -42,6 +42,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { path: "/settings/usage", label: "Usage", autoConnectGateway: true },
       { path: "/settings/config", label: "Config", autoConnectGateway: true },
       { path: "/settings/memory", label: "Memory" },
+      { path: "/settings/skills", label: "Skills" },
     ],
   },
 ];

@@ -53,17 +53,6 @@ export const ScheduledTaskDeliverySchema = z.discriminatedUnion("kind", [
     sessionStrategy: z.literal("scheduled_task").optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   }),
-  z.object({
-    kind: z.literal("learning_reflection"),
-    sourceRunId: z.string(),
-    sourceTaskId: z.string().nullable().optional(),
-    metadata: z.record(z.string(), z.unknown()).optional(),
-  }),
-  z.object({
-    kind: z.literal("learning_distillation"),
-    windowDays: z.number().int().positive().default(7),
-    metadata: z.record(z.string(), z.unknown()).optional(),
-  }),
 ]);
 
 export const ScheduledTaskCrudDeliverySchema = z.discriminatedUnion("kind", [

@@ -99,7 +99,7 @@ describe("credentials api helpers", () => {
     mockApiFetch.mockRejectedValueOnce(error);
 
     await expect(
-      activateStoredAgent("agent-1", "workspace-1", "/tmp/project"),
+      activateStoredAgent("agent-1", "workspace-1"),
     ).rejects.toBe(error);
   });
 

@@ -16,6 +16,24 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
     end
   end
 
+  defmodule TestLearningSampler do
+    def sample("workspace-1", %{"strategy" => "random_recent_run", "messageWindow" => 10}, _opts) do
+      {:ok,
+       %{
+         "group" => "run:sample-run-1",
+         "workspace_id" => "workspace-1",
+         "messages" => [
+           %{"role" => "user", "content" => "Please fix the retry bug."},
+           %{"role" => "assistant", "content" => "I fixed it by adding a retry guard."}
+         ]
+       }}
+    end
+  end
+
+  defmodule EmptyLearningSampler do
+    def sample("workspace-1", %{"strategy" => "random_recent_run"}, _opts), do: {:ok, nil}
+  end
+
   setup do
     Application.put_env(:symphony_elixir, :scheduled_task_delivery_test_pid, self())
 
@@ -30,7 +48,13 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
       "workspace_id" => nil,
       "agent_id" => "agent-1",
       "instructions" => "Check the account",
-      "delivery" => %{"kind" => "scheduled_agent_message"},
+      "delivery" => %{
+        "kind" => "scheduled_agent_message",
+        "metadata" => %{
+          "kind" => "learning_meta_agent_daily_review",
+          "sampling" => %{"strategy" => "random_recent_run", "messageWindow" => 10}
+        }
+      },
       "source_work_item_id" => "work-item-1",
       "created_by_user_id" => "user-1"
     }
@@ -42,10 +66,14 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
              Delivery.deliver(task, run,
                repository: TestRepository,
                chat_gateway: TestChatGateway,
+               learning_sampler: TestLearningSampler,
                trace_id: "trace-1"
              )
 
-    assert_receive {:post_message, scope, "Check the account", opts}
+    assert_receive {:post_message, scope, body, opts}
+    assert body =~ "Check the account"
+    assert body =~ "Transcript sample for this scheduled learning review"
+    assert body =~ "Please fix the retry bug."
 
     assert scope == %{
              agent_id: "agent-1",
@@ -62,11 +90,38 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
     assert Keyword.fetch!(opts, :metadata) == %{
              "source" => "scheduled_task",
              "kind" => "scheduled_agent_message",
+             "sampling" => %{"strategy" => "random_recent_run", "messageWindow" => 10},
+             "sample" => %{"status" => "attached", "group" => "run:sample-run-1"},
              "scheduled_task_id" => "scheduled-task-1",
              "scheduled_task_run_id" => scheduled_run_id,
              "scheduled_for" => "2026-05-14T12:00:00Z",
              "source_work_item_id" => "work-item-1"
            }
+  end
+
+  test "marks learning sample metadata unavailable when no recent transcript exists" do
+    task = %{
+      "id" => "scheduled-task-1",
+      "workspace_id" => "workspace-1",
+      "agent_id" => "agent-1",
+      "instructions" => "Check the account",
+      "delivery" => %{
+        "kind" => "scheduled_agent_message",
+        "metadata" => %{"sampling" => %{"strategy" => "random_recent_run"}}
+      },
+      "created_by_user_id" => "user-1"
+    }
+
+    assert {:ok, "run-1"} =
+             Delivery.deliver(task, %{"id" => "run-1"},
+               repository: TestRepository,
+               chat_gateway: TestChatGateway,
+               learning_sampler: EmptyLearningSampler
+             )
+
+    assert_receive {:post_message, _scope, body, opts}
+    assert body =~ "No recent transcript sample was available"
+    assert Keyword.fetch!(opts, :metadata)["sample"] == %{"status" => "unavailable"}
   end
 
   test "accepts atom-keyed scheduled task inputs without converting dynamic atoms" do
@@ -123,113 +178,6 @@ defmodule SymphonyElixir.ScheduledTask.DeliveryTest do
              Delivery.deliver(task, %{"id" => "run-1"},
                repository: TestRepository,
                chat_gateway: TestChatGateway
-             )
-  end
-
-  defmodule TestPlatformLearningClient do
-    def post_job(kind, payload, opts) do
-      test_pid = Application.fetch_env!(:symphony_elixir, :scheduled_task_delivery_test_pid)
-      send(test_pid, {:platform_learning_job, kind, payload, opts})
-
-      case Application.get_env(:symphony_elixir, :scheduled_task_delivery_test_platform_result) do
-        {:error, _} = error -> error
-        _ -> {:ok, %{"accepted" => true}}
-      end
-    end
-  end
-
-  test "routes learning_reflection rows to the platform learning client (not ChatGateway)" do
-    task = %{
-      "id" => "scheduled-task-2",
-      "workspace_id" => "workspace-1",
-      "agent_id" => "agent-1",
-      "source_work_item_id" => "work-item-7",
-      "next_run_at" => "2026-05-18T12:00:00Z",
-      "delivery" => %{
-        "kind" => "learning_reflection",
-        "sourceRunId" => "run-9001",
-        "sourceTaskId" => "work-item-7"
-      }
-    }
-
-    scheduled_run_id = "33333333-3333-4333-8333-333333333333"
-    run = %{"id" => scheduled_run_id, "scheduled_for" => "2026-05-18T12:00:01Z"}
-
-    assert {:ok, ^scheduled_run_id} =
-             Delivery.deliver(task, run,
-               repository: TestRepository,
-               chat_gateway: TestChatGateway,
-               platform_learning_client: TestPlatformLearningClient,
-               trace_id: "trace-reflect-1"
-             )
-
-    # ChatGateway must NOT be called for learning_* kinds.
-    refute_received {:post_message, _, _, _}
-
-    assert_receive {:platform_learning_job, "learning_reflection", payload, opts}
-
-    assert payload["kind"] == "learning_reflection"
-    assert payload["workspace_id"] == "workspace-1"
-    assert payload["agent_id"] == "agent-1"
-    assert payload["scheduled_task_id"] == "scheduled-task-2"
-    assert payload["scheduled_task_run_id"] == scheduled_run_id
-    assert payload["scheduled_run_id"] == scheduled_run_id
-    assert payload["source_work_item_id"] == "work-item-7"
-    assert payload["scheduled_for"] == "2026-05-18T12:00:01Z"
-    assert payload["trace_id"] == "trace-reflect-1"
-
-    assert payload["delivery"] == %{
-             "kind" => "learning_reflection",
-             "sourceRunId" => "run-9001",
-             "sourceTaskId" => "work-item-7"
-           }
-
-    assert Keyword.get(opts, :trace_id) == "trace-reflect-1"
-  end
-
-  test "routes learning_distillation rows to the platform learning client" do
-    task = %{
-      "id" => "scheduled-task-3",
-      "workspace_id" => "workspace-1",
-      "delivery" => %{"kind" => "learning_distillation", "windowDays" => 7}
-    }
-
-    scheduled_run_id = "44444444-4444-4444-8444-444444444444"
-    run = %{"id" => scheduled_run_id}
-
-    assert {:ok, ^scheduled_run_id} =
-             Delivery.deliver(task, run,
-               repository: TestRepository,
-               chat_gateway: TestChatGateway,
-               platform_learning_client: TestPlatformLearningClient
-             )
-
-    assert_receive {:platform_learning_job, "learning_distillation", payload, _opts}
-    assert payload["delivery"]["windowDays"] == 7
-  end
-
-  test "surfaces platform-handler errors as scheduler-visible failures" do
-    Application.put_env(
-      :symphony_elixir,
-      :scheduled_task_delivery_test_platform_result,
-      {:error, :missing_platform_learning_endpoint}
-    )
-
-    on_exit(fn ->
-      Application.delete_env(:symphony_elixir, :scheduled_task_delivery_test_platform_result)
-    end)
-
-    task = %{
-      "id" => "scheduled-task-4",
-      "workspace_id" => "workspace-1",
-      "delivery" => %{"kind" => "learning_reflection", "sourceRunId" => "run-4"}
-    }
-
-    assert {:error, {:platform_learning_handler_failed, :missing_platform_learning_endpoint}} =
-             Delivery.deliver(task, %{"id" => "run-4"},
-               repository: TestRepository,
-               chat_gateway: TestChatGateway,
-               platform_learning_client: TestPlatformLearningClient
              )
   end
 end

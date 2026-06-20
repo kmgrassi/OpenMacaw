@@ -24,8 +24,8 @@ import {
   mapAgentControlMessage,
   updateAgentControlMessageDispatchStatus,
 } from "../services/agent-control.js";
-import { attachRuntimeDispatchContext, buildRuntimeDispatchContext } from "../services/runtime-dispatch-context.js";
 import { assertRuntimePrepareSupported } from "../services/runtime-prepare.js";
+import { buildLauncherStartBody } from "./agent-control-launcher-body.js";
 
 const RecoverAgentRuntimeRequestSchema = z.object({
   workspaceId: z.string().min(1),
@@ -93,13 +93,14 @@ export async function recoverAgentRuntime(req: Request, res: Response, launcherC
           stopped_orchestrator_ids: stopped.map((orchestrator) => orchestrator.id),
         },
       };
-      const dispatchContext = await buildRuntimeDispatchContext({
+      const startBody = await buildLauncherStartBody({
         accessToken,
         requesterUserId: userId,
         agentId,
+        workspaceId,
         requestBody: restartBody,
       });
-      restarted = await launcherClient.startAgent(agentId, attachRuntimeDispatchContext(restartBody, dispatchContext));
+      restarted = await launcherClient.startAgent(agentId, startBody);
     }
 
     return res.status(200).json({
@@ -180,8 +181,18 @@ export async function createAgentRemediationRequest(req: Request, res: Response,
     }
 
     try {
-      await assertRuntimePrepareSupported(requireAccessToken(req), userId, targetAgentId);
-      const result = await launcherClient.startAgent(targetAgentId);
+      const accessToken = requireAccessToken(req);
+      const prepared = await assertRuntimePrepareSupported(accessToken, userId, targetAgentId);
+      const result = await launcherClient.startAgent(
+        targetAgentId,
+        await buildLauncherStartBody({
+          accessToken,
+          requesterUserId: userId,
+          agentId: targetAgentId,
+          workspaceId: prepared.workspaceId,
+          requestBody: {},
+        }),
+      );
 
       const optimisticRemediation = AgentControlMessageRowSchema.parse({
         ...remediation,

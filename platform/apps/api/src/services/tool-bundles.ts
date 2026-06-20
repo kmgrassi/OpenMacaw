@@ -25,6 +25,8 @@ export const SCHEDULED_TASK_TOOL_SLUGS = [
 
 export const AGENT_TOOL_GRANT_TOOL_SLUGS = ["agent_tool_grant.create", "agent_tool_grant.update"] as const;
 
+export const SKILL_TOOL_SLUGS = ["skill.create"] as const;
+
 export const GIT_COMMAND_TOOL_SLUG = "git.run" as const;
 
 export const ROUTER_TOOL_SLUGS = [
@@ -35,11 +37,13 @@ export const ROUTER_TOOL_SLUGS = [
   "local_model.list",
   "provider_cutover.list",
   "scheduled_task.read",
+  ...SKILL_TOOL_SLUGS,
 ] as const;
 
 export const DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS = [
   ...DEFAULT_PLANNING_TOOL_SLUGS,
   ...SCHEDULED_TASK_TOOL_SLUGS,
+  ...SKILL_TOOL_SLUGS,
 ] as const;
 
 export const DEFAULT_PLANNER_REMEDIATION_TOOL_SLUGS = [
@@ -51,6 +55,8 @@ export const DEFAULT_CODING_TOOL_SLUGS = [...DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS]
 
 export const DEFAULT_MANAGER_TOOL_SLUGS = [GIT_COMMAND_TOOL_SLUG, ...DEFAULT_CODING_TOOL_SLUGS] as const;
 
+export const DEFAULT_LEARNING_TOOL_SLUGS = ["agent_run.read", "scheduled_task.create"] as const;
+
 export const LOCAL_MODEL_CODING_TOOL_SLUGS = [
   "repo.read_file",
   "repo.list",
@@ -59,6 +65,7 @@ export const LOCAL_MODEL_CODING_TOOL_SLUGS = [
   "shell.exec",
   "apply_patch",
   ...SCHEDULED_TASK_TOOL_SLUGS,
+  ...SKILL_TOOL_SLUGS,
 ] as const;
 
 type ToolBundleDefinition = {
@@ -79,6 +86,9 @@ const TOOL_BUNDLES: Record<ToolProfile, ToolBundleDefinition> = {
   manager: {
     defaultToolSlugs: DEFAULT_MANAGER_TOOL_SLUGS,
   },
+  learning: {
+    defaultToolSlugs: DEFAULT_LEARNING_TOOL_SLUGS,
+  },
   router: {
     defaultToolSlugs: ROUTER_TOOL_SLUGS,
   },
@@ -88,7 +98,13 @@ const TOOL_BUNDLES: Record<ToolProfile, ToolBundleDefinition> = {
 } as const satisfies Record<ToolProfile, ToolBundleDefinition>;
 
 export function toolProfileForAgentType(agentType: string | null | undefined): ToolProfile {
-  if (agentType === "planning" || agentType === "coding" || agentType === "manager" || agentType === "router") {
+  if (
+    agentType === "planning" ||
+    agentType === "coding" ||
+    agentType === "manager" ||
+    agentType === "learning" ||
+    agentType === "router"
+  ) {
     return agentType;
   }
   return "none";

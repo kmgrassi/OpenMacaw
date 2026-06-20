@@ -114,14 +114,16 @@ defmodule SymphonyElixir.Launcher.AgentStarter do
         with {:ok, base, resolution} <- resolve_launch_config(agent) do
           base =
             base
-            |> maybe_put("trace_id", launch_trace_id(launch_params))
+            |> inject_launch_params(launch_params)
             |> Map.put("resolved_execution_profile", profile)
 
           {:ok, base, resolution}
         end
 
       nil ->
-        resolve_launch_config(agent)
+        with {:ok, base, resolution} <- resolve_launch_config(agent) do
+          {:ok, inject_launch_params(base, launch_params), resolution}
+        end
     end
   end
 
@@ -224,10 +226,12 @@ defmodule SymphonyElixir.Launcher.AgentStarter do
 
   defp forwarded_execution_profile(_launch_params), do: nil
 
-  defp launch_trace_id(launch_params) do
-    launch_params
-    |> normalize_map()
-    |> Map.get("trace_id")
+  defp inject_launch_params(config, launch_params) do
+    normalized = normalize_map(launch_params)
+
+    config
+    |> maybe_put("trace_id", Map.get(normalized, "trace_id"))
+    |> maybe_put("skills_snapshot", Map.get(normalized, "skills_snapshot") || Map.get(normalized, "skillsSnapshot"))
   end
 
   defp normalize_execution_profile_keys(profile) when is_map(profile) do

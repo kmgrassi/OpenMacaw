@@ -39,6 +39,10 @@ defmodule SymphonyElixir.ToolRegistry do
     SymphonyElixir.ScheduledTask.Tools.Read
   ]
 
+  @learning_tools [
+    SymphonyElixir.Learning.Tools.AgentRunRead
+  ]
+
   @planner_tools [
     SymphonyElixir.Planner.Tools.PlanCreate,
     SymphonyElixir.Planner.Tools.PlanUpdate,
@@ -50,6 +54,7 @@ defmodule SymphonyElixir.ToolRegistry do
     SymphonyElixir.Planner.Tools.TaskSchedule,
     SymphonyElixir.Planner.Tools.AgentToolGrantCreate,
     SymphonyElixir.Planner.Tools.AgentToolGrantUpdate,
+    SymphonyElixir.Planner.Tools.SkillCreate,
     SymphonyElixir.Planner.Tools.TaskRead,
     SymphonyElixir.Planner.Tools.TaskStatus,
     SymphonyElixir.Planner.Tools.UpdateTrackerKind,
@@ -87,7 +92,7 @@ defmodule SymphonyElixir.ToolRegistry do
   @tools @manager_tools ++
            @planner_tools ++
            @scheduled_task_tools ++
-           @router_tools ++ @codex_tools ++ @default_modules ++ @universal_tools
+           @router_tools ++ @learning_tools ++ @codex_tools ++ @default_modules ++ @universal_tools
   @planning "planning"
   @read_only_turn_sandbox %{"type" => "readOnly", "networkAccess" => false}
   @planner_database_tools [
@@ -100,6 +105,7 @@ defmodule SymphonyElixir.ToolRegistry do
     "task.schedule",
     "agent_tool_grant.create",
     "agent_tool_grant.update",
+    "skill.create",
     "scheduled_task.create",
     "scheduled_task.read",
     "scheduled_task.update",
@@ -435,6 +441,7 @@ defmodule SymphonyElixir.ToolRegistry do
   defp allowed?(_name, _allowed), do: false
 
   defp tool_names_for_agent(@planning), do: planner_tool_names()
+  defp tool_names_for_agent("learning"), do: bundle(:learning)
   defp tool_names_for_agent(_kind), do: coding_tool_names()
 
   defp coding_tool_names, do: ["linear_graphql", "snooze_work_item"]

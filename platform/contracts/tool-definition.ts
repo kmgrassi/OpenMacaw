@@ -79,6 +79,7 @@ export const ToolDefinitionSchema = z.object({
 export const AgentToolBundleNameSchema = z.enum([
   ":planner",
   ":manager",
+  ":learning",
   ":coding",
   ":repo_read",
   ":repo_write",
@@ -87,6 +88,7 @@ export const AgentToolBundleNameSchema = z.enum([
 export const ToolBundleSlugSchema = z.enum([
   "planner",
   "manager",
+  "learning",
   "coding",
   "repo_read",
   "repo_write",
@@ -106,6 +108,7 @@ export const ToolBundleSchema = z.object({
 export const ToolPolicyTemplateSlugSchema = z.enum([
   "planner",
   "manager",
+  "learning",
   "coding",
   "repo_read",
   "repo_write",

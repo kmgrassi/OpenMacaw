@@ -1,7 +1,10 @@
 # Learning Sidecar Production Rollout
 
+> Superseded by
+> [`../active/learning-agent-redesign-scope.md`](../active/learning-agent-redesign-scope.md).
+
 Use this runbook for P5 of
-[`learning-sidecar-production-readiness-scope.md`](../active/learning-sidecar-production-readiness-scope.md).
+[`learning-sidecar-production-readiness-scope.md`](./learning-sidecar-production-readiness-scope.md).
 The application repo now defaults `workspace_settings.learning_enabled` to
 `false`; production rollout is opt-in per workspace.
 

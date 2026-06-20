@@ -15,14 +15,10 @@ import {
 import { assertWorkspaceMembership } from "./work-item-ingest.js";
 
 const LEARNING_KIND_BY_TASK_TYPE: Record<string, LearningCostKind> = {
-  learning_reflection: "reflection",
-  reflection: "reflection",
   learning_retrieval: "retrieval",
   retrieval: "retrieval",
   memory_search: "retrieval",
   "memory.search": "retrieval",
-  learning_distillation: "distillation",
-  distillation: "distillation",
 };
 
 function emptyTotals(): LearningCostTotals {

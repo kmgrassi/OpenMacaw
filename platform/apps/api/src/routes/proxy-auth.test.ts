@@ -109,6 +109,10 @@ describe("agent proxy auth", () => {
         ]);
       }
 
+      if (req.method === "GET" && url.pathname === "/rest/v1/skill") {
+        return json(res, 200, []);
+      }
+
       if (req.method === "GET" && url.pathname === "/rest/v1/routing_rule") {
         return json(res, 200, []);
       }
@@ -118,6 +122,10 @@ describe("agent proxy auth", () => {
       }
 
       if (req.method === "GET" && url.pathname === "/rest/v1/credential_alias") {
+        return json(res, 200, []);
+      }
+
+      if (req.method === "GET" && url.pathname === "/rest/v1/skill") {
         return json(res, 200, []);
       }
 

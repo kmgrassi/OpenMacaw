@@ -64,7 +64,7 @@ function resetTables() {
     {
       task_id: "task-1",
       run_id: runId,
-      type: "learning_reflection",
+      type: "memory.search",
       created_at: "2026-05-18T12:01:00.000Z",
       input_tokens: 120,
       output_tokens: 30,
@@ -136,7 +136,7 @@ describe("learning cost routes", () => {
         totalCost: 0.05,
       },
       aggregates: {
-        byKind: [{ kind: "reflection", taskCount: 1, runCount: 1 }],
+        byKind: [{ kind: "retrieval", taskCount: 1, runCount: 1 }],
         daily: [{ date: "2026-05-18", taskCount: 1, runCount: 1 }],
       },
     });

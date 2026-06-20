@@ -136,6 +136,7 @@ defmodule SymphonyElixir.Tools.GitRun do
   without shell-executing real `git`/`gh` — never drive auth-mutating or
   destructive commands through `execute/2` in tests.
   """
+  @spec authorize([String.t()]) :: :ok | {:error, {:command_blocked, :unsupported_executable, [String.t()]}}
   def authorize(["git" | _rest]), do: :ok
   def authorize(["gh" | _rest]), do: :ok
   def authorize(argv), do: {:error, {:command_blocked, :unsupported_executable, argv}}

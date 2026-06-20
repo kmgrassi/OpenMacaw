@@ -47,7 +47,7 @@ func main() {
 	case "status":
 		cmdStatus(os.Args[2:])
 	case "doctor":
-		cmdDoctor(os.Args[2:])
+		os.Exit(cmdDoctor(os.Args[2:]))
 	case "logout":
 		cmdLogout(os.Args[2:])
 	case "version", "--version", "-v":

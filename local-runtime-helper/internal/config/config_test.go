@@ -8,6 +8,12 @@ import (
 	"testing"
 )
 
+type failingWriter struct{}
+
+func (failingWriter) Write(_ []byte) (int, error) {
+	return 0, errors.New("boom")
+}
+
 const validConfig = `
 [machine]
 display_name = "kevin-mbp"
@@ -256,6 +262,21 @@ func TestWriteDoesNotChmodExistingParentDir(t *testing.T) {
 	}
 	if got := dirInfo.Mode().Perm(); got != 0o755 {
 		t.Fatalf("existing parent dir permissions = %v, want 0755", got)
+	}
+}
+
+func TestRenderRegistrationTOMLReturnsEncodeErrors(t *testing.T) {
+	_, err := renderRegistrationTOML(validRegistrationConfig())
+	if err != nil {
+		t.Fatalf("renderRegistrationTOML() unexpected error = %v", err)
+	}
+
+	err = writeRegistrationTOML(failingWriter{}, validRegistrationConfig())
+	if err == nil {
+		t.Fatal("writeRegistrationTOML() error = nil")
+	}
+	if !strings.Contains(err.Error(), "write registration TOML header") {
+		t.Fatalf("writeRegistrationTOML() error = %v", err)
 	}
 }
 

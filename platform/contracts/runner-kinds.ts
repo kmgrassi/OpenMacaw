@@ -4,7 +4,9 @@ type RunnerCapabilityRole =
   | "planning"
   | "coding"
   | "manager"
+  | "learning"
   | "router"
+  | "learning"
   | "custom";
 type RawRunnerRegistryEntry = {
   runnerFamily: string;
