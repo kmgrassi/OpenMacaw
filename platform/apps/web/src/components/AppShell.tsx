@@ -218,7 +218,7 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
   );
 
   return (
-    <div className="flex h-full bg-slate-950 text-slate-100">
+    <div className="flex h-dvh min-h-0 bg-slate-950 text-slate-100">
       {!focusMode && <div className="hidden md:block">{sidebar}</div>}
 
       {!focusMode && mobileOpen && (
@@ -233,8 +233,8 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-h-14 items-center justify-between border-b border-border bg-surface px-4 md:hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="flex min-h-14 shrink-0 items-center justify-between border-b border-border bg-surface px-4 md:hidden">
           <Button
             onClick={() => setMobileOpen(true)}
             variant="ghost"
@@ -249,9 +249,9 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
             <span className="truncate">OpenMacaw</span>
           </div>
         </div>
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <WorkspaceAgentHealthBanner agents={agents} />
-          {children}
+          <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
         </main>
       </div>
     </div>
