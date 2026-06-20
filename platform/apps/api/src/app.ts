@@ -34,6 +34,7 @@ import { registerProviderCutoverRoutes } from "./routes/provider-cutovers.js";
 import { registerResourceCredentialRoutes } from "./routes/resource-credentials.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerScheduledTaskRoutes } from "./routes/scheduled-tasks.js";
+import { registerSkillRoutes } from "./routes/skills.js";
 import { registerWorkspaceSettingsRoutes } from "./routes/workspace-settings.js";
 import { registerLocalDirectoryRoutes } from "./routes/local-directory.js";
 import { registerLocalModelsRoutes } from "./routes/local-models.js";
@@ -116,6 +117,7 @@ export function createApp(config: ApiConfig) {
   registerProviderFailureRoutes(app);
   registerPlanRoutes(app, config, launcherRequest);
   registerScheduledTaskRoutes(app);
+  registerSkillRoutes(app);
   registerMemoryItemRoutes(app);
   registerAgentObservationRoutes(app, launcherClient);
   registerProxyRoutes(app, launcherClient, launcherRequest, config.orchestratorRequestTimeoutMs);

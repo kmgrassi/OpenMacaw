@@ -172,6 +172,23 @@ export const ROUTES = {
     const query = params.toString();
     return `${WORKSPACES_PREFIX}/${encodeURIComponent(workspaceId)}/memory-items${query ? `?${query}` : ""}`;
   },
+  workspaceSkills: (
+    workspaceId: string,
+    filters: {
+      agentId?: string;
+      status?: string;
+      limit?: number;
+    } = {},
+  ) => {
+    const params = new URLSearchParams();
+    if (filters.agentId) params.set("agentId", filters.agentId);
+    if (filters.status) params.set("status", filters.status);
+    if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+    const query = params.toString();
+    return `${WORKSPACES_PREFIX}/${encodeURIComponent(workspaceId)}/skills${query ? `?${query}` : ""}`;
+  },
+  workspaceSkill: (workspaceId: string, skillId: string) =>
+    `${WORKSPACES_PREFIX}/${encodeURIComponent(workspaceId)}/skills/${encodeURIComponent(skillId)}`,
   scheduledTaskCancel: (
     workspaceId: string,
     scheduledTaskId: string,
