@@ -69,6 +69,7 @@ describe("agent repository", () => {
         name: "Agent",
         workspace_id: "workspace-1",
         type: "coding",
+        context: null,
         model_settings: {},
         tool_policy: {},
       },
@@ -79,7 +80,7 @@ describe("agent repository", () => {
     await expect(listStoredAgentRows()).resolves.toEqual(rows);
 
     expect(from).toHaveBeenCalledWith("agent");
-    expect(builder.select).toHaveBeenCalledWith("id,name,workspace_id,type,model_settings,tool_policy");
+    expect(builder.select).toHaveBeenCalledWith("id,name,workspace_id,type,context,model_settings,tool_policy");
     expect(builder.order).toHaveBeenCalledWith("updated_at", { ascending: false });
   });
 
@@ -129,6 +130,7 @@ describe("agent repository", () => {
         name: "Agent",
         workspace_id: "workspace-1",
         type: "coding",
+        context: null,
         model_settings: {},
         tool_policy: {},
       },
@@ -188,6 +190,7 @@ describe("agent repository", () => {
       name: "Agent",
       status: "draft",
       type: "coding",
+      context: null,
       model_settings: { model: "gpt-5" },
       tool_policy: {},
       created_by_user_id: "user-1",

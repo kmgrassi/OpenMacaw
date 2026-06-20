@@ -135,13 +135,29 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   def requires_workspace?, do: false
 
   defp runtime_prompt(config) do
-    case agent_type(config) do
-      "manager" ->
-        ManagerPrompt.load!() <>
-          "\n\nCurrent time: #{DateTime.utc_now() |> DateTime.to_iso8601()}. Workspace timezone: Etc/UTC. When a user asks to pause or defer a work_item to a specific time, call snooze with until set to the resolved absolute ISO timestamp."
+    base =
+      case agent_type(config) do
+        "manager" ->
+          ManagerPrompt.load!() <>
+            "\n\nCurrent time: #{DateTime.utc_now() |> DateTime.to_iso8601()}. Workspace timezone: Etc/UTC. When a user asks to pause or defer a work_item to a specific time, call snooze with until set to the resolved absolute ISO timestamp."
 
-      _other ->
-        config_value(config, "prompt") || "You are a helpful agent. Use the available tools when needed."
+        _other ->
+          config_value(config, "prompt") || "You are a helpful agent. Use the available tools when needed."
+      end
+
+    append_agent_context(base, config)
+  end
+
+  defp append_agent_context(prompt, config) do
+    case config_value(config, "agent_context") do
+      context when is_binary(context) ->
+        case String.trim(context) do
+          "" -> prompt
+          trimmed -> prompt <> "\n\nAgent instructions:\n" <> trimmed
+        end
+
+      _ ->
+        prompt
     end
   end
 

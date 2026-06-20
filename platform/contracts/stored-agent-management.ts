@@ -24,6 +24,7 @@ export const StoredAgentCreateRequestSchema = z.object({
   workspaceId: z.string().trim().min(1),
   type: AgentTypeSchema,
   model: z.string().trim().min(1).nullable().optional(),
+  context: z.string().trim().max(20000).nullable().optional(),
   planningDestination: PlanningDestinationSchema.optional(),
   localModelCoding: LocalModelCodingConfigSchema.optional(),
   customTarget: CustomAgentTargetSchema.optional(),

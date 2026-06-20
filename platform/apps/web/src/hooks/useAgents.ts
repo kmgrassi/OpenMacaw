@@ -29,6 +29,7 @@ export function mapStoredAgentToAgent(
     agentType: storedAgent.agentType,
     model: storedAgent.model,
     provider: storedAgent.provider ?? null,
+    context: storedAgent.context ?? null,
     runnerKind: storedAgent.runnerKind ?? null,
     hasCredentials: storedAgent.hasCredentials ?? false,
     configurationStatus: storedAgent.configurationStatus ?? null,
@@ -62,6 +63,7 @@ function buildAgentUpdateInput(agent: Agent, patch: AgentPatch) {
     name: patch.name ?? agent.name,
     type: patch.type ?? agent.agentType,
     model: patch.model !== undefined ? patch.model : agent.model,
+    context: patch.context !== undefined ? patch.context : agent.context,
     planningDestination:
       patch.planningDestination ?? agent.planningDestination ?? "database",
     localModelCoding:

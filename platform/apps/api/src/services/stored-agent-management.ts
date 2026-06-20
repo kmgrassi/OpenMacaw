@@ -189,6 +189,7 @@ function toStoredAgent(input: {
     runnerKind: input.runnerKind ?? null,
     hasCredentials: input.hasCredentials,
     isResolved: input.isResolved,
+    context: input.row.context?.trim() || null,
     planningDestination: extractPlanningDestination(input.row.tool_policy),
     localModelCoding: extractLocalModelCodingConfig(input.row.tool_policy),
     customTarget: agentType === "custom" ? extractCustomTarget(input.gatewayConfig) : null,
@@ -346,6 +347,7 @@ export async function createStoredAgentFromApi(input: {
     userId: input.userId,
     name: input.body.name.trim(),
     type: input.body.type,
+    context: input.body.context?.trim() || null,
     modelSettings: buildStoredAgentModelSettings(input.body),
     toolPolicy: buildStoredAgentToolPolicy(input.body),
   });
@@ -397,6 +399,7 @@ export async function updateStoredAgentFromApi(input: {
     agentId: input.agentId,
     name: input.body.name.trim(),
     type: input.body.type,
+    context: input.body.context?.trim() || null,
     modelSettings: buildStoredAgentModelSettings(input.body),
     toolPolicy: buildStoredAgentToolPolicy(input.body, existing.tool_policy),
   });

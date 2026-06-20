@@ -7,6 +7,7 @@ import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
 import { Input } from "../../ui/Input";
 import { Select } from "../../ui/Select";
+import { Textarea } from "../../ui/Textarea";
 import { SegmentedControl } from "../../ui/SegmentedControl";
 import { HostedModelSelect } from "../HostedModelSelect";
 import { AGENT_KIND_OPTIONS, PLANNING_DESTINATION_OPTIONS } from "./constants";
@@ -19,6 +20,8 @@ type AgentIdentityEditorProps = {
   setAgentType: (value: AgentType) => void;
   model: string;
   setModel: (value: string) => void;
+  context: string;
+  setContext: (value: string) => void;
   planningDestination: PlanningDestination;
   setPlanningDestination: (value: PlanningDestination) => void;
   customBackendType: string;
@@ -40,6 +43,8 @@ export function AgentIdentityEditor({
   setAgentType,
   model,
   setModel,
+  context,
+  setContext,
   planningDestination,
   setPlanningDestination,
   customBackendType,
@@ -56,6 +61,7 @@ export function AgentIdentityEditor({
     setName(agent.name);
     setAgentType(agent.agentType);
     setModel(agent.model ?? "");
+    setContext(agent.context ?? "");
     setPlanningDestination(agent.planningDestination ?? "database");
     setCustomBackendType(agent.customTarget?.backendType ?? "openclaw_ws");
     setCustomBaseUrl(agent.customTarget?.baseUrl ?? "ws://127.0.0.1:7788");
@@ -80,6 +86,14 @@ export function AgentIdentityEditor({
             onChange={setModel}
           />
         </div>
+
+        <Textarea
+          label="Context"
+          value={context}
+          onChange={(event) => setContext(event.target.value)}
+          placeholder="Standing instructions or background added to this agent's system prompt on every message."
+          rows={5}
+        />
 
         <SegmentedControl
           label="Agent type"

@@ -12,6 +12,7 @@ function agent(overrides: Partial<AgentRow> & Pick<AgentRow, "id">): AgentRow {
     name: "Agent",
     status: "paused",
     type: "planning",
+    context: null,
     model_settings: {},
     tool_policy: {},
     created_by_user_id: "user-1",

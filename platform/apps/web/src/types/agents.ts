@@ -21,6 +21,7 @@ export type Agent = {
   agentType: AgentType;
   model: string | null;
   provider: string | null;
+  context: string | null;
   runnerKind: string | null;
   hasCredentials: boolean;
   configurationStatus: StoredAgentConfigurationStatus | null;

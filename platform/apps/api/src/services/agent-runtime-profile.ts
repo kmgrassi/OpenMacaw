@@ -181,6 +181,7 @@ async function updateAgentPrimaryModel(input: {
     agentId: input.agentId,
     name: input.existing.name?.trim() || input.agentId,
     type: input.existing.type ?? "coding",
+    context: input.existing.context ?? null,
     modelSettings: nextSettings,
     toolPolicy: ToolPolicySchema.parse(input.existing.tool_policy),
   });

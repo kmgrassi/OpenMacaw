@@ -69,6 +69,7 @@ function defaultCodingAgent(): StoredAgent {
     agentType: "coding",
     model: "openai/gpt-5.2",
     provider: "openai",
+    context: null,
     runnerKind: "codex",
     hasCredentials: false,
     isResolved: true,

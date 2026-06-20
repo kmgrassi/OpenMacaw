@@ -83,6 +83,7 @@ function agent(workspace = workspaceId) {
     name: "Coding Agent",
     status: "ready",
     type: "coding" as const,
+    context: null,
     model_settings: {},
     tool_policy: {},
     created_by_user_id: userId,

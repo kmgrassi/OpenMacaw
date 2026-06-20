@@ -30,6 +30,42 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionTest do
     assert :ok = Manager.stop_session(session)
   end
 
+  test "appends agent context to the system prompt when provided" do
+    assert {:ok, session} =
+             Manager.start_session(
+               %{
+                 "api_key" => "test-key",
+                 "credential_id" => "cred-1",
+                 "workspace_id" => "workspace-1",
+                 "model" => "gpt-test",
+                 "agent_context" => "Always answer in French."
+               },
+               nil
+             )
+
+    assert session.prompt =~ "manager agent"
+    assert session.prompt =~ "Agent instructions:\nAlways answer in French."
+
+    assert :ok = Manager.stop_session(session)
+  end
+
+  test "omits the agent instructions section when no context is provided" do
+    assert {:ok, session} =
+             Manager.start_session(
+               %{
+                 "api_key" => "test-key",
+                 "credential_id" => "cred-1",
+                 "workspace_id" => "workspace-1",
+                 "model" => "gpt-test"
+               },
+               nil
+             )
+
+    refute session.prompt =~ "Agent instructions:"
+
+    assert :ok = Manager.stop_session(session)
+  end
+
   test "uses supplied effective grant definitions instead of manager role defaults" do
     test_pid = self()
 
