@@ -19,6 +19,7 @@ import {
 import { listRoutingRules, readRoutingRuleTool, updateRoutingRule } from "./database-tool-executor/routing-rules.js";
 import { readAgentRunTool } from "./database-tool-executor/agent-runs.js";
 import { executeSchemaAwareRows, queryFrom } from "./database-tool-executor/schema-aware-query.js";
+import { createSkill } from "./database-tool-executor/skills.js";
 import {
   asRecord,
   jsonOutput,
@@ -207,6 +208,9 @@ export async function executeDatabaseTool(
         }),
       };
     }
+
+    case "skill.create":
+      return createSkill(args, workspaceId, context);
 
     case "memory.create": {
       const agentId = context?.agentId?.trim() || "";

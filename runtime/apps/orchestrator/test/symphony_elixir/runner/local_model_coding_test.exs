@@ -80,6 +80,7 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
     assert workspace_system =~ "operating in workspace directory: " <> workspace
 
     assert Enum.map(tools, & &1["name"]) == [
+             "skill_create",
              "scheduled_task_list",
              "repo_list",
              "repo_read_file",
@@ -301,6 +302,7 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
 
     assert_receive {:provider_turn, _profile, _messages,
                     [
+                      %{"name" => "skill_create"},
                       %{"name" => "scheduled_task_list"},
                       %{"name" => "repo_list"},
                       %{"name" => "repo_read_file"},

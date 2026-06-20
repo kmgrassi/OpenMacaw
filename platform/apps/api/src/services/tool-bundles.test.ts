@@ -6,6 +6,7 @@ import {
   DEFAULT_CODING_TOOL_SLUGS,
   DEFAULT_MANAGER_TOOL_SLUGS,
   SCHEDULED_TASK_TOOL_SLUGS,
+  SKILL_TOOL_SLUGS,
   toolProfileForAgentType,
   toolSlugsForToolProfile,
 } from "./tool-bundles.js";
@@ -33,6 +34,7 @@ describe("tool bundles", () => {
       "plan.delete",
       "task.read",
       ...SCHEDULED_TASK_TOOL_SLUGS,
+      ...SKILL_TOOL_SLUGS,
       ...AGENT_TOOL_GRANT_TOOL_SLUGS,
     ]);
   });
@@ -60,6 +62,7 @@ describe("tool bundles", () => {
       "shell.exec",
       "apply_patch",
       ...SCHEDULED_TASK_TOOL_SLUGS,
+      ...SKILL_TOOL_SLUGS,
     ]);
   });
 });

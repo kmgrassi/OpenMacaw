@@ -121,6 +121,10 @@ describe("agent proxy auth", () => {
         return json(res, 200, []);
       }
 
+      if (req.method === "GET" && url.pathname === "/rest/v1/skill") {
+        return json(res, 200, []);
+      }
+
       if (req.method === "GET" && url.pathname === "/rest/v1/gateway_config") {
         return json(res, 200, [
           {
