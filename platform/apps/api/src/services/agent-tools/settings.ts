@@ -21,8 +21,7 @@ import {
   sortedTools,
   toolFromRow,
 } from "./mappers.js";
-import { MEMORY_SEARCH_TOOL } from "../learning/memory-tool.js";
-import { isLearningEnabledForAgent } from "../learning/settings.js";
+import { MEMORY_TOOLS } from "../learning/memory-tool.js";
 
 function grantSourceToResolvedSource(mode: "include" | "exclude") {
   return mode;
@@ -40,21 +39,15 @@ export async function getResolvedToolsForAgent(input: {
     workspaceId,
     supabase: getServiceRoleSupabase(),
   });
-  const learningEnabled = await isLearningEnabledForAgent({
-    agentId: input.agentId,
-    workspaceId,
-    supabase: getServiceRoleSupabase(),
-  });
-  const systemTools: ResolvedAgentTool[] = learningEnabled
-    ? [
-        {
-          ...MEMORY_SEARCH_TOOL,
-          workspaceId: null,
-          source: "system",
-          enabledForAgent: true,
-        } as ResolvedAgentTool,
-      ]
-    : [];
+  const systemTools: ResolvedAgentTool[] = MEMORY_TOOLS.map(
+    (tool) =>
+      ({
+        ...tool,
+        workspaceId: null,
+        source: "system",
+        enabledForAgent: true,
+      }) as ResolvedAgentTool,
+  );
 
   return {
     bundles: [],

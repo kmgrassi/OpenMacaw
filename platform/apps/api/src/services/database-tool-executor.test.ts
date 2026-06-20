@@ -207,14 +207,13 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     });
   });
 
-  it("executes memory.search only when learning is enabled for the runtime agent", async () => {
+  it("executes memory.search for the runtime agent without a learning gate", async () => {
     tables.agent = [
       {
         id: agentId,
         workspace_id: workspaceId,
       },
     ];
-    tables.workspaces = [{ id: workspaceId, settings: { learning: { enabled: true } } }];
     tables.memory_items = [
       {
         id: "55555555-5555-4555-8555-555555555555",
@@ -247,6 +246,65 @@ describe("executeDatabaseTool scheduled_task tools", () => {
           scope: "long_term",
         },
       ],
+    });
+  });
+
+  it("creates an agent-owned long-term memory for the runtime agent", async () => {
+    tables.workspaces = [{ id: workspaceId, settings: {} }];
+    tables.memory_items = [];
+
+    const result = await executeDatabaseTool(
+      scheduledTaskTool("memory.create"),
+      {
+        content: "Use pnpm validate before opening PRs.",
+        tags: { source: "tool" },
+        importance: 8,
+      },
+      { workspaceId, agentId, sessionId: "run-1" },
+    );
+
+    expect(result.status).toBe(201);
+    expect(JSON.parse(result.output)).toMatchObject({
+      memoryItem: {
+        workspaceId,
+        agentId,
+        scope: "long_term",
+        content: "Use pnpm validate before opening PRs.",
+        importance: 8,
+        sourceRunId: "run-1",
+      },
+    });
+    expect(tables.memory_items).toEqual([
+      expect.objectContaining({
+        workspace_id: workspaceId,
+        agent_id: agentId,
+        scope: "long_term",
+        content: "Use pnpm validate before opening PRs.",
+        tags: { source: "tool" },
+        importance: 8,
+        source_run_id: "run-1",
+      }),
+    ]);
+  });
+
+  it("creates workspace-visible memory when requested", async () => {
+    tables.workspaces = [{ id: workspaceId, settings: {} }];
+    tables.memory_items = [];
+
+    const result = await executeDatabaseTool(
+      scheduledTaskTool("memory.create"),
+      {
+        content: "The workspace uses pnpm.",
+        visibility: "workspace",
+      },
+      { workspaceId, agentId },
+    );
+
+    expect(result.status).toBe(201);
+    expect(tables.memory_items?.[0]).toMatchObject({
+      workspace_id: workspaceId,
+      agent_id: null,
+      content: "The workspace uses pnpm.",
     });
   });
 
@@ -308,15 +366,12 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     });
   });
 
-  it("rejects memory.search when learning is disabled", async () => {
-    tables.agent = [{ id: agentId, workspace_id: workspaceId, tool_policy: { learning: { enabled: true } } }];
-    tables.workspaces = [{ id: workspaceId, settings: { learning: { enabled: false } } }];
-
+  it("rejects memory.create without runtime agent context", async () => {
     await expect(
-      executeDatabaseTool(scheduledTaskTool("memory.search"), { query: "pnpm" }, { workspaceId, agentId }),
+      executeDatabaseTool(scheduledTaskTool("memory.create"), { content: "Remember this." }, { workspaceId }),
     ).rejects.toMatchObject({
-      status: 403,
-      code: "learning_disabled",
+      status: 400,
+      code: "runtime_context_required",
     });
   });
 
