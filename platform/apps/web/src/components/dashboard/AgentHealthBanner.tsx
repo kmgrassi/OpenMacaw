@@ -1,7 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { useAgentDiagnostic } from "../../api/use-agent-diagnostic";
+import {
+  type AgentDiagnosticFetchResult,
+  useAgentDiagnostic,
+} from "../../api/use-agent-diagnostic";
 import { Button } from "../ui/Button";
 import { LoadingState } from "../ui/LoadingState";
 import { StatusBanner } from "../ui/StatusBanner";
@@ -50,6 +53,10 @@ function describeMissing(key: string): string {
   return MISSING_DESCRIPTIONS[key] ?? `Missing: ${key}`;
 }
 
+function diagnosticProfileResolved(result: AgentDiagnosticFetchResult) {
+  return result.ok && (result.data?.executionProfile?.resolved ?? true);
+}
+
 export function AgentHealthBanner({
   agentId,
   workspaceId,
@@ -67,7 +74,7 @@ export function AgentHealthBanner({
     workspaceId,
   );
 
-  async function handleRecheck() {
+  async function handleRecheck(dismissOnSuccess = false) {
     if (isRechecking) return;
     setIsRechecking(true);
     setRecheckError(null);
@@ -79,14 +86,23 @@ export function AgentHealthBanner({
     const rejected = results.find(
       (result): result is PromiseRejectedResult => result.status === "rejected",
     );
+    const diagnosticResult = results[0];
+    const diagnosticError =
+      diagnosticResult.status === "fulfilled" && !diagnosticResult.value.ok
+        ? diagnosticResult.value.error
+        : null;
 
-    if (rejected) {
+    if (rejected || diagnosticError) {
+      const reason = diagnosticError ?? rejected?.reason;
       setRecheckError(
-        rejected.reason instanceof Error
-          ? rejected.reason.message
-          : String(rejected.reason),
+        reason instanceof Error ? reason.message : String(reason),
       );
-    } else if (onReconnect) {
+    } else if (
+      dismissOnSuccess &&
+      onReconnect &&
+      diagnosticResult.status === "fulfilled" &&
+      diagnosticProfileResolved(diagnosticResult.value)
+    ) {
       onDismiss?.();
     }
     setIsRechecking(false);
@@ -124,7 +140,7 @@ export function AgentHealthBanner({
             size="sm"
             variant="secondary"
             loading={isRechecking}
-            onClick={() => void handleRecheck()}
+            onClick={() => void handleRecheck(false)}
           >
             Retry diagnostic
           </Button>
@@ -225,7 +241,7 @@ export function AgentHealthBanner({
           {renderRawToggle}
           <button
             type="button"
-            onClick={() => void handleRecheck()}
+            onClick={() => void handleRecheck(false)}
             disabled={isRechecking}
             className="text-xs font-medium underline decoration-dotted underline-offset-2 hover:opacity-80"
           >
@@ -258,7 +274,7 @@ export function AgentHealthBanner({
             size="sm"
             variant="secondary"
             loading={isRechecking}
-            onClick={() => void handleRecheck()}
+            onClick={() => void handleRecheck(true)}
           >
             Re-check
           </Button>
