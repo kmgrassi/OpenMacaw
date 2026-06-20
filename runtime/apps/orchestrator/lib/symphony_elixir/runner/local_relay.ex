@@ -87,6 +87,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
 
     result =
       with {:ok, frame} <- dispatch_frame(session, prompt, work_item, correlation_id),
+           :ok <- log_request_context(context, frame),
            {:ok, helper} <- Readiness.lookup(session.workspace_id, session.target_runner_kind),
            :ok <- ensure_model_available(session, helper),
            :ok <- ensure_capabilities(session, helper) do
@@ -128,6 +129,10 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   defp cancel_relay_dispatch_on_error({:error, _reason} = result, correlation_id) do
     _ = Registry.cancel(correlation_id)
     result
+  end
+
+  defp log_request_context(context, frame) do
+    Observability.log_model_request_context_prepared(context, frame)
   end
 
   @impl true

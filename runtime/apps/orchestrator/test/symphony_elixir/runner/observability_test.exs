@@ -303,6 +303,51 @@ defmodule SymphonyElixir.Runner.ObservabilityTest do
            end)
   end
 
+  test "emits model request context summaries without raw message text by default" do
+    log =
+      capture_log(fn ->
+        Observability.log_model_request_context_prepared(
+          %{
+            provider: "local",
+            model: "qwen",
+            runner_kind: "local_relay",
+            trace_id: "trace-1",
+            workspace_id: "workspace-1",
+            agent_id: "agent-1",
+            run_id: "run-1"
+          },
+          %{
+            "type" => "dispatch",
+            "correlation_id" => "corr-1",
+            "target_runner_kind" => "openai_compatible",
+            "messages" => [
+              %{"role" => "system", "content" => "Base prompt\n\nAgent instructions:\nUse git."},
+              %{"role" => "user", "content" => "list PRs"}
+            ],
+            "tool_definitions" => [%{"name" => "git.run"}],
+            "provider_tool_specs" => [%{"function" => %{"name" => "git_run"}}]
+          }
+        )
+      end)
+
+    [entry] =
+      Regex.scan(~r/\{.*\}/, log)
+      |> Enum.map(fn [line] -> Jason.decode!(line) end)
+      |> Enum.filter(&(&1["event"] == "model_request_context_prepared"))
+
+    assert entry["provider"] == "local"
+    assert entry["model"] == "qwen"
+    assert entry["target_runner_kind"] == "openai_compatible"
+    assert entry["message_count"] == 2
+    assert entry["message_roles"] == ["system", "user"]
+    assert [%{"has_agent_instructions" => true}, %{"has_agent_instructions" => false}] = entry["message_context"]
+    assert entry["tool_definition_names"] == ["git.run"]
+    assert entry["provider_tool_names"] == ["git_run"]
+    refute Map.has_key?(entry, "raw_messages")
+    refute log =~ "Use git."
+    refute log =~ "list PRs"
+  end
+
   test "classifies tool policy denials and preserves execution metadata" do
     result = %{
       "success" => false,
