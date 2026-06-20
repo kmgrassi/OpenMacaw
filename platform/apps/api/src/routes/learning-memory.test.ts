@@ -44,7 +44,6 @@ describe("learning memory routes", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    delete process.env.LEARNING_SIDECAR_ENABLED;
     vi.mocked(assertWorkspaceMembership).mockResolvedValue(undefined);
 
     const app = express();
@@ -66,11 +65,21 @@ describe("learning memory routes", () => {
     await closeServer(server);
   });
 
-  it("returns learning memory status for a workspace", async () => {
+  it("reports learning enabled when the workspace has opted in", async () => {
     vi.mocked(getServiceRoleSupabase).mockReturnValue(
       createMockSupabaseClient({
         workspace_members: [{ workspace_id: workspaceId, user_id: userId }],
         workspaces: [],
+        workspace_settings: [
+          {
+            workspace_id: workspaceId,
+            learning_enabled: true,
+            tracker_kind: "database",
+            tracker_credential_id: null,
+            updated_at: "2026-04-25T00:00:00.000Z",
+            updated_by_user_id: null,
+          },
+        ],
         memory_items: [
           {
             id: "memory-1",
@@ -94,8 +103,44 @@ describe("learning memory routes", () => {
     });
   });
 
-  it("honors the learning sidecar kill switch", async () => {
-    process.env.LEARNING_SIDECAR_ENABLED = "false";
+  it("reports learning disabled when the workspace has not opted in", async () => {
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(
+      createMockSupabaseClient({
+        workspace_members: [{ workspace_id: workspaceId, user_id: userId }],
+        workspaces: [],
+        workspace_settings: [
+          {
+            workspace_id: workspaceId,
+            learning_enabled: false,
+            tracker_kind: "database",
+            tracker_credential_id: null,
+            updated_at: "2026-04-25T00:00:00.000Z",
+            updated_by_user_id: null,
+          },
+        ],
+        memory_items: [
+          {
+            id: "memory-1",
+            workspace_id: workspaceId,
+            is_deleted: false,
+            embedding: "[0.1,0.2]",
+          },
+        ],
+      }) as never,
+    );
+
+    const response = await fetch(`${baseUrl}/api/workspaces/${workspaceId}/learning/memory-status`, {
+      headers: { authorization: "Bearer test-token" },
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      learningEnabled: false,
+      hasEmbeddedMemories: true,
+    });
+  });
+
+  it("defaults learning to disabled when no workspace settings row exists", async () => {
     vi.mocked(getServiceRoleSupabase).mockReturnValue(
       createMockSupabaseClient({
         workspace_members: [{ workspace_id: workspaceId, user_id: userId }],
