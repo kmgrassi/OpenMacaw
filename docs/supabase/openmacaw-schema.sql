@@ -370,6 +370,30 @@ create table if not exists public.memory_items (
   primary key (id)
 );
 
+create table if not exists public.skill (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  agent_id uuid not null references public.agent(id) on delete cascade,
+  name text not null,
+  description text not null,
+  body text not null,
+  status text not null default 'draft',
+  copied_from_skill_id uuid references public.skill(id) on delete set null,
+  created_by_agent_id uuid references public.agent(id) on delete set null,
+  created_by_user_id uuid references public."user"(id) on delete set null,
+  source_run_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint skill_name_format check (
+    char_length(name) between 1 and 64
+    and name ~ '^[a-z0-9-]+$'
+    and name not in ('claude', 'anthropic')
+  ),
+  constraint skill_description_length check (char_length(description) between 1 and 1024),
+  constraint skill_body_nonempty check (char_length(body) > 0),
+  constraint skill_status_check check (status in ('draft', 'approved', 'archived'))
+);
+
 create table if not exists public.message (
   agent_id uuid,
   content text,
@@ -1240,6 +1264,10 @@ create index if not exists local_runtime_model_machine_idx on public.local_runti
 create unique index if not exists local_runtime_model_machine_runner_model_key on public.local_runtime_model (machine_id, runner_kind, model);
 create index if not exists local_runtime_token_machine_idx on public.local_runtime_token (machine_id);
 create index if not exists memory_items_workspace_idx on public.memory_items (workspace_id);
+create unique index if not exists skill_agent_name_key on public.skill (agent_id, name);
+create index if not exists skill_workspace_status_updated_idx on public.skill (workspace_id, status, updated_at desc);
+create index if not exists skill_workspace_agent_idx on public.skill (workspace_id, agent_id);
+create index if not exists skill_source_run_idx on public.skill (source_run_id) where source_run_id is not null;
 create index if not exists message_thread_created_idx on public.message (thread_id, created_at);
 create index if not exists plan_workspace_idx on public.plan (workspace_id);
 create unique index if not exists planning_profile_active_scope_key on public.planning_profile (scope_type, scope_id) where deleted_at is null and is_active = true;
@@ -1323,6 +1351,7 @@ begin
     'scheduled_task',
     'scheduled_task_run',
     'session_thread',
+    'skill',
     'task',
     'tool',
     'tool_call',
@@ -1769,6 +1798,7 @@ begin
     'scheduled_task',
     'scheduled_task_run',
     'session_thread',
+    'skill',
     'task',
     'tool',
     'tool_call',
