@@ -62,6 +62,14 @@ func TestHTTPChecksUseContextDeadline(t *testing.T) {
 	}
 }
 
+func TestCmdDoctorHelpReturnsSuccess(t *testing.T) {
+	t.Parallel()
+
+	if got := cmdDoctor([]string{"--help"}); got != 0 {
+		t.Fatalf("cmdDoctor(--help) = %d, want 0", got)
+	}
+}
+
 func TestCmdDoctorJSONOutput(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 

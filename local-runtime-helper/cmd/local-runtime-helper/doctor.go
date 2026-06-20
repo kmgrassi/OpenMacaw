@@ -41,6 +41,9 @@ func cmdDoctor(args []string) int {
 	timeout := fs.Duration("timeout", 3*time.Second, "timeout for network checks")
 	jsonOutput := fs.Bool("json", false, "emit machine-readable JSON")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		return 2
 	}
 
