@@ -18,6 +18,7 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
 
   @plan_table "plan"
   @work_item_table "work_items"
+  @skill_table "skill"
 
   @tools DatabaseToolSpecs.tool_names()
 
@@ -235,6 +236,19 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
     end
   end
 
+  def execute("skill.create", arguments, opts) do
+    with {:ok, args} <- Arguments.normalize_arguments(arguments),
+         {:ok, workspace_id} <- Arguments.workspace_id(args, opts),
+         {:ok, agent_id} <- Arguments.required_string(args, "agentId"),
+         {:ok, name} <- skill_name(args),
+         {:ok, description} <- bounded_required_string(args, "description", 1024),
+         {:ok, body} <- Arguments.required_string(args, "body"),
+         {:ok, _agent} <- read_agent_in_workspace(agent_id, workspace_id, opts),
+         {:ok, payload} <- skill_create_payload(args, workspace_id, agent_id, name, description, body, opts) do
+      create_row(@skill_table, payload, opts, "skill.create", args)
+    end
+  end
+
   def execute(tool, _arguments, _opts), do: {:error, {:unsupported_planner_tool, tool, @tools}}
 
   @spec tool_specs() :: [map()]
@@ -425,6 +439,53 @@ defmodule SymphonyElixir.Planner.DatabaseTools do
       nil -> if Keyword.get(opts, :required), do: {:error, {:missing_argument, "mode"}}, else: {:ok, "include"}
       _ -> {:error, {:invalid_argument, "mode", "must be include or exclude"}}
     end
+  end
+
+  defp skill_name(args) do
+    with {:ok, name} <- bounded_required_string(args, "name", 64) do
+      cond do
+        name in ["claude", "anthropic"] ->
+          {:error, {:invalid_argument, "name", "cannot be claude or anthropic"}}
+
+        Regex.match?(~r/^[a-z0-9-]+$/, name) ->
+          {:ok, name}
+
+        true ->
+          {:error, {:invalid_argument, "name", "must match ^[a-z0-9-]+$"}}
+      end
+    end
+  end
+
+  defp bounded_required_string(args, key, max_length) do
+    with {:ok, value} <- Arguments.required_string(args, key) do
+      if String.length(value) <= max_length do
+        {:ok, value}
+      else
+        {:error, {:invalid_argument, key, "must be at most #{max_length} characters"}}
+      end
+    end
+  end
+
+  defp skill_create_payload(args, workspace_id, agent_id, name, description, body, opts) do
+    payload =
+      %{
+        "workspace_id" => workspace_id,
+        "agent_id" => agent_id,
+        "name" => name,
+        "description" => description,
+        "body" => body,
+        "status" => "draft",
+        "copied_from_skill_id" => nil,
+        "created_by_agent_id" => Arguments.option_value(opts, :agent_id),
+        "created_by_user_id" => Arguments.option_value(opts, :user_id),
+        "source_run_id" => Arguments.option_value(opts, :session_id)
+      }
+      |> Map.reject(fn
+        {"copied_from_skill_id", _value} -> false
+        {_key, value} -> is_nil(value)
+      end)
+
+    {:ok, Arguments.put_optional_non_blank(payload, args, "source_run_id")}
   end
 
   defp read_agent_in_workspace(agent_id, workspace_id, opts) do
