@@ -2,8 +2,7 @@ import { LocalCodingToolSlugSchema } from "../../../../contracts/local-model-cod
 import { resolveAgentToolGrants, type GrantResolverToolRow } from "./agent-tool-grant-resolver.js";
 import type { ToolDefinition } from "./tool-spec-translator.js";
 import type { ApiSupabaseClient } from "../supabase-client.js";
-import { MEMORY_SEARCH_TOOL } from "./learning/memory-tool.js";
-import { isLearningEnabledForAgent } from "./learning/settings.js";
+import { MEMORY_TOOLS } from "./learning/memory-tool.js";
 
 export type LocalChatToolResolution = {
   tools: ToolDefinition[];
@@ -50,15 +49,12 @@ export async function getLocalChatToolResolutionForAgent(input: {
   workspaceId: string;
   supabase: ApiSupabaseClient;
 }): Promise<LocalChatToolResolution> {
-  const [resolution, learningEnabled] = await Promise.all([
-    resolveAgentToolGrants(input),
-    isLearningEnabledForAgent(input),
-  ]);
+  const resolution = await resolveAgentToolGrants(input);
 
   const resolvedTools = resolution.resolvedTools
     .filter((resolvedTool) => resolvedTool.enabledForAgent)
     .map((resolvedTool) => toolDefinitionFromRow(resolvedTool.tool));
-  const tools = learningEnabled ? [...resolvedTools, MEMORY_SEARCH_TOOL] : resolvedTools;
+  const tools = [...resolvedTools, ...MEMORY_TOOLS];
 
   return {
     tools: tools.filter((tool) => !isLocalModelCodingTool(tool)),

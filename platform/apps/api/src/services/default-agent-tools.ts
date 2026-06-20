@@ -5,7 +5,7 @@ import { logEvent } from "../logger.js";
 import { executeSupabaseRows, getServiceRoleSupabase, type ApiSupabaseClient } from "../supabase-client.js";
 import { toolProfileForAgentType, toolSlugsForToolProfile } from "./tool-bundles.js";
 
-type ToolPolicyTemplateSlug = "planner" | "manager" | "coding" | "local_model_coding" | "router";
+type ToolPolicyTemplateSlug = "planner" | "manager" | "learning" | "coding" | "local_model_coding" | "router";
 
 type ToolPolicyTemplateRow = {
   id: string;
@@ -47,8 +47,8 @@ function defaultTemplateSlugForAgent(input: {
   if (toolProfile === "coding" && localModelCodingEnabled) return "local_model_coding";
   if (toolProfile === "planning") return "planner";
   if (toolProfile === "coding") return "coding";
-  if (input.agentType === "learning") return "manager";
   if (toolProfile === "manager") return "manager";
+  if (toolProfile === "learning") return "learning";
   if (toolProfile === "router") return "router";
   return null;
 }

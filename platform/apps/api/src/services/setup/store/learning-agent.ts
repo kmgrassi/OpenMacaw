@@ -1,12 +1,14 @@
 import { getServiceRoleSupabase, getUserScopedSupabase, normalizeSupabaseError } from "../../../supabase-client.js";
 import { ensureDefaultAgentToolsForAgent } from "../../default-agent-tools.js";
 import { computeScheduledTaskNextRunAt } from "../../scheduled-tasks.js";
-import { asJson, buildModelSettings, managerToolPolicyDefaults } from "../builders.js";
+import { asJson, buildModelSettings, learningToolPolicyDefaults } from "../builders.js";
 import { getSetupDefaults } from "../defaults.js";
 import { workspaceLearningAgentId, workspaceLearningMetaAgentTaskId } from "../identity.js";
 import type { AgentRow } from "../types.js";
 import { pickClaimableAgent, requireAgentRow } from "./agent-row-helpers.js";
 import { DEFAULT_AGENT_SELECT } from "./selects.js";
+
+export const LEARNING_AGENT_NAME = "Learning Agent";
 
 const LEARNING_TASK_KIND = "learning_meta_agent_daily_review";
 const LEGACY_LEARNING_TASK_KINDS = new Set(["learning_distillation", "learning_operability_remediation"]);
@@ -27,6 +29,7 @@ const LEARNING_TASK_DELIVERY = {
 
 export const DEFAULT_LEARNING_AGENT_INSTRUCTIONS = [
   "Review the transcript sample attached to this scheduled message.",
+  "Use agent_run.read when you need more context than the attached transcript sample provides.",
   "Identify durable facts worth remembering, reusable procedures or corrections, and bugs or operability defects.",
   "Report concrete suggested memory, skill, or planning-agent follow-up actions in your response.",
   "Do not claim to have persisted memory, created skills, or handed off work unless a tool call succeeds.",
@@ -45,15 +48,25 @@ async function findClaimableWorkspaceLearningAgent(accessToken: string, workspac
   return pickClaimableAgent(data as AgentRow[]);
 }
 
+function hasPrimaryModelSettings(agent: AgentRow) {
+  const settings = agent.model_settings;
+  if (!settings || typeof settings !== "object" || Array.isArray(settings)) return false;
+  const primary = (settings as Record<string, unknown>).primary;
+  return typeof primary === "string" && primary.trim().length > 0;
+}
+
 async function updateWorkspaceLearningAgent(accessToken: string, agent: AgentRow, userId: string) {
   const setupDefaults = getSetupDefaults();
+  const nextModelSettings = hasPrimaryModelSettings(agent)
+    ? agent.model_settings
+    : asJson(buildModelSettings(setupDefaults.managerModel));
   const { data, error } = await getUserScopedSupabase(accessToken)
     .from("agent")
     .update({
-      name: agent.name?.trim() ? agent.name : "Learning Agent",
+      name: agent.name?.trim() ? agent.name : LEARNING_AGENT_NAME,
       status: setupDefaults.agentStatus,
-      model_settings: agent.model_settings ?? asJson(buildModelSettings(setupDefaults.managerModel)),
-      tool_policy: asJson(managerToolPolicyDefaults()),
+      model_settings: nextModelSettings,
+      tool_policy: asJson(learningToolPolicyDefaults()),
       created_by_user_id: agent.created_by_user_id ?? userId,
     })
     .eq("id", agent.id)
@@ -76,11 +89,11 @@ async function createWorkspaceLearningAgent(accessToken: string, workspaceId: st
         id: workspaceLearningAgentId(workspaceId),
         workspace_id: workspaceId,
         created_by_user_id: userId,
-        name: "Learning Agent",
+        name: LEARNING_AGENT_NAME,
         type: "learning",
         status: setupDefaults.agentStatus,
         model_settings: asJson(buildModelSettings(setupDefaults.managerModel)),
-        tool_policy: asJson(managerToolPolicyDefaults()),
+        tool_policy: asJson(learningToolPolicyDefaults()),
       },
       { onConflict: "id" },
     )
@@ -107,13 +120,16 @@ async function ensureWorkspaceLearningAgentWithServiceRole(input: { workspaceId:
   if (existingError) throw normalizeSupabaseError("agent query", existingError);
   const existingAgent = pickClaimableAgent(existingRows as AgentRow[]);
   if (existingAgent) {
+    const nextModelSettings = hasPrimaryModelSettings(existingAgent)
+      ? existingAgent.model_settings
+      : asJson(buildModelSettings(setupDefaults.managerModel));
     const { data, error } = await supabase
       .from("agent")
       .update({
-        name: existingAgent.name?.trim() ? existingAgent.name : "Learning Agent",
+        name: existingAgent.name?.trim() ? existingAgent.name : LEARNING_AGENT_NAME,
         status: setupDefaults.agentStatus,
-        model_settings: existingAgent.model_settings ?? asJson(buildModelSettings(setupDefaults.managerModel)),
-        tool_policy: asJson(managerToolPolicyDefaults()),
+        model_settings: nextModelSettings,
+        tool_policy: asJson(learningToolPolicyDefaults()),
         created_by_user_id: existingAgent.created_by_user_id ?? input.userId,
       })
       .eq("id", existingAgent.id)
@@ -134,11 +150,11 @@ async function ensureWorkspaceLearningAgentWithServiceRole(input: { workspaceId:
         id: workspaceLearningAgentId(input.workspaceId),
         workspace_id: input.workspaceId,
         created_by_user_id: input.userId,
-        name: "Learning Agent",
+        name: LEARNING_AGENT_NAME,
         type: "learning",
         status: setupDefaults.agentStatus,
         model_settings: asJson(buildModelSettings(setupDefaults.managerModel)),
-        tool_policy: asJson(managerToolPolicyDefaults()),
+        tool_policy: asJson(learningToolPolicyDefaults()),
       },
       { onConflict: "id" },
     )
@@ -257,24 +273,18 @@ export async function ensureLearningMetaAgentScheduledTask(input: {
 
 export async function ensureWorkspaceLearningAgent(accessToken: string, workspaceId: string, userId: string) {
   const claimableAgent = await findClaimableWorkspaceLearningAgent(accessToken, workspaceId);
-  const agent = claimableAgent
+  const learningAgent = claimableAgent
     ? await updateWorkspaceLearningAgent(accessToken, claimableAgent, userId)
     : await createWorkspaceLearningAgent(accessToken, workspaceId, userId);
 
   await ensureDefaultAgentToolsForAgent({
-    agentId: agent.id,
-    workspaceId: agent.workspace_id,
-    agentType: agent.type,
+    agentId: learningAgent.id,
+    workspaceId: learningAgent.workspace_id,
+    agentType: learningAgent.type,
     userId,
   });
 
-  await ensureLearningMetaAgentScheduledTask({
-    workspaceId,
-    userId,
-    agentId: agent.id,
-  });
-
-  return agent;
+  return learningAgent;
 }
 
 export async function ensureLearningMetaAgentScheduleForWorkspace(input: {

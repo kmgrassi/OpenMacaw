@@ -68,6 +68,7 @@ type SetupTestDatabase = {
   gatewayConfigs: Array<Record<string, unknown>>;
   gatewayConfigVersions: Array<Record<string, unknown>>;
   gatewayConfigStates: Array<Record<string, unknown>>;
+  skills: Array<Record<string, unknown>>;
   engineInstances: EngineRow[];
 };
 
@@ -200,6 +201,7 @@ function createTestDatabase(): SetupTestDatabase {
     gatewayConfigs: [],
     gatewayConfigVersions: [],
     gatewayConfigStates: [],
+    skills: [],
     engineInstances: [],
   };
 }
@@ -301,6 +303,18 @@ async function startSupabaseServer(db: SetupTestDatabase): Promise<ServerBundle>
       const agentId = url.searchParams.get("agent_id")?.replace(/^eq\./, "");
       const rows = agentId ? db.credentials.filter((credential) => credential.agent_id === agentId) : db.credentials;
       postgrestJson(req, res, 200, rows);
+      return;
+    }
+
+    if (url.pathname === "/rest/v1/skill" && req.method === "GET") {
+      const agentId = url.searchParams.get("agent_id")?.replace(/^eq\./, "");
+      const workspaceId = url.searchParams.get("workspace_id")?.replace(/^eq\./, "");
+      const status = url.searchParams.get("status")?.replace(/^eq\./, "");
+      let rows = db.skills;
+      if (agentId) rows = rows.filter((skill) => skill.agent_id === agentId);
+      if (workspaceId) rows = rows.filter((skill) => skill.workspace_id === workspaceId);
+      if (status) rows = rows.filter((skill) => skill.status === status);
+      postgrestJson(req, res, 200, applyLimit(rows, url));
       return;
     }
 

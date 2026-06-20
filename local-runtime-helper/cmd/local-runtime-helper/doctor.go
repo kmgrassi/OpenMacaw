@@ -34,12 +34,18 @@ type doctorJSONOutput struct {
 	Checks []doctorJSONResult `json:"checks"`
 }
 
-func cmdDoctor(args []string) {
-	fs := flag.NewFlagSet("doctor", flag.ExitOnError)
+func cmdDoctor(args []string) int {
+	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
 	configPath := fs.String("config", defaultConfigPath, "path to runtime.toml")
 	timeout := fs.Duration("timeout", 3*time.Second, "timeout for network checks")
 	jsonOutput := fs.Bool("json", false, "emit machine-readable JSON")
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
@@ -91,13 +97,14 @@ func cmdDoctor(args []string) {
 		data, err := json.MarshalIndent(doctorJSONOutput{Status: status, Checks: jsonResults}, "", "  ")
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "doctor: encode json: %v\n", err)
-			os.Exit(1)
+			return 1
 		}
 		fmt.Println(string(data))
 	}
 	if failed {
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 func checkManagedService(ctx context.Context) checkResult {

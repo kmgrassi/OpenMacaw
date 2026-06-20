@@ -5,7 +5,8 @@ import { deletePlanForWorkspace } from "./workspace-plans.js";
 import type { ToolDefinition } from "./tool-spec-translator.js";
 import type { ToolExecutionContext } from "./tool-execution-client.js";
 import { memoryResultTokenCount, retrieveRelevantMemories } from "./learning/memory-retriever.js";
-import { isLearningEnabledForAgent } from "./learning/settings.js";
+import { insertMemoryItem } from "../repositories/memory-items.js";
+import { MemoryScopeSchema } from "../../../../contracts/memory-items.js";
 import { appendToolExamples } from "./database-tool-executor/tool-examples.js";
 import { createAgentToolGrant, updateAgentToolGrant } from "./database-tool-executor/agent-tool-grants.js";
 import {
@@ -16,6 +17,7 @@ import {
   updateScheduledTask,
 } from "./database-tool-executor/scheduled-tasks.js";
 import { listRoutingRules, readRoutingRuleTool, updateRoutingRule } from "./database-tool-executor/routing-rules.js";
+import { readAgentRunTool } from "./database-tool-executor/agent-runs.js";
 import { executeSchemaAwareRows, queryFrom } from "./database-tool-executor/schema-aware-query.js";
 import {
   asRecord,
@@ -174,17 +176,12 @@ export async function executeDatabaseTool(
       return { status: 200, output: jsonOutput({ providerFailures }) };
     }
 
+    case "agent_run.read":
+      return readAgentRunTool(args, workspaceId, context);
+
     case "memory.search": {
       const agentId = context?.agentId?.trim() || "";
       if (!agentId) throw new ApiRouteError(400, "runtime_context_required", "agent_id is required in runtime context");
-      const learningEnabled = await isLearningEnabledForAgent({
-        agentId,
-        workspaceId,
-        supabase: getServiceRoleSupabase(),
-      });
-      if (!learningEnabled) {
-        throw new ApiRouteError(403, "learning_disabled", "Workspace learning is not enabled for this agent");
-      }
       const query = stringArg(args, "query");
       if (!query) throw new ApiRouteError(400, "invalid_tool_arguments", "query is required");
       const scope = stringArg(args, "scope") || undefined;
@@ -209,6 +206,36 @@ export async function executeDatabaseTool(
           embeddingUsed: retrieval.embeddingUsed,
         }),
       };
+    }
+
+    case "memory.create": {
+      const agentId = context?.agentId?.trim() || "";
+      if (!agentId) throw new ApiRouteError(400, "runtime_context_required", "agent_id is required in runtime context");
+      const content = stringArg(args, "content");
+      if (!content) throw new ApiRouteError(400, "invalid_tool_arguments", "content is required");
+      const visibility = stringArg(args, "visibility");
+      if (visibility && visibility !== "agent" && visibility !== "workspace") {
+        throw new ApiRouteError(400, "invalid_tool_arguments", "visibility must be agent or workspace");
+      }
+      const scopeResult = MemoryScopeSchema.safeParse(stringArg(args, "scope") || "long_term");
+      if (!scopeResult.success) {
+        throw new ApiRouteError(400, "invalid_tool_arguments", "scope is not a supported memory scope");
+      }
+      const memoryItem = await insertMemoryItem({
+        workspaceId,
+        agentId: visibility === "workspace" ? null : agentId,
+        scope: scopeResult.data,
+        content,
+        tags: asRecord(args.tags),
+        importance: optionalPositiveInteger(args, "importance", 5, 10),
+        eventTime: stringArg(args, "event_time") || undefined,
+        sourceRunId: context?.sessionId ?? null,
+        sourceTaskId: stringArg(args, "source_task_id") || undefined,
+        sourcePath: stringArg(args, "source_path") || undefined,
+        canonicalId: stringArg(args, "canonical_id") || undefined,
+        supersedesId: stringArg(args, "supersedes_id") || undefined,
+      });
+      return { status: 201, output: jsonOutput({ memoryItem }) };
     }
 
     case "tool_examples.append":

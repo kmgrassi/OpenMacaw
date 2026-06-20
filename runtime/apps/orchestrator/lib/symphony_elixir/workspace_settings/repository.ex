@@ -5,8 +5,8 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
   `20260518160000_create_workspace_settings_table.sql`).
 
   Service-role PostgREST client — bypasses RLS, which is intentional:
-  the runtime needs to read these settings even when no user is in the
-  request context.
+  runtime scheduled jobs may need to read these settings even when no
+  user is in the request context.
 
   ## Default-off, opt-in
 
@@ -17,8 +17,8 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
   ## Fail-open on transient errors
 
   When the read fails (Supabase unreachable, schema not ready, etc.),
-  `learning_enabled?/2` returns `{:error, reason}`. Callers should
-  decide whether to fall open or closed.
+  `learning_enabled?/2` returns `{:error, reason}`. Callers decide
+  whether to fall open or closed for their workflow.
   """
 
   alias SymphonyElixir.{PostgRESTClient, Supabase, SupabaseSchema, Time}

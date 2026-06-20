@@ -5,6 +5,7 @@ defmodule SymphonyElixir.ScheduledTask.Delivery do
 
     * `scheduled_agent_message` — the existing path: post the row's
       `instructions` through `ChatGateway` to drive an agent run.
+
   Unknown kinds return `{:error, :unsupported_delivery_kind}` so the
   scheduler marks the run as failed and logs the warning rather than
   silently dropping the row (matches the existing `validate_delivery/1`

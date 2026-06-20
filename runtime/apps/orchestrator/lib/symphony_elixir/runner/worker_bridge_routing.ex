@@ -70,6 +70,7 @@ defmodule SymphonyElixir.Runner.WorkerBridgeRouting do
       "execution_target" => execution_target(config),
       "execution_profile" => config_value(config, "execution_profile"),
       "dispatch_metadata" => dispatch_metadata(config),
+      "skills_snapshot" => config_value(config, "skills_snapshot") || config_value(config, "skillsSnapshot"),
       "runner_config" => sanitize_runner_config(config),
       "run_id" => config_value(config, "run_id"),
       "session_id" => config_value(config, "session_id")
@@ -151,6 +152,8 @@ defmodule SymphonyElixir.Runner.WorkerBridgeRouting do
   defp atom_key("adapter_config"), do: :adapter_config
   defp atom_key("run_id"), do: :run_id
   defp atom_key("session_id"), do: :session_id
+  defp atom_key("skills_snapshot"), do: :skills_snapshot
+  defp atom_key("skillsSnapshot"), do: :skills_snapshot
   defp atom_key("on_message"), do: :on_message
   defp atom_key("trace_id"), do: :trace_id
   defp atom_key(_key), do: nil

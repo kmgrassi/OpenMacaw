@@ -206,7 +206,7 @@ function isUserVisibleScheduledTaskRow(row: ScheduledTaskRow) {
   return true;
 }
 
-function fallbackScheduledTaskTitle() {
+function fallbackScheduledTaskTitle(_row: ScheduledTaskRow) {
   return "Scheduled task";
 }
 
@@ -218,7 +218,7 @@ function mapScheduledTaskRow(row: ScheduledTaskRow): ScheduledTaskProjection {
     agentId: row.agent_id,
     sourceWorkItemId: row.source_work_item_id,
     createdByUserId: row.created_by_user_id,
-    title: row.title ?? fallbackScheduledTaskTitle(),
+    title: row.title ?? fallbackScheduledTaskTitle(row),
     instructions: row.instructions ?? "",
     enabled: row.enabled,
     schedule: normalizeScheduledTaskSchedule(row.schedule),
@@ -502,8 +502,7 @@ export async function dispatchScheduledTaskForWorkspace(params: {
 export type ScheduledTaskDeliveryDispatchResult = { kind: "scheduled_agent_message"; status: "not_handled" };
 
 export async function dispatchScheduledTaskDelivery(
-  scheduledTask: ScheduledTaskProjection,
+  _scheduledTask: ScheduledTaskProjection,
 ): Promise<ScheduledTaskDeliveryDispatchResult> {
-  void scheduledTask;
   return { kind: "scheduled_agent_message", status: "not_handled" };
 }

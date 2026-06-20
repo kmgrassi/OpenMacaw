@@ -1,8 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ScheduledTaskProjection } from "../../../../contracts/scheduled-tasks.js";
 import { computeScheduledTaskNextRunAt } from "./scheduled-tasks/schedule-calculator.js";
 import { dispatchScheduledTaskDelivery } from "./scheduled-tasks.js";
+
+const { logEvent } = vi.hoisted(() => ({
+  logEvent: vi.fn(),
+}));
+vi.mock("../logger.js", () => ({
+  logEvent: (event: unknown) => logEvent(event),
+}));
 
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const agentId = "22222222-2222-4222-8222-222222222222";
@@ -31,6 +38,10 @@ function scheduledTask(delivery: ScheduledTaskProjection["delivery"]): Scheduled
 }
 
 describe("computeScheduledTaskNextRunAt", () => {
+  beforeEach(() => {
+    logEvent.mockReset();
+  });
+
   it("computes an hourly schedule from the current instant", () => {
     expect(
       computeScheduledTaskNextRunAt(
@@ -83,11 +94,16 @@ describe("computeScheduledTaskNextRunAt", () => {
 });
 
 describe("dispatchScheduledTaskDelivery", () => {
+  beforeEach(() => {
+    logEvent.mockReset();
+  });
+
   it("routes scheduled agent messages to the existing delivery path", async () => {
     await expect(
       dispatchScheduledTaskDelivery(
         scheduledTask({ kind: "scheduled_agent_message", sessionStrategy: "scheduled_task" }),
       ),
     ).resolves.toEqual({ kind: "scheduled_agent_message", status: "not_handled" });
+    expect(logEvent).not.toHaveBeenCalled();
   });
 });

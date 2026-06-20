@@ -20,7 +20,7 @@ function task(overrides: Partial<LearningBrokerTaskRow> = {}): LearningBrokerTas
   return {
     task_id: "task-1",
     run_id: "run-1",
-    type: "learning_reflection",
+    type: "memory.search",
     created_at: createdAt,
     input_tokens: 100,
     output_tokens: 25,
@@ -43,7 +43,6 @@ describe("rollupLearningCost", () => {
         run({ run_id: "run-2", metadata: { cost_usd: 0.02 } }),
       ],
       tasks: [
-        task({ task_id: "reflection-1", run_id: "run-1", type: "learning_reflection" }),
         task({
           task_id: "retrieval-1",
           run_id: "run-1",
@@ -53,37 +52,25 @@ describe("rollupLearningCost", () => {
           total_tokens: 15,
           last_event: JSON.stringify({ usage: { total_cost: 0.001 } }),
         }),
-        task({
-          task_id: "distillation-1",
-          run_id: "run-2",
-          type: "learning_distillation",
-          input_tokens: 200,
-          output_tokens: 80,
-          total_tokens: 280,
-        }),
       ],
     });
 
     expect(result).toMatchObject({
       updatedAt: Date.parse("2026-05-18T15:00:00.000Z"),
       totals: {
-        inputTokens: 312,
-        outputTokens: 108,
-        totalTokens: 420,
-        totalCost: 0.031,
+        inputTokens: 12,
+        outputTokens: 3,
+        totalTokens: 15,
+        totalCost: 0.001,
       },
       aggregates: {
-        byKind: [
-          { kind: "distillation", taskCount: 1, runCount: 1 },
-          { kind: "reflection", taskCount: 1, runCount: 1 },
-          { kind: "retrieval", taskCount: 1, runCount: 1 },
-        ],
+        byKind: [{ kind: "retrieval", taskCount: 1, runCount: 1 }],
         daily: [
           {
             date: "2026-05-18",
-            taskCount: 3,
-            runCount: 2,
-            totals: { totalTokens: 420, totalCost: 0.031 },
+            taskCount: 1,
+            runCount: 1,
+            totals: { totalTokens: 15, totalCost: 0.001 },
           },
         ],
       },
@@ -97,7 +84,7 @@ describe("rollupLearningCost", () => {
       startDate: "2026-05-18",
       endDate: "2026-05-18",
       runs: [run()],
-      tasks: [task({ type: "turn" }), task({ run_id: "missing-run", type: "learning_reflection" })],
+      tasks: [task({ type: "turn" }), task({ run_id: "missing-run", type: "memory.search" })],
     });
 
     expect(result.totals.totalTokens).toBe(0);

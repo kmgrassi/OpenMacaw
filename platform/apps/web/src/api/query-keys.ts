@@ -180,6 +180,27 @@ export const queryKeys = {
         },
       ] as const,
   },
+  skills: {
+    all: ["skills"] as const,
+    lists: () => [...queryKeys.skills.all, "list"] as const,
+    list: (
+      workspaceId: string,
+      filters: {
+        agentId?: string;
+        status?: string;
+        limit?: number;
+      },
+    ) =>
+      [
+        ...queryKeys.skills.lists(),
+        {
+          workspaceId,
+          agentId: filters.agentId ?? "all",
+          status: filters.status ?? "all",
+          limit: filters.limit ?? 100,
+        },
+      ] as const,
+  },
   learningMemory: {
     all: ["learningMemory"] as const,
     statuses: () => [...queryKeys.learningMemory.all, "status"] as const,

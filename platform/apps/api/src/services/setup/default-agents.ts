@@ -39,9 +39,8 @@ import {
   writeGatewayConfigForManagerAgent,
 } from "./store.js";
 import { mapDefaultAgentStatus, mapSetupAgent, mapWorkspace } from "./mappers.js";
-import { DEFAULT_AGENT_ROLES, onboardingAgentDefaults, type OnboardingDefaultAgentRole } from "./defaults.js";
+import { DEFAULT_AGENT_ROLES, onboardingAgentDefaults } from "./defaults.js";
 import type { AgentRow, DefaultAgentStatus } from "./types.js";
-import { readWorkspaceSettings } from "../workspace-settings.js";
 
 async function buildDefaultAgentStatus(
   accessToken: string,
@@ -86,11 +85,8 @@ export async function listSetupAuthState(accessToken: string, verifiedUserId: st
     coding: await ensureDefaultAgent(accessToken, workspace.id, userId, "coding"),
   };
   const managerAgent = await ensureWorkspaceManagerAgent(accessToken, workspace.id, userId);
+  const learningAgent = await ensureWorkspaceLearningAgent(accessToken, workspace.id, userId);
   const routerAgent = await ensureWorkspaceRouterAgent(accessToken, workspace.id, userId);
-  const workspaceSettings = await readWorkspaceSettings(workspace.id);
-  const learningAgent = workspaceSettings.learningEnabled
-    ? await ensureWorkspaceLearningAgent(accessToken, workspace.id, userId)
-    : null;
 
   const agentRows = await listSetupAgentRows(accessToken);
   const normalizedAgentRows = agentRows.map((agent) => ({
@@ -124,7 +120,7 @@ export async function listSetupAuthState(accessToken: string, verifiedUserId: st
     normalizedAgentRows.push(normalized);
     agentById.set(normalized.id, normalized);
   }
-  if (learningAgent && !agentById.has(learningAgent.id)) {
+  if (!agentById.has(learningAgent.id)) {
     const normalized = {
       ...learningAgent,
       type: normalizeAgentType(learningAgent.type),
@@ -140,7 +136,7 @@ export async function listSetupAuthState(accessToken: string, verifiedUserId: st
   const managerAgentState = await buildDefaultAgentStatus(accessToken, userId, managerAgent);
   const defaultAgentIds = new Set(Object.values(defaultAgents).map((agent) => agent.id));
   const defaultSelectableAgents = normalizedAgentRows.filter(
-    (agent) => agent.status === "active" && !["manager", "router", "learning"].includes(normalizeAgentType(agent.type)),
+    (agent) => agent.status === "active" && !["manager", "learning", "router"].includes(normalizeAgentType(agent.type)),
   );
   const configuredExistingAgents = (
     await Promise.all(
@@ -348,7 +344,7 @@ export async function applyDefaultAgentCredentials(
     }
   }
   const managerAgent = await ensureWorkspaceManagerAgent(accessToken, input.workspaceId, userId);
-  const roleByAgentId = new Map<string, OnboardingDefaultAgentRole>();
+  const roleByAgentId = new Map<string, DefaultAgentRole | "manager">();
   for (const { role, assignment } of assignments) {
     if (assignment) roleByAgentId.set(assignment.agent_id, role);
   }

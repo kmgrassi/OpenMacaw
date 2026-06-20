@@ -208,14 +208,14 @@ describe("scheduled task routes", () => {
     await expect(response.json()).resolves.toEqual({ scheduledTasks: [] });
   });
 
-  it("omits unsupported legacy learning scheduled tasks from user-facing list responses", async () => {
+  it("omits unsupported delivery rows from user-facing list responses", async () => {
     tables.scheduled_task.unshift(
       scheduledTaskRow({
         id: "88888888-8888-4888-8888-888888888888",
         title: null,
         instructions: null,
         schedule: { at: "2026-05-14T13:00:00.000Z" },
-        delivery: { kind: "learning_reflection", sourceRunId: "run-123" },
+        delivery: { kind: "unsupported_delivery" },
         next_run_at: null,
       }),
     );
@@ -376,25 +376,5 @@ describe("scheduled task routes", () => {
       error: { code: "scheduled_task_disabled" },
     });
     expect(tables.scheduled_task[0]?.enabled).toBe(false);
-  });
-
-  it("dispatches scheduled agent message deliveries with a service-role bearer", async () => {
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
-
-    const response = await fetch(`${baseUrl}/api/internal/scheduled-tasks/${scheduledTaskId}/dispatch`, {
-      method: "POST",
-      headers: {
-        authorization: "Bearer service-role-key",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ workspaceId }),
-    });
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
-      kind: "scheduled_agent_message",
-      status: "not_handled",
-    });
-    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
   });
 });

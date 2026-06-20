@@ -70,18 +70,6 @@ describe("API auth routing", () => {
     expect(shouldRequireJwtAuth({ method: "POST", path: "/memory/items" } as never)).toBe(false);
     expect(
       shouldRequireJwtAuth({
-        method: "GET",
-        path: "/learning/jobs/learning_reflection",
-      } as never),
-    ).toBe(true);
-    expect(
-      shouldRequireJwtAuth({
-        method: "POST",
-        path: "/learning/jobs/run-123/reflection",
-      } as never),
-    ).toBe(true);
-    expect(
-      shouldRequireJwtAuth({
         method: "POST",
         path: "/work-items/33333333-3333-4333-8333-333333333333/cutovers",
       } as never),

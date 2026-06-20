@@ -26,6 +26,7 @@ defmodule SymphonyElixir.Runner.Codex do
   alias SymphonyElixir.Cutover
   alias SymphonyElixir.Codex.AppServer
   alias SymphonyElixir.Runner.Observability
+  alias SymphonyElixir.Runner.SkillMaterializer
   alias SymphonyElixir.Runner.WorkerBridgeRouting
 
   @impl true
@@ -42,7 +43,8 @@ defmodule SymphonyElixir.Runner.Codex do
       true ->
         opts = session_opts(config)
 
-        with {:ok, session} <- AppServer.start_session(workspace, opts) do
+        with :ok <- SkillMaterializer.materialize("codex", config, workspace),
+             {:ok, session} <- AppServer.start_session(workspace, opts) do
           {:ok,
            session
            |> Map.put(:runner_config, config)
