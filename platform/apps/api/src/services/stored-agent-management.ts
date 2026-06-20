@@ -447,7 +447,6 @@ export async function updateStoredAgentFromApi(input: {
           agentType: updated.type,
         },
         newModel: nextModel,
-        userId: input.userId,
       });
       await syncAgentGatewayConfigForExecutionProfile({
         accessToken: input.accessToken,
