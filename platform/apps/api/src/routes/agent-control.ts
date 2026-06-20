@@ -29,6 +29,7 @@ import {
 } from "../services/agent-control.js";
 import { assertAgentAccess } from "../services/agent-tools/access.js";
 import type { LauncherClient } from "../services/launcher.js";
+import { resolveApprovedSkillsSnapshot } from "../repositories/skills.js";
 import { attachRuntimeDispatchContext, buildRuntimeDispatchContext } from "../services/runtime-dispatch-context.js";
 import { assertRuntimePrepareSupported } from "../services/runtime-prepare.js";
 import { mapWorkerBridgeSessionListResponse, mapWorkerBridgeSessionResponse } from "../services/worker-bridge.js";
@@ -281,13 +282,14 @@ async function recoverAgentRuntime(req: Request, res: Response, launcherClient: 
           stopped_orchestrator_ids: stopped.map((orchestrator) => orchestrator.id),
         },
       };
-      const dispatchContext = await buildRuntimeDispatchContext({
+      const startBody = await buildLauncherStartBody({
         accessToken,
         requesterUserId: userId,
         agentId,
+        workspaceId,
         requestBody: restartBody,
       });
-      restarted = await launcherClient.startAgent(agentId, attachRuntimeDispatchContext(restartBody, dispatchContext));
+      restarted = await launcherClient.startAgent(agentId, startBody);
     }
 
     return res.status(200).json({
@@ -513,8 +515,18 @@ async function createAgentRemediationRequest(req: Request, res: Response, launch
     }
 
     try {
-      await assertRuntimePrepareSupported(requireAccessToken(req), userId, targetAgentId);
-      const result = await launcherClient.startAgent(targetAgentId);
+      const accessToken = requireAccessToken(req);
+      const prepared = await assertRuntimePrepareSupported(accessToken, userId, targetAgentId);
+      const result = await launcherClient.startAgent(
+        targetAgentId,
+        await buildLauncherStartBody({
+          accessToken,
+          requesterUserId: userId,
+          agentId: targetAgentId,
+          workspaceId: prepared.workspaceId,
+          requestBody: {},
+        }),
+      );
 
       const optimisticRemediation = AgentControlMessageRowSchema.parse({
         ...remediation,
@@ -666,6 +678,32 @@ function handleWorkerBridgeRouteError(res: Response, error: unknown, fallback: {
   return handleLauncherError(res, error);
 }
 
+async function buildLauncherStartBody(input: {
+  accessToken: string;
+  requesterUserId: string;
+  agentId: string;
+  workspaceId: string;
+  requestBody: unknown;
+}) {
+  const dispatchContext = await buildRuntimeDispatchContext({
+    accessToken: input.accessToken,
+    requesterUserId: input.requesterUserId,
+    agentId: input.agentId,
+    requestBody: input.requestBody,
+  });
+  const attached = attachRuntimeDispatchContext(input.requestBody ?? {}, dispatchContext);
+  const body = attached && typeof attached === "object" && !Array.isArray(attached) ? attached : {};
+  const skillsSnapshot = await resolveApprovedSkillsSnapshot({
+    agentId: input.agentId,
+    workspaceId: input.workspaceId,
+  });
+
+  return {
+    ...body,
+    skills_snapshot: skillsSnapshot,
+  };
+}
+
 export function registerAgentControlRoutes(app: Express, launcherClient: LauncherClient) {
   app.get("/api/agents/:id", async (req: Request, res: Response) => {
     try {
@@ -679,7 +717,9 @@ export function registerAgentControlRoutes(app: Express, launcherClient: Launche
   app.post("/api/agents/:id/start", async (req: Request, res: Response) => {
     try {
       const agentId = requireRouteParam(req, "id");
-      const prepared = await assertRuntimePrepareSupported(requireAccessToken(req), requireVerifiedUser(req), agentId);
+      const accessToken = requireAccessToken(req);
+      const userId = requireVerifiedUser(req);
+      const prepared = await assertRuntimePrepareSupported(accessToken, userId, agentId);
 
       if (prepared.localRuntime) {
         return res.status(200).json({
@@ -691,16 +731,14 @@ export function registerAgentControlRoutes(app: Express, launcherClient: Launche
         });
       }
 
-      const dispatchContext = await buildRuntimeDispatchContext({
-        accessToken: requireAccessToken(req),
-        requesterUserId: requireVerifiedUser(req),
+      const startBody = await buildLauncherStartBody({
+        accessToken,
+        requesterUserId: userId,
         agentId,
+        workspaceId: prepared.workspaceId,
         requestBody: req.body ?? {},
       });
-      const result = await launcherClient.startAgent(
-        agentId,
-        attachRuntimeDispatchContext(req.body ?? {}, dispatchContext),
-      );
+      const result = await launcherClient.startAgent(agentId, startBody);
       return res.status(result.status).json(result.data);
     } catch (error) {
       if (!(error instanceof Error && error.name.startsWith("Launcher"))) {

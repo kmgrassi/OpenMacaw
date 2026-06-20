@@ -69,6 +69,7 @@ defmodule SymphonyElixir.Runner.WorkerBridgeRoutingTest do
     assert params["cwd"] == "/tmp/workspace"
     assert params["command"] == "codex app-server"
     assert params["execution_target"] == "container"
+    refute Map.has_key?(params, "skills_snapshot")
 
     work_item = work_item()
 
@@ -102,6 +103,27 @@ defmodule SymphonyElixir.Runner.WorkerBridgeRoutingTest do
     assert params["cwd"] == canonical_workspace
     assert params["command"] == "node bridge.js"
     assert params["execution_target"] == "container"
+  end
+
+  test "container sessions include approved skills snapshot when present" do
+    config = %{
+      "command" => "codex app-server",
+      "skills_snapshot" => %{
+        "version" => 1,
+        "agentId" => "agent-1",
+        "workspaceId" => "workspace-1",
+        "skills" => [%{"name" => "api-debugging", "body" => "Inspect logs."}]
+      },
+      "execution_profile" => %{
+        "runner_kind" => "codex",
+        "adapter_config" => %{"execution_target" => "container"}
+      }
+    }
+
+    assert {:ok, _session} = Codex.start_session(config, "/tmp/workspace")
+
+    assert_received {:worker_bridge_start_session, params}
+    assert get_in(params, ["skills_snapshot", "skills", Access.at(0), "name"]) == "api-debugging"
   end
 
   defp work_item do
