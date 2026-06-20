@@ -201,9 +201,10 @@ meta: its input is *other agents' runs*, not a user task.
 
 - One `scheduled_task` per opted-in workspace: daily, `scheduled_agent_message`
   → learning agent, with sampling metadata.
-- Sampling (pick one random recent run, take a ~10-message window): either
-  server-side at delivery time, or via a `agent_run.sample` tool the agent
-  calls. *(Open — see decisions.)*
+- Sampling (pick one random recent run, take a ~10-message window) is done
+  **server-side at delivery time** and passed in as the scheduled message
+  context — no agent-facing `agent_run.sample` tool. The agent can still pull
+  more detail on that run via the read-only `agent_run.read` observer tool.
 - Remove `reflection_dispatcher.maybe_enqueue` from the run-completion sites.
 
 ## Resolved decisions
@@ -264,8 +265,10 @@ Touch together, in one series:
 2. `skill` table + contract + `skill.create` tool (draft status) + RLS.
 3. Skill materialization into the runner filesystem (Agent Skills format).
 4. Skills UI (list, review, approve, edit, archive).
-5. Learning meta-agent: `custom` agent + `agent_run.read` observer tool +
-   sampling.
+5. New first-class `learning` agent type — enum + DB CHECK + cross-repo drift
+   guard + system-only (non-user-selectable) provisioning; with the
+   `agent_run.read` observer tool default-granted and server-side sampling.
+   See [Cross-repo agent-type propagation](#cross-repo-agent-type-propagation).
 6. Daily scheduled trigger + per-workspace toggle; remove the
    after-every-run reflection dispatcher.
 7. Retire `reflector` / `distiller` / `pinned-memory` / `candidate_skill` and
