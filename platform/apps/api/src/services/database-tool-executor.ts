@@ -17,6 +17,7 @@ import {
 } from "./database-tool-executor/scheduled-tasks.js";
 import { listRoutingRules, readRoutingRuleTool, updateRoutingRule } from "./database-tool-executor/routing-rules.js";
 import { executeSchemaAwareRows, queryFrom } from "./database-tool-executor/schema-aware-query.js";
+import { createSkill } from "./database-tool-executor/skills.js";
 import {
   asRecord,
   jsonOutput,
@@ -210,6 +211,9 @@ export async function executeDatabaseTool(
         }),
       };
     }
+
+    case "skill.create":
+      return createSkill(args, workspaceId, context);
 
     case "tool_examples.append":
       return appendToolExamples(args, workspaceId, context);

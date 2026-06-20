@@ -25,6 +25,8 @@ export const SCHEDULED_TASK_TOOL_SLUGS = [
 
 export const AGENT_TOOL_GRANT_TOOL_SLUGS = ["agent_tool_grant.create", "agent_tool_grant.update"] as const;
 
+export const SKILL_TOOL_SLUGS = ["skill.create"] as const;
+
 export const GIT_COMMAND_TOOL_SLUG = "git.run" as const;
 
 export const ROUTER_TOOL_SLUGS = [
@@ -35,11 +37,13 @@ export const ROUTER_TOOL_SLUGS = [
   "local_model.list",
   "provider_cutover.list",
   "scheduled_task.read",
+  ...SKILL_TOOL_SLUGS,
 ] as const;
 
 export const DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS = [
   ...DEFAULT_PLANNING_TOOL_SLUGS,
   ...SCHEDULED_TASK_TOOL_SLUGS,
+  ...SKILL_TOOL_SLUGS,
 ] as const;
 
 export const DEFAULT_PLANNER_REMEDIATION_TOOL_SLUGS = [
@@ -59,6 +63,7 @@ export const LOCAL_MODEL_CODING_TOOL_SLUGS = [
   "shell.exec",
   "apply_patch",
   ...SCHEDULED_TASK_TOOL_SLUGS,
+  ...SKILL_TOOL_SLUGS,
 ] as const;
 
 type ToolBundleDefinition = {

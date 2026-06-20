@@ -103,6 +103,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
           is_active: true,
         },
       ],
+      skill: [],
       routing_rule: [
         {
           id: "routing-rule-1",
@@ -276,6 +277,75 @@ describe("executeDatabaseTool scheduled_task tools", () => {
       { input: { path: "README.md" } },
       { when: "Need package metadata.", input: { path: "package.json" } },
     ]);
+  });
+
+  it("creates draft skills for an agent in the runtime workspace", async () => {
+    const result = await executeDatabaseTool(
+      scheduledTaskTool("skill.create"),
+      {
+        agentId: targetAgentId,
+        name: "debug-tool-failures",
+        description: "Use when a tool call fails with a database or validation error.",
+        body: "Inspect the tool schema, compare the attempted arguments, and preserve the exact error in the fix.",
+      },
+      { workspaceId, agentId, userId: "66666666-6666-4666-8666-666666666666", sessionId: "run-123" },
+    );
+
+    expect(result.status).toBe(201);
+    expect(JSON.parse(result.output)).toMatchObject({
+      skill: {
+        agentId: targetAgentId,
+        name: "debug-tool-failures",
+        status: "draft",
+        createdByAgentId: agentId,
+        createdByUserId: "66666666-6666-4666-8666-666666666666",
+        sourceRunId: "run-123",
+      },
+    });
+    expect(tables.skill).toEqual([
+      expect.objectContaining({
+        workspace_id: workspaceId,
+        agent_id: targetAgentId,
+        name: "debug-tool-failures",
+        status: "draft",
+      }),
+    ]);
+  });
+
+  it("rejects skill creation for agents outside the runtime workspace", async () => {
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("skill.create"),
+        {
+          agentId: foreignAgentId,
+          name: "foreign-skill",
+          description: "Use somewhere else.",
+          body: "Do not write cross-workspace skills.",
+        },
+        { workspaceId, agentId },
+      ),
+    ).rejects.toMatchObject({
+      status: 404,
+      code: "agent_not_found",
+    });
+  });
+
+  it("reports invalid skill.create arguments as tool argument errors", async () => {
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("skill.create"),
+        {
+          agentId: targetAgentId,
+          name: "Invalid Skill Name",
+          description: "Use when invalid.",
+          body: "Do not create this skill.",
+        },
+        { workspaceId, agentId },
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "invalid_tool_arguments",
+    });
   });
 
   it("rejects tool example updates for tools not assigned to the runtime agent", async () => {
