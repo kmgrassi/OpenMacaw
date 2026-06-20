@@ -41,6 +41,23 @@ defmodule SymphonyElixir.Runner.Observability do
   end
 
   @doc """
+  Emits a redacted summary of the exact model request context prepared for a
+  turn. Raw message/tool contents are intentionally omitted by default; set
+  `:log_raw_model_request_context` or `OPENMACAW_LOG_MODEL_CONTEXT_RAW=true`
+  only during targeted debugging.
+  """
+  @spec log_model_request_context_prepared(map(), map()) :: :ok
+  def log_model_request_context_prepared(context, request) when is_map(context) and is_map(request) do
+    RuntimeLog.log(
+      :info,
+      :model_request_context_prepared,
+      context
+      |> model_call_fields()
+      |> Map.merge(request_context_fields(request))
+    )
+  end
+
+  @doc """
   Emits the common model-provider first streamed event/token event.
   """
   @spec log_model_call_first_event(map(), non_neg_integer()) :: :ok
@@ -554,6 +571,100 @@ defmodule SymphonyElixir.Runner.Observability do
       turn_id: Map.get(context, :turn_id)
     }
     |> reject_nil_values()
+  end
+
+  defp request_context_fields(request) do
+    messages = list_field(request, "messages")
+    tool_definitions = list_field(request, "tool_definitions")
+    provider_tool_specs = list_field(request, "provider_tool_specs")
+
+    fields =
+      %{
+        request_type: map_value(request, "type"),
+        correlation_id: map_value(request, "correlation_id"),
+        dispatch_workspace_id: map_value(request, "workspace_id"),
+        dispatch_agent_id: map_value(request, "agent_id"),
+        dispatch_run_id: map_value(request, "run_id"),
+        dispatch_session_id: map_value(request, "session_id"),
+        target_runner_kind: map_value(request, "target_runner_kind"),
+        tool_calling_mode: map_value(request, "tool_calling_mode"),
+        message_count: length(messages),
+        message_roles: Enum.map(messages, &map_value(&1, "role")),
+        message_context: Enum.with_index(messages, &message_summary/2),
+        tool_definition_count: length(tool_definitions),
+        tool_definition_names: Enum.map(tool_definitions, &(map_value(&1, "name") || map_value(&1, "slug"))),
+        provider_tool_spec_count: length(provider_tool_specs),
+        provider_tool_names: Enum.map(provider_tool_specs, &provider_tool_name/1),
+        prompt_chars: content_length(map_value(request, "prompt")),
+        prompt_sha256: content_hash(map_value(request, "prompt")),
+        has_work_item_context: is_map(map_value(request, "work_item")),
+        has_capability_requirements: is_map(map_value(request, "capability_requirements")),
+        has_provider_tool_name_map: is_map(map_value(request, "provider_tool_name_map")),
+        has_tool_outputs: list_field(request, "tool_outputs") != []
+      }
+      |> reject_nil_values()
+
+    if raw_model_request_context_logging?() do
+      fields
+      |> Map.put(:raw_messages, messages)
+      |> Map.put(:raw_tool_definitions, tool_definitions)
+      |> Map.put(:raw_provider_tool_specs, provider_tool_specs)
+      |> maybe_put(:raw_prompt, map_value(request, "prompt"))
+    else
+      fields
+    end
+  end
+
+  defp message_summary(message, index) do
+    content = map_value(message, "content")
+
+    %{
+      index: index,
+      role: map_value(message, "role"),
+      content_chars: content_length(content),
+      content_sha256: content_hash(content),
+      has_agent_instructions: binary_contains?(content, "Agent instructions:"),
+      has_tool_calls: list_field(message, "tool_calls") != [],
+      tool_call_id: map_value(message, "tool_call_id")
+    }
+    |> reject_nil_values()
+  end
+
+  defp provider_tool_name(%{"function" => %{"name" => name}}), do: name
+  defp provider_tool_name(%{function: %{name: name}}), do: name
+  defp provider_tool_name(tool), do: map_value(tool, "name")
+
+  defp content_length(value) when is_binary(value), do: String.length(value)
+  defp content_length(nil), do: nil
+  defp content_length(value), do: value |> inspect(limit: 50, printable_limit: 500) |> String.length()
+
+  defp content_hash(value) when is_binary(value) do
+    :crypto.hash(:sha256, value)
+    |> Base.encode16(case: :lower)
+  end
+
+  defp content_hash(nil), do: nil
+  defp content_hash(value), do: value |> inspect(limit: 50, printable_limit: 500) |> content_hash()
+
+  defp binary_contains?(value, needle) when is_binary(value), do: String.contains?(value, needle)
+  defp binary_contains?(_value, _needle), do: false
+
+  defp list_field(map, key) do
+    case map_value(map, key) do
+      values when is_list(values) -> values
+      _ -> []
+    end
+  end
+
+  defp map_value(map, key) when is_map(map) do
+    Map.get(map, key) || Map.get(map, String.to_atom(key))
+  end
+
+  defp map_value(_map, _key), do: nil
+
+  defp raw_model_request_context_logging? do
+    Application.get_env(:symphony_elixir, :log_raw_model_request_context) == true or
+      System.get_env("OPENMACAW_LOG_MODEL_CONTEXT_RAW") in ["1", "true", "TRUE", "yes", "YES"]
   end
 
   defp retry_count(context) do

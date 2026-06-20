@@ -50,6 +50,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
           "provider" => "local",
           "model" => "qwen",
           "workspace_id" => "workspace-1",
+          "agent_context" => "Always check the repo before answering.",
           on_message: fn message -> send(test_pid, {:manager_event, message}) end
         },
         nil
@@ -78,13 +79,16 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
                        "provider" => "local",
                        "model" => "qwen",
                        "messages" => [
-                         %{"role" => "system"},
+                         %{"role" => "system", "content" => system_prompt},
                          %{"role" => "user", "content" => ~s({"due_tasks":[]})}
                        ],
                        "capability_requirements" => %{"runtime_managed_tools" => true},
                        "provider_tool_specs" => provider_tool_specs,
                        "tool_definitions" => tool_definitions
                      }}
+
+    assert system_prompt =~ "manager agent"
+    assert system_prompt =~ "Agent instructions:\nAlways check the repo before answering."
 
     assert Enum.map(provider_tool_specs, &get_in(&1, ["function", "name"])) ==
              tool_names()
