@@ -617,6 +617,14 @@ function requireWorkerBridgeIdentityLaunch(body: unknown) {
     );
   }
 
+  if (parsed.cwd || parsed.repository) {
+    throw new ApiRouteError(
+      400,
+      "worker_bridge_identity_workspace_forbidden",
+      "Identity-scoped worker bridge launches must use the runtime-owned workspace path",
+    );
+  }
+
   return { parsed, agentId, workspaceId, credentialId };
 }
 

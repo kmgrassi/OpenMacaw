@@ -149,12 +149,17 @@ defmodule SymphonyElixir.ToolRegistryTest do
               assert params["select"] == "tool_id"
               assert params["order"] == "created_at.asc.nullslast"
               refute conn.query_string =~ "tool_policy_template"
-              [%{"tool_id" => "tool-echo"}, %{"tool_id" => "tool-repo"}]
+              [%{"tool_id" => "tool-echo"}, %{"tool_id" => "tool-repo"}, %{"tool_id" => "tool-skill"}]
 
             "/rest/v1/tool" ->
               assert params["enabled"] == "eq.true"
               assert params["select"] == "id,slug"
-              [%{"id" => "tool-echo", "slug" => "echo"}, %{"id" => "tool-repo", "slug" => "repo.read_file"}]
+
+              [
+                %{"id" => "tool-echo", "slug" => "echo"},
+                %{"id" => "tool-repo", "slug" => "repo.read_file"},
+                %{"id" => "tool-skill", "slug" => "skill.create"}
+              ]
           end
 
         conn
@@ -164,9 +169,9 @@ defmodule SymphonyElixir.ToolRegistryTest do
 
       assert {:ok, resolved} = ToolRegistry.resolve_for_agent("agent-1")
       assert resolved.source == "agent_tool_grant"
-      assert resolved.dynamic_tool_names == ["echo", "repo.read_file"]
-      assert Enum.map(resolved.dynamic_tool_specs, & &1["name"]) == ["echo", "repo.read_file"]
-      assert Enum.map(resolved.tool_definitions, & &1["name"]) == ["echo", "repo.read_file"]
+      assert resolved.dynamic_tool_names == ["echo", "repo.read_file", "skill.create"]
+      assert Enum.map(resolved.dynamic_tool_specs, & &1["name"]) == ["echo", "repo.read_file", "skill.create"]
+      assert Enum.map(resolved.tool_definitions, & &1["name"]) == ["echo", "repo.read_file", "skill.create"]
     end
 
     test "drops disabled and unknown tools from returned rows" do

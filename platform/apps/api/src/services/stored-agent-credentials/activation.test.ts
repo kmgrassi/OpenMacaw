@@ -84,7 +84,7 @@ describe("stored agent credential activation", () => {
           id: "worker-1",
           kind: "codex",
           command: "codex app-server",
-          cwd: "/tmp/workspace",
+          cwd: "/workspace/workspace-1/agent-1",
           status: "running",
           started_at: "2026-05-28T00:00:02.000Z",
           stopped_at: null,
@@ -100,14 +100,12 @@ describe("stored agent credential activation", () => {
       credential: oauthCredential,
       workspaceId: "workspace-1",
       secretValue: "fresh-oauth-access-token",
-      cwd: "/tmp/workspace",
       handoff: null,
       launcherClient: { createWorkerBridgeSession } as never,
     });
 
     expect(createWorkerBridgeSession).toHaveBeenCalledWith({
       kind: "codex",
-      cwd: "/tmp/workspace",
       env: {},
       credentials: {
         OPENAI_API_KEY: {

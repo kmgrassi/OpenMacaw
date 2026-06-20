@@ -218,6 +218,9 @@ class MockSupabaseQueryBuilder {
     if (this.table === "scheduled_task") {
       return `55555555-5555-4555-8555-${String(index).padStart(12, "0")}`;
     }
+    if (this.table === "skill") {
+      return `77777777-7777-4777-8777-${String(index).padStart(12, "0")}`;
+    }
     return `${this.table}-${index}`;
   }
 

@@ -29,6 +29,8 @@ defmodule SymphonyElixir.Planner.Tools.DatabaseTool do
       def execute(arguments, context) when is_map(arguments) and is_map(context) do
         DatabaseTools.execute(@tool_name, arguments, Context.to_opts(context))
       end
+
+      defoverridable bundle: 0
     end
   end
 end

@@ -642,6 +642,7 @@ defmodule SymphonyElixir.ConfigRuntimeTest do
                "task.schedule",
                "agent_tool_grant.create",
                "agent_tool_grant.update",
+               "skill.create",
                "scheduled_task.create",
                "scheduled_task.read",
                "scheduled_task.update",

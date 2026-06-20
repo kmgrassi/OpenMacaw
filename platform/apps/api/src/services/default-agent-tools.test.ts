@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 import { ensureDefaultAgentToolsForAgent } from "./default-agent-tools.js";
-import { DEFAULT_MANAGER_TOOL_SLUGS, GIT_COMMAND_TOOL_SLUG, SCHEDULED_TASK_TOOL_SLUGS } from "./tool-bundles.js";
+import {
+  DEFAULT_MANAGER_TOOL_SLUGS,
+  GIT_COMMAND_TOOL_SLUG,
+  SCHEDULED_TASK_TOOL_SLUGS,
+  SKILL_TOOL_SLUGS,
+} from "./tool-bundles.js";
 
 const agentId = "33333333-3333-4333-8333-333333333333";
 const workspaceId = "22222222-2222-4222-8222-222222222222";
@@ -34,12 +39,17 @@ function templateTool(templateSlug: string, toolId: string) {
 }
 
 const scheduledToolIds = SCHEDULED_TASK_TOOL_SLUGS.map((slug) => `tool-${slug.replaceAll(".", "-")}`);
+const skillToolIds = SKILL_TOOL_SLUGS.map((slug) => `tool-${slug.replaceAll(".", "-")}`);
 const sortedScheduledToolSlugs = [...SCHEDULED_TASK_TOOL_SLUGS].sort();
 const sortedScheduledToolIds = [...scheduledToolIds].sort();
 const sortedManagerToolSlugs = [...DEFAULT_MANAGER_TOOL_SLUGS].sort();
 
 function scheduledTemplateTools(templateSlug: string) {
   return scheduledToolIds.map((toolId) => templateTool(templateSlug, toolId));
+}
+
+function skillTemplateTools(templateSlug: string) {
+  return skillToolIds.map((toolId) => templateTool(templateSlug, toolId));
 }
 
 describe("default agent tools", () => {
@@ -64,6 +74,7 @@ describe("default agent tools", () => {
         tool("shell.exec", "tool-shell-exec"),
         tool("apply_patch", "tool-apply-patch"),
         ...SCHEDULED_TASK_TOOL_SLUGS.map((slug, index) => tool(slug, scheduledToolIds[index])),
+        ...SKILL_TOOL_SLUGS.map((slug, index) => tool(slug, skillToolIds[index])),
       ],
       tool_policy_template: [
         template("planner"),
@@ -80,9 +91,11 @@ describe("default agent tools", () => {
         templateTool("planner", "tool-plan-delete"),
         templateTool("planner", "tool-task-read"),
         ...scheduledTemplateTools("planner"),
+        ...skillTemplateTools("planner"),
         templateTool("manager", "tool-git-run"),
         templateTool("manager", "tool-task-read"),
         ...scheduledTemplateTools("manager"),
+        ...skillTemplateTools("manager"),
         templateTool("coding", "tool-read"),
         templateTool("coding", "tool-list"),
         templateTool("coding", "tool-search"),
@@ -95,6 +108,7 @@ describe("default agent tools", () => {
         templateTool("coding", "tool-plan-delete"),
         templateTool("coding", "tool-task-read"),
         ...scheduledTemplateTools("coding"),
+        ...skillTemplateTools("coding"),
         templateTool("local_model_coding", "tool-read"),
         templateTool("local_model_coding", "tool-list"),
         templateTool("local_model_coding", "tool-search"),
@@ -102,6 +116,7 @@ describe("default agent tools", () => {
         templateTool("local_model_coding", "tool-shell-exec"),
         templateTool("local_model_coding", "tool-apply-patch"),
         ...scheduledTemplateTools("local_model_coding"),
+        ...skillTemplateTools("local_model_coding"),
       ],
       agent_tool: [{ id: "legacy-existing", agent_id: agentId, tool_id: "tool-read" }],
       agent_tool_grant: [
@@ -139,6 +154,7 @@ describe("default agent tools", () => {
       "repo.read_symbols",
       "repo.search",
       ...sortedScheduledToolSlugs,
+      ...SKILL_TOOL_SLUGS,
       "task.create",
       "task.read",
       "task.update",
@@ -164,12 +180,13 @@ describe("default agent tools", () => {
       grantExpectation("tool-read", "template-coding"),
       ...sortedScheduledToolIds.map((toolId) => grantExpectation(toolId, "template-coding")),
       grantExpectation("tool-search", "template-coding"),
+      grantExpectation("tool-skill-create", "template-coding"),
       grantExpectation("tool-symbols", "template-coding"),
       grantExpectation("tool-task-create", "template-coding"),
       grantExpectation("tool-task-read", "template-coding"),
       grantExpectation("tool-task-update", "template-coding"),
     ]);
-    expect(tables.agent_tool_grant).toHaveLength(16);
+    expect(tables.agent_tool_grant).toHaveLength(17);
     expect(tables.agent_tool).toEqual([{ id: "legacy-existing", agent_id: agentId, tool_id: "tool-read" }]);
   });
 
@@ -229,6 +246,7 @@ describe("default agent tools", () => {
       "repo.search",
       ...sortedScheduledToolSlugs,
       "shell.exec",
+      ...SKILL_TOOL_SLUGS,
     ]);
     expect(tables.agent_tool_grant).toEqual(
       expect.arrayContaining([
@@ -244,9 +262,12 @@ describe("default agent tools", () => {
         ...scheduledToolIds.map((toolId) =>
           expect.objectContaining({ tool_id: toolId, source_tool_template_id: "template-local_model_coding" }),
         ),
+        ...skillToolIds.map((toolId) =>
+          expect.objectContaining({ tool_id: toolId, source_tool_template_id: "template-local_model_coding" }),
+        ),
       ]),
     );
-    expect(tables.agent_tool_grant).toHaveLength(11);
+    expect(tables.agent_tool_grant).toHaveLength(12);
   });
 
   it("assigns repo-read and planner database tools for planning agents", async () => {
@@ -270,6 +291,7 @@ describe("default agent tools", () => {
       "repo.read_symbols",
       "repo.search",
       ...sortedScheduledToolSlugs,
+      ...SKILL_TOOL_SLUGS,
       "task.create",
       "task.read",
       "task.update",
@@ -283,6 +305,7 @@ describe("default agent tools", () => {
       "tool-read",
       ...sortedScheduledToolIds,
       "tool-search",
+      "tool-skill-create",
       "tool-symbols",
       "tool-task-create",
       "tool-task-read",
@@ -314,6 +337,7 @@ describe("default agent tools", () => {
       "repo.read_symbols",
       "repo.search",
       ...sortedScheduledToolSlugs,
+      ...SKILL_TOOL_SLUGS,
       "task.create",
       "task.read",
       "task.update",
@@ -326,7 +350,7 @@ describe("default agent tools", () => {
         expect.objectContaining({ tool_id: "tool-symbols", source_tool_template_id: null }),
       ]),
     );
-    expect(tables.agent_tool_grant).toHaveLength(16);
+    expect(tables.agent_tool_grant).toHaveLength(17);
   });
 
   it("assigns canonical planning tools when the planner template row is disabled", async () => {
@@ -353,6 +377,7 @@ describe("default agent tools", () => {
       "tool-read",
       ...sortedScheduledToolIds,
       "tool-search",
+      "tool-skill-create",
       "tool-symbols",
       "tool-task-create",
       "tool-task-read",
@@ -385,6 +410,7 @@ describe("default agent tools", () => {
       "repo.read_symbols",
       "repo.search",
       ...sortedScheduledToolSlugs,
+      ...SKILL_TOOL_SLUGS,
       "task.create",
       "task.read",
       "task.update",

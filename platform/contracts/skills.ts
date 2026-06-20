@@ -6,24 +6,43 @@ export const SKILL_STATUSES = ["draft", "approved", "archived"] as const;
 
 export const SkillStatusSchema = z.enum(SKILL_STATUSES);
 
+export const SkillNameSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9-]+$/)
+  .refine((name) => name !== "claude" && name !== "anthropic", {
+    message: "Skill name cannot be claude or anthropic",
+  });
+
 export const SkillSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
   agentId: z.string().uuid(),
-  name: z
-    .string()
-    .min(1)
-    .max(64)
-    .regex(/^[a-z0-9-]+$/),
+  name: SkillNameSchema,
   description: z.string().min(1).max(1024),
-  body: z.string().min(1),
+  body: z.string().trim().min(1),
   status: SkillStatusSchema,
   copiedFromSkillId: z.string().uuid().nullable(),
   createdByAgentId: z.string().uuid().nullable(),
   createdByUserId: z.string().uuid().nullable(),
-  sourceRunId: z.string().nullable(),
+  sourceRunId: z.string().trim().min(1).nullable(),
   createdAt: IsoDateTimeSchema,
   updatedAt: IsoDateTimeSchema,
+});
+
+export const SkillCreateToolRequestSchema = z
+  .object({
+    agentId: z.string().uuid(),
+    name: SkillNameSchema,
+    description: z.string().trim().min(1).max(1024),
+    body: z.string().trim().min(1).max(65535),
+  })
+  .strict();
+
+export const SkillCreateToolResponseSchema = z.object({
+  skill: SkillSchema,
 });
 
 export const SkillListQuerySchema = z.object({
@@ -38,13 +57,7 @@ export const SkillListResponseSchema = z.object({
 
 export const SkillUpdateRequestSchema = z
   .object({
-    name: z
-      .string()
-      .trim()
-      .min(1)
-      .max(64)
-      .regex(/^[a-z0-9-]+$/)
-      .optional(),
+    name: SkillNameSchema.optional(),
     description: z.string().trim().min(1).max(1024).optional(),
     body: z.string().trim().min(1).optional(),
     status: SkillStatusSchema.optional(),
@@ -60,6 +73,12 @@ export const SkillResponseSchema = z.object({
 
 export type SkillStatus = z.infer<typeof SkillStatusSchema>;
 export type Skill = z.infer<typeof SkillSchema>;
+export type SkillCreateToolRequest = z.infer<
+  typeof SkillCreateToolRequestSchema
+>;
+export type SkillCreateToolResponse = z.infer<
+  typeof SkillCreateToolResponseSchema
+>;
 export type SkillListQuery = z.infer<typeof SkillListQuerySchema>;
 export type SkillListResponse = z.infer<typeof SkillListResponseSchema>;
 export type SkillUpdateRequest = z.infer<typeof SkillUpdateRequestSchema>;

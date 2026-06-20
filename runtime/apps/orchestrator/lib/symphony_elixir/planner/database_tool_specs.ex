@@ -14,6 +14,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
     "task.schedule",
     "agent_tool_grant.create",
     "agent_tool_grant.update",
+    "skill.create",
     "plan.read",
     "task.read",
     "task.status"
@@ -236,6 +237,37 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
         "agent_tool_grant.update",
         "Update an existing grant to include or exclude an enabled catalog tool. Use reason to name the operability signature or rollback rationale."
       ),
+      %{
+        "name" => "skill.create",
+        "description" => "Create a draft Agent Skill for a target agent in the current workspace. Draft skills require human approval before runtime materialization.",
+        "inputSchema" => %{
+          "type" => "object",
+          "additionalProperties" => false,
+          "required" => ["agentId", "name", "description", "body"],
+          "properties" => %{
+            "workspace_id" => string_schema("Workspace database UUID."),
+            "agentId" => string_schema("Target agent UUID in the current workspace."),
+            "name" => %{
+              "type" => "string",
+              "minLength" => 1,
+              "maxLength" => 64,
+              "pattern" => "^[a-z0-9-]+$",
+              "description" => "Agent Skills directory name; cannot be claude or anthropic."
+            },
+            "description" => %{
+              "type" => "string",
+              "minLength" => 1,
+              "maxLength" => 1024,
+              "description" => "What the skill does and when to use it."
+            },
+            "body" => %{
+              "type" => "string",
+              "minLength" => 1,
+              "description" => "The SKILL.md instruction body."
+            }
+          }
+        }
+      },
       read_tool_spec(
         "plan.read",
         "plan_id",
