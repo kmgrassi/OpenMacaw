@@ -103,9 +103,6 @@ template_tools as (
   where tool.workspace_id is null
     and tool.slug in (
       'agent_run.read',
-      'memory.search',
-      'memory.create',
-      'skill.create',
       'scheduled_task.create'
     )
 )

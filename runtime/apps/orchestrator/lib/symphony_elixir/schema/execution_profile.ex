@@ -38,7 +38,7 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
   | `local_model_coding` | `local_model_coding` |
   | `local_relay` | `local_relay` |
   | `computer_use` | `computer_use` |
-  | `llm_tool_runner` (role=manager) | `manager` |
+  | `llm_tool_runner` (role=manager/learning) | `manager` |
   | `llm_tool_runner` (role=planning) | `planner` |
   | `planner` | `planner` |
 

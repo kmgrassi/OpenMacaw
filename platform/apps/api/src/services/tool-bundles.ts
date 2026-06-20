@@ -51,13 +51,7 @@ export const DEFAULT_CODING_TOOL_SLUGS = [...DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS]
 
 export const DEFAULT_MANAGER_TOOL_SLUGS = [GIT_COMMAND_TOOL_SLUG, ...DEFAULT_CODING_TOOL_SLUGS] as const;
 
-export const DEFAULT_LEARNING_TOOL_SLUGS = [
-  "agent_run.read",
-  "memory.search",
-  "memory.create",
-  "skill.create",
-  "scheduled_task.create",
-] as const;
+export const DEFAULT_LEARNING_TOOL_SLUGS = ["agent_run.read", "scheduled_task.create"] as const;
 
 export const LOCAL_MODEL_CODING_TOOL_SLUGS = [
   "repo.read_file",
