@@ -1,4 +1,5 @@
 import {
+  LocalModelCatalogResponseSchema,
   LocalModelProbeResponseSchema,
   normalizeLocalEndpoint,
   type LocalModelProbeRequest,
@@ -10,6 +11,11 @@ import { getLocalRuntimeRuleDetails } from "./routing-metadata.js";
 function modelListUrl(endpoint: string) {
   const normalized = endpoint.endsWith("/") ? endpoint : `${endpoint}/`;
   return new URL("models", normalized).toString();
+}
+
+function parseCatalog(body: unknown) {
+  const parsed = LocalModelCatalogResponseSchema.safeParse(body);
+  return parsed.success ? parsed.data.data : [];
 }
 
 export async function probeLocalModel(input: LocalModelProbeRequest) {
@@ -42,10 +48,7 @@ export async function probeLocalModel(input: LocalModelProbeRequest) {
     }
 
     const body = (await response.json()) as unknown;
-    const data =
-      body && typeof body === "object" && Array.isArray((body as { data?: unknown }).data)
-        ? (body as { data: Array<{ id?: unknown; name?: unknown }> }).data
-        : [];
+    const data = parseCatalog(body);
     const modelFound = data.some((model) => model.id === input.model || model.name === input.model);
     return LocalModelProbeResponseSchema.parse({
       endpoint,
