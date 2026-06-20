@@ -287,6 +287,25 @@ export type LocalModelProbeRequest = z.infer<
   typeof LocalModelProbeRequestSchema
 >;
 
+export const LocalModelCatalogEntrySchema = z
+  .object({
+    id: z.string().trim().min(1).optional(),
+    name: z.string().trim().min(1).optional(),
+  })
+  .refine((entry) => entry.id !== undefined || entry.name !== undefined, {
+    message: "model entry must include id or name",
+  });
+export type LocalModelCatalogEntry = z.infer<
+  typeof LocalModelCatalogEntrySchema
+>;
+
+export const LocalModelCatalogResponseSchema = z.object({
+  data: z.array(LocalModelCatalogEntrySchema).default([]),
+});
+export type LocalModelCatalogResponse = z.infer<
+  typeof LocalModelCatalogResponseSchema
+>;
+
 export const LocalModelProbeResponseSchema = z.object({
   endpoint: z.string(),
   model: z.string(),

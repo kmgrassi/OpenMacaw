@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   AgentLocalRuntimeAssignRequestSchema,
+  LocalModelCatalogResponseSchema,
   LocalModelProbeRequestSchema,
   LocalRuntimeRegistrationRequestSchema,
 } from "../../../../contracts/local-runtime.js";
@@ -129,6 +130,22 @@ describe("local runtime contract", () => {
       LocalModelProbeRequestSchema.safeParse({
         endpoint: "https://example.com/v1",
         model: "qwen3-coder:30b",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts model catalog entries when either id or name is present", () => {
+    const parsed = LocalModelCatalogResponseSchema.parse({
+      data: [{ id: "qwen3-coder:30b" }, { name: "Qwen 3 Coder" }],
+    });
+
+    expect(parsed.data).toEqual([{ id: "qwen3-coder:30b" }, { name: "Qwen 3 Coder" }]);
+  });
+
+  it("rejects model catalog entries with neither id nor name", () => {
+    expect(
+      LocalModelCatalogResponseSchema.safeParse({
+        data: [{}],
       }).success,
     ).toBe(false);
   });
