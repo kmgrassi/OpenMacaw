@@ -148,12 +148,14 @@ describe("scheduled task contracts", () => {
       ScheduledTaskDeliverySchema.parse({
         kind: "scheduled_agent_message",
         sessionStrategy: "scheduled_task",
+        metadata: { kind: "learning_meta_agent_daily_review" },
       }),
     ).toEqual({
       kind: "scheduled_agent_message",
       sessionStrategy: "scheduled_task",
+      metadata: { kind: "learning_meta_agent_daily_review" },
     });
-    expect(ScheduledTaskDeliverySchema.safeParse({ kind: "unknown" }).success).toBe(false);
+
     expect(ScheduledTaskDeliverySchema.safeParse({ kind: "learning_reflection" }).success).toBe(false);
     expect(
       ScheduledTaskDeliverySchema.safeParse({

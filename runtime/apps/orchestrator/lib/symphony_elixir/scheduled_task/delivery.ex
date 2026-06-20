@@ -17,6 +17,7 @@ defmodule SymphonyElixir.ScheduledTask.Delivery do
   alias SymphonyElixir.MapUtils
 
   @agent_message_kind "scheduled_agent_message"
+
   @known_kinds [@agent_message_kind]
 
   @spec deliver(map(), map(), keyword()) :: {:ok, String.t()} | {:error, term()}
@@ -45,9 +46,11 @@ defmodule SymphonyElixir.ScheduledTask.Delivery do
 
     with {:ok, workspace_id} <- workspace_id(task, opts),
          {:ok, agent_id} <- required_string(task, "agent_id"),
-         {:ok, instructions} <- required_string(task, "instructions"),
+         {:ok, base_instructions} <- required_string(task, "instructions"),
          {:ok, scheduled_task_id} <- required_string(task, "id"),
-         {:ok, scheduled_task_run_id} <- required_string(run, "id") do
+         {:ok, scheduled_task_run_id} <- required_string(run, "id"),
+         {:ok, instructions, delivery_metadata} <-
+           instructions_with_delivery_context(base_instructions, task, workspace_id, opts) do
       run_id = scheduled_task_run_id
       scheduled_for = string_value(run, "scheduled_for") || string_value(task, "next_run_at")
       source_work_item_id = string_value(task, "source_work_item_id")
@@ -61,13 +64,14 @@ defmodule SymphonyElixir.ScheduledTask.Delivery do
       }
 
       metadata =
-        %{
+        delivery_metadata
+        |> Map.merge(%{
           "source" => "scheduled_task",
           "kind" => @agent_message_kind,
           "scheduled_task_id" => scheduled_task_id,
           "scheduled_task_run_id" => scheduled_task_run_id,
           "scheduled_for" => scheduled_for
-        }
+        })
         |> MapUtils.put_present("source_work_item_id", source_work_item_id)
 
       chat_gateway = Keyword.get(opts, :chat_gateway, ChatGateway)
@@ -88,6 +92,67 @@ defmodule SymphonyElixir.ScheduledTask.Delivery do
       _ -> nil
     end
   end
+
+  defp instructions_with_delivery_context(instructions, task, workspace_id, opts) do
+    delivery_metadata = delivery_metadata(task)
+
+    case get_in(delivery_metadata, ["sampling", "strategy"]) do
+      "random_recent_run" ->
+        append_learning_sample(
+          instructions,
+          workspace_id,
+          delivery_metadata["sampling"],
+          delivery_metadata,
+          opts
+        )
+
+      _ ->
+        {:ok, instructions, delivery_metadata}
+    end
+  end
+
+  defp append_learning_sample(instructions, workspace_id, sampling, delivery_metadata, opts) do
+    sampler = Keyword.get(opts, :learning_sampler, SymphonyElixir.ScheduledTask.LearningSampler)
+
+    case sampler.sample(workspace_id, sampling || %{}, opts) do
+      {:ok, nil} ->
+        {:ok,
+         instructions <>
+           "\n\nNo recent transcript sample was available. Report that no sample was available and take no further action.",
+         Map.put(delivery_metadata, "sample", %{"status" => "unavailable"})}
+
+      {:ok, sample} when is_map(sample) ->
+        {:ok,
+         instructions <>
+           "\n\nTranscript sample for this scheduled learning review:\n```json\n" <>
+           Jason.encode!(sample) <> "\n```",
+         Map.put(delivery_metadata, "sample", %{
+           "status" => "attached",
+           "group" => Map.get(sample, "group")
+         })}
+
+      {:error, reason} ->
+        {:error, {:learning_sample_failed, reason}}
+    end
+  end
+
+  defp delivery_metadata(task) do
+    case Map.get(task, "delivery") || Map.get(task, :delivery) do
+      %{"metadata" => metadata} when is_map(metadata) -> metadata
+      %{metadata: metadata} when is_map(metadata) -> stringify_keys(metadata)
+      _ -> %{}
+    end
+  end
+
+  defp stringify_keys(map) when is_map(map) do
+    Map.new(map, fn
+      {key, value} when is_atom(key) -> {Atom.to_string(key), stringify_value(value)}
+      {key, value} -> {key, stringify_value(value)}
+    end)
+  end
+
+  defp stringify_value(value) when is_map(value), do: stringify_keys(value)
+  defp stringify_value(value), do: value
 
   defp workspace_id(task, opts) do
     case string_value(task, "workspace_id") do

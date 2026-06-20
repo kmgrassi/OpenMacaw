@@ -32,6 +32,10 @@ export function workspaceRouterOptimizationTaskId(workspaceId: string, agentId: 
   return deterministicUuid(`workspace-router-optimization-task:${workspaceId}:${agentId}`);
 }
 
+export function workspaceLearningMetaAgentTaskId(workspaceId: string, agentId: string) {
+  return deterministicUuid(`workspace-learning-meta-agent-task:${workspaceId}:${agentId}`);
+}
+
 export function requireCurrentUser(userId: string) {
   userId = userId.trim();
   if (!userId) {

@@ -434,6 +434,19 @@ defmodule SymphonyElixir.ExecutionProfileTest do
       assert profile["runner_kind"] == "manager"
     end
 
+    test "normalizes llm_tool_runner with learning role to manager" do
+      assert {:ok, profile} =
+               ExecutionProfile.normalize_from_config(%{
+                 "execution_profile" => %{
+                   "runner_kind" => "llm_tool_runner",
+                   "role" => "learning",
+                   "provider" => "openai"
+                 }
+               })
+
+      assert profile["runner_kind"] == "manager"
+    end
+
     test "normalizes llm_tool_runner with planning role to planner" do
       assert {:ok, profile} =
                ExecutionProfile.normalize_from_config(%{

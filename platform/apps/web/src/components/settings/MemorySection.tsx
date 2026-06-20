@@ -210,7 +210,7 @@ export function MemorySection() {
         !error && (
           <EmptyState
             label="No memories match these filters."
-            description="Memory rows appear here after learning jobs write them for this workspace."
+            description="Memory rows appear here after agents save durable facts for this workspace."
             align="left"
           />
         )}

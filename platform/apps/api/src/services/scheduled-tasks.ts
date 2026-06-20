@@ -235,7 +235,7 @@ function mapScheduledTaskRow(row: ScheduledTaskRow): ScheduledTaskProjection {
 }
 
 function isScheduledTaskAgentType(type: string | null) {
-  return type === "manager" || type === "router";
+  return type === "manager" || type === "router" || type === "learning";
 }
 
 async function assertScheduledTaskAgentBelongsToWorkspace(workspaceId: string, agentId: string) {
