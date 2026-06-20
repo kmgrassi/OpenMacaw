@@ -21,6 +21,8 @@ describe("agent tool definitions", () => {
 
   it("loads tools assigned to an authorized agent", async () => {
     await expect(getToolsForAgent({ accessToken, userId, agentId, workspaceId })).resolves.toEqual([
+      expect.objectContaining({ slug: "memory.create" }),
+      expect.objectContaining({ slug: "memory.search" }),
       expect.objectContaining({
         id: toolId,
         slug: "read_file",
@@ -173,7 +175,7 @@ describe("agent tool definitions", () => {
 
     const tools = await getToolsForAgent({ accessToken, userId, agentId, workspaceId });
 
-    expect(tools.map((visibleTool) => visibleTool.slug)).toEqual(["read_file"]);
+    expect(tools.map((visibleTool) => visibleTool.slug)).toEqual(["memory.create", "memory.search", "read_file"]);
   });
 
   it("lists only global and requested-workspace tool definitions", async () => {

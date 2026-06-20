@@ -73,6 +73,8 @@ describe("local chat agent tools", () => {
 
     expect(resolution.tools.map((resolvedTool) => [resolvedTool.slug, resolvedTool.functionName])).toEqual([
       ["plan.create", "plan_create"],
+      ["memory.create", "memory_create"],
+      ["memory.search", "memory_search"],
     ]);
     expect(resolution.rejectedLocalCodingTools.map((resolvedTool) => resolvedTool.slug)).toEqual(["shell.exec"]);
   });
@@ -103,7 +105,7 @@ describe("local chat agent tools", () => {
       supabase: createMockSupabaseClient(tables) as never,
     });
 
-    expect(tools.map((resolvedTool) => resolvedTool.slug)).toEqual(["plan.create"]);
+    expect(tools.map((resolvedTool) => resolvedTool.slug)).toEqual(["plan.create", "memory.create", "memory.search"]);
   });
 
   it("ignores tools without concrete include grants", async () => {
@@ -127,18 +129,16 @@ describe("local chat agent tools", () => {
       supabase: createMockSupabaseClient(tables) as never,
     });
 
-    expect(tools).toEqual([]);
+    expect(tools.map((resolvedTool) => [resolvedTool.slug, resolvedTool.functionName])).toEqual([
+      ["memory.create", "memory_create"],
+      ["memory.search", "memory_search"],
+    ]);
   });
 
-  it("adds memory.search as a system tool when learning is enabled", async () => {
+  it("adds memory tools as system tools without a learning gate", async () => {
     const tables: Record<string, Array<Record<string, unknown>>> = {
-      agent: [
-        {
-          id: agentId,
-          workspace_id: workspaceId,
-        },
-      ],
-      workspaces: [{ id: workspaceId, settings: { learning: { enabled: true } } }],
+      agent: [{ id: agentId, workspace_id: workspaceId }],
+      workspaces: [{ id: workspaceId, settings: { learning: { enabled: false } } }],
       tool: [],
       agent_tool_grant: [],
     };
@@ -150,6 +150,7 @@ describe("local chat agent tools", () => {
     });
 
     expect(tools.map((resolvedTool) => [resolvedTool.slug, resolvedTool.functionName])).toEqual([
+      ["memory.create", "memory_create"],
       ["memory.search", "memory_search"],
     ]);
   });
