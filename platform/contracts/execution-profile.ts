@@ -15,6 +15,7 @@ export const AgentRoleSchema = z.enum([
   "planning",
   "coding",
   "manager",
+  "learning",
   "router",
   "custom",
 ]);
@@ -31,6 +32,7 @@ export const ToolProfileSchema = z.enum([
   "planning",
   "coding",
   "manager",
+  "learning",
   "router",
   "none",
 ]);

@@ -401,6 +401,7 @@ defmodule SymphonyElixir.ExecutionProfile do
 
     case {runner_kind, role} do
       {"llm_tool_runner", "manager"} -> "manager"
+      {"llm_tool_runner", "learning"} -> "manager"
       {"llm_tool_runner", "planning"} -> "planner"
       {"llm_tool_runner", "planner"} -> "planner"
       _ -> runner_kind
