@@ -109,6 +109,13 @@ In-flight work. Each entry should map to one or more open PRs.
 - [active/large-file-refactor-pr-plan.md](active/large-file-refactor-pr-plan.md)
   — PR-by-PR scoping for the top 10 refactor targets identified in the
   checklist.
+- [active/learning-agent-redesign-scope.md](active/learning-agent-redesign-scope.md)
+  — Reframes learning away from the memory-centric sidecar: memory and skills
+  become universal, ungated agent capabilities (`memory.create`/`memory.search`;
+  agent-owned DB skills in Claude Agent Skills format, draft→approved), and a
+  `learning` meta-agent reviews other agents' transcripts on a daily sample,
+  handing bugs to the planner and authoring skills. Supersedes the
+  `learning-sidecar-*` series as it lands.
 - [active/learning-sidecar-scope.md](active/learning-sidecar-scope.md)
   — Hermes-style learning layer for the parallel-agent stack: workspace-scoped
   memory persistence, post-run reflection, prompt-time retrieval, and
