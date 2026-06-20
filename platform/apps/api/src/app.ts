@@ -52,7 +52,6 @@ import { handleApiRouteError } from "./http.js";
 export function shouldRequireJwtAuth(req: express.Request) {
   if (req.method === "POST" && req.path === "/memory/items") return false;
   if (req.method === "POST" && /^\/work-items\/[^/]+\/cutovers$/.test(req.path)) return false;
-  if (req.method === "POST" && /^\/learning\/jobs\/[^/]+$/.test(req.path)) return false;
   return !req.path.startsWith("/webhooks/") && !req.path.startsWith("/internal/scheduled-tasks/");
 }
 

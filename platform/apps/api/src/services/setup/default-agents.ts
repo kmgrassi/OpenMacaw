@@ -24,10 +24,10 @@ import {
   managerToolPolicyDefaults,
 } from "./builders.js";
 import { updateAgentModelSettings, updateAgentRuntimeDefaults } from "./gateway-config.js";
-import { ensureLearningSidecarScheduledTasks } from "../learning/operability-remediation.js";
 import { requireCurrentUser, workspaceManagerAgentId } from "./identity.js";
 import {
   ensureDefaultAgent,
+  ensureWorkspaceLearningAgent,
   ensureWorkspaceManagerAgent,
   ensureWorkspaceRouterAgent,
   ensureDefaultWorkspace,
@@ -41,6 +41,7 @@ import {
 import { mapDefaultAgentStatus, mapSetupAgent, mapWorkspace } from "./mappers.js";
 import { DEFAULT_AGENT_ROLES, onboardingAgentDefaults, type OnboardingDefaultAgentRole } from "./defaults.js";
 import type { AgentRow, DefaultAgentStatus } from "./types.js";
+import { readWorkspaceSettings } from "../workspace-settings.js";
 
 async function buildDefaultAgentStatus(
   accessToken: string,
@@ -86,12 +87,10 @@ export async function listSetupAuthState(accessToken: string, verifiedUserId: st
   };
   const managerAgent = await ensureWorkspaceManagerAgent(accessToken, workspace.id, userId);
   const routerAgent = await ensureWorkspaceRouterAgent(accessToken, workspace.id, userId);
-  await ensureLearningSidecarScheduledTasks({
-    workspaceId: workspace.id,
-    userId,
-    managerAgentId: managerAgent.id,
-    planningAgentId: defaultAgents.planning.id,
-  });
+  const workspaceSettings = await readWorkspaceSettings(workspace.id);
+  const learningAgent = workspaceSettings.learningEnabled
+    ? await ensureWorkspaceLearningAgent(accessToken, workspace.id, userId)
+    : null;
 
   const agentRows = await listSetupAgentRows(accessToken);
   const normalizedAgentRows = agentRows.map((agent) => ({
@@ -125,6 +124,14 @@ export async function listSetupAuthState(accessToken: string, verifiedUserId: st
     normalizedAgentRows.push(normalized);
     agentById.set(normalized.id, normalized);
   }
+  if (learningAgent && !agentById.has(learningAgent.id)) {
+    const normalized = {
+      ...learningAgent,
+      type: normalizeAgentType(learningAgent.type),
+    };
+    normalizedAgentRows.push(normalized);
+    agentById.set(normalized.id, normalized);
+  }
 
   const defaultAgentState = {
     planning: await buildDefaultAgentStatus(accessToken, userId, defaultAgents.planning),
@@ -133,7 +140,7 @@ export async function listSetupAuthState(accessToken: string, verifiedUserId: st
   const managerAgentState = await buildDefaultAgentStatus(accessToken, userId, managerAgent);
   const defaultAgentIds = new Set(Object.values(defaultAgents).map((agent) => agent.id));
   const defaultSelectableAgents = normalizedAgentRows.filter(
-    (agent) => agent.status === "active" && !["manager", "router"].includes(normalizeAgentType(agent.type)),
+    (agent) => agent.status === "active" && !["manager", "router", "learning"].includes(normalizeAgentType(agent.type)),
   );
   const configuredExistingAgents = (
     await Promise.all(

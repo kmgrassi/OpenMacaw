@@ -268,48 +268,57 @@ describe("default-agent auth bootstrap", () => {
     });
   });
 
-  it("seeds learning sidecar scheduled tasks for learning-enabled workspaces", async () => {
+  it("seeds the learning meta-agent scheduled task for learning-enabled workspaces", async () => {
     const state = setupSupabaseMock({
       workspaces: [workspace()],
       memberships: [
         { workspace_id: workspaceId, user_id: userId, role: "owner", created_at: "2026-04-25T00:00:00.000Z" },
       ],
-      workspaceSettings: [{ workspace_id: workspaceId, learning_enabled: true }],
+      workspaceSettings: [
+        {
+          workspace_id: workspaceId,
+          learning_enabled: true,
+          tracker_kind: "database",
+          tracker_credential_id: null,
+          updated_at: "2026-04-25T00:00:00.000Z",
+          updated_by_user_id: userId,
+        },
+      ],
     });
 
     await listSetupAuthState("access-token", userId);
     await listSetupAuthState("access-token", userId);
 
-    const createdPlanningAgent = state.agents.find((row) => row.type === "planning");
-    const createdManagerAgent = state.agents.find((row) => row.type === "manager");
-    const distillationTask = state.scheduledTasks.find((row) => rowKind(row.delivery) === "learning_distillation");
-    const operabilityTask = state.scheduledTasks.find(
-      (row) => rowKind(row.metadata) === "learning_operability_remediation",
+    const createdLearningAgent = state.agents.find((row) => row.type === "learning");
+    const learningTask = state.scheduledTasks.find(
+      (row) => rowKind(row.metadata) === "learning_meta_agent_daily_review",
     );
 
-    expect(state.scheduledTasks).toHaveLength(3);
-    expect(distillationTask).toMatchObject({
+    expect(state.scheduledTasks).toHaveLength(2);
+    expect(createdLearningAgent).toMatchObject({
       workspace_id: workspaceId,
-      agent_id: createdManagerAgent?.id,
-      title: "Nightly learning distillation",
-      enabled: true,
-      delivery: { kind: "learning_distillation", windowDays: 7 },
-      metadata: { kind: "learning_distillation", source: "workspace_learning_sidecar_seed" },
+      type: "learning",
+      name: "Learning Agent",
+      status: "active",
     });
-    expect(operabilityTask).toMatchObject({
+    expect(learningTask).toMatchObject({
       workspace_id: workspaceId,
-      agent_id: createdPlanningAgent?.id,
-      title: "Learning operability remediation",
+      agent_id: createdLearningAgent?.id,
+      title: "Learning agent transcript review",
       enabled: true,
-      instructions: expect.stringContaining(
-        `/api/workspaces/${workspaceId}/learning/operability-remediation?threshold=2&limit=20`,
-      ),
+      schedule: { kind: "every", interval: 1, unit: "day", at: "03:30" },
       delivery: {
         kind: "scheduled_agent_message",
         sessionStrategy: "scheduled_task",
-        metadata: { kind: "learning_operability_remediation" },
+        metadata: {
+          kind: "learning_meta_agent_daily_review",
+          sampling: {
+            strategy: "random_recent_run",
+            messageWindow: 10,
+          },
+        },
       },
-      metadata: { kind: "learning_operability_remediation", source: "workspace_learning_sidecar_seed" },
+      metadata: { kind: "learning_meta_agent_daily_review", source: "workspace_learning_meta_agent_seed" },
     });
   });
 

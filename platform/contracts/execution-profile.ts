@@ -16,6 +16,7 @@ export const AgentRoleSchema = z.enum([
   "coding",
   "manager",
   "router",
+  "learning",
   "custom",
 ]);
 

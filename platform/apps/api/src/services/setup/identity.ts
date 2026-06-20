@@ -28,12 +28,12 @@ export function workspaceRouterOptimizationTaskId(workspaceId: string, agentId: 
   return deterministicUuid(`workspace-router-optimization-task:${workspaceId}:${agentId}`);
 }
 
-export function workspaceLearningDistillationTaskId(workspaceId: string, agentId: string) {
-  return deterministicUuid(`workspace-learning-distillation-task:${workspaceId}:${agentId}`);
+export function workspaceLearningAgentId(workspaceId: string) {
+  return deterministicUuid(`workspace-learning-agent:${workspaceId}`);
 }
 
-export function workspaceOperabilityRemediationTaskId(workspaceId: string) {
-  return deterministicUuid(`workspace-operability-remediation-task:${workspaceId}`);
+export function workspaceLearningMetaAgentTaskId(workspaceId: string, agentId: string) {
+  return deterministicUuid(`workspace-learning-meta-agent-task:${workspaceId}:${agentId}`);
 }
 
 export function requireCurrentUser(userId: string) {

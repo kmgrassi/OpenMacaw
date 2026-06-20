@@ -6,8 +6,7 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
 
   Service-role PostgREST client — bypasses RLS, which is intentional:
   the runtime needs to read these settings even when no user is in the
-  request context (the reflection-enqueue path runs after every agent
-  run completes, not on behalf of an authenticated user).
+  request context.
 
   ## Default-off, opt-in
 
@@ -19,9 +18,7 @@ defmodule SymphonyElixir.WorkspaceSettings.Repository do
 
   When the read fails (Supabase unreachable, schema not ready, etc.),
   `learning_enabled?/2` returns `{:error, reason}`. Callers should
-  decide whether to fall open or closed; the `ReflectionDispatcher`
-  still fails open with a warning log so a transient Supabase blip does
-  not silently disable memory for already-enabled workspaces.
+  decide whether to fall open or closed.
   """
 
   alias SymphonyElixir.{PostgRESTClient, Supabase, SupabaseSchema, Time}

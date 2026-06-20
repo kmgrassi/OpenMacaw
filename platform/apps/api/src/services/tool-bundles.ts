@@ -88,6 +88,7 @@ const TOOL_BUNDLES: Record<ToolProfile, ToolBundleDefinition> = {
 } as const satisfies Record<ToolProfile, ToolBundleDefinition>;
 
 export function toolProfileForAgentType(agentType: string | null | undefined): ToolProfile {
+  if (agentType === "learning") return "manager";
   if (agentType === "planning" || agentType === "coding" || agentType === "manager" || agentType === "router") {
     return agentType;
   }

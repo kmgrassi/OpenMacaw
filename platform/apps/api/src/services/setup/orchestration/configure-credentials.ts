@@ -34,7 +34,7 @@ export async function configureSetupAgentCredentialsImpl(
   }
 
   const role = normalizeAgentType(agent.type);
-  if (role === "custom" || role === "manager" || role === "router") {
+  if (role === "custom" || role === "manager" || role === "router" || role === "learning") {
     throw new ApiRouteError(
       400,
       `${role}_agent_configuration_unsupported`,
@@ -42,7 +42,9 @@ export async function configureSetupAgentCredentialsImpl(
         ? "Custom agents require a backend adapter configuration before credentials can be applied here"
         : role === "router"
           ? "Router agent credential activation is handled by the routing execution profile flow"
-          : "Manager agent credential activation is handled by the manager execution profile flow",
+          : role === "learning"
+            ? "Learning agent credential activation is handled by the learning execution profile flow"
+            : "Manager agent credential activation is handled by the manager execution profile flow",
     );
   }
 

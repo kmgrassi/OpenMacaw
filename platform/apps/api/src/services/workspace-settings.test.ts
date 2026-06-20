@@ -4,9 +4,19 @@ import { patchWorkspaceSettings, readWorkspaceSettings } from "./workspace-setti
 import { getServiceRoleSupabase } from "../supabase-client.js";
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
 
+const { ensureLearningMetaAgentScheduleForWorkspace, setLearningMetaAgentScheduledTaskEnabled } = vi.hoisted(() => ({
+  ensureLearningMetaAgentScheduleForWorkspace: vi.fn(),
+  setLearningMetaAgentScheduledTaskEnabled: vi.fn(),
+}));
+
 vi.mock("../supabase-client.js", () => ({
   getServiceRoleSupabase: vi.fn(),
   normalizeSupabaseError: (_context: string, error: Error) => error,
+}));
+
+vi.mock("./setup/store/learning-agent.js", () => ({
+  ensureLearningMetaAgentScheduleForWorkspace,
+  setLearningMetaAgentScheduledTaskEnabled,
 }));
 
 const workspaceId = "22222222-2222-4222-8222-222222222222";
@@ -36,6 +46,8 @@ function setupMockDatabase(initial: WorkspaceSettingsRow[] = [], credentials: Ar
 describe("readWorkspaceSettings", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    ensureLearningMetaAgentScheduleForWorkspace.mockResolvedValue(undefined);
+    setLearningMetaAgentScheduledTaskEnabled.mockResolvedValue(undefined);
   });
 
   it("returns defaults when no row exists (learning disabled by default)", async () => {
@@ -135,6 +147,11 @@ describe("patchWorkspaceSettings", () => {
       tracker_kind: "database",
       updated_by_user_id: otherUserId,
     });
+    expect(ensureLearningMetaAgentScheduleForWorkspace).toHaveBeenCalledWith({
+      workspaceId,
+      userId: otherUserId,
+    });
+    expect(setLearningMetaAgentScheduledTaskEnabled).not.toHaveBeenCalled();
   });
 
   it("toggles back from false to true", async () => {
@@ -158,6 +175,11 @@ describe("patchWorkspaceSettings", () => {
     expect(result.learningEnabled).toBe(true);
     expect(db.workspace_settings).toHaveLength(1);
     expect(db.workspace_settings[0]?.learning_enabled).toBe(true);
+    expect(ensureLearningMetaAgentScheduleForWorkspace).toHaveBeenCalledWith({
+      workspaceId,
+      userId,
+    });
+    expect(setLearningMetaAgentScheduledTaskEnabled).not.toHaveBeenCalled();
   });
 
   it("updates tracker kind with a workspace-scoped matching credential", async () => {
@@ -256,6 +278,11 @@ describe("patchWorkspaceSettings", () => {
       tracker_kind: "linear",
       tracker_credential_id: staleCredentialId,
     });
+    expect(setLearningMetaAgentScheduledTaskEnabled).toHaveBeenCalledWith({
+      workspaceId,
+      enabled: false,
+    });
+    expect(ensureLearningMetaAgentScheduleForWorkspace).not.toHaveBeenCalled();
   });
 
   it("rejects credentials from another workspace", async () => {

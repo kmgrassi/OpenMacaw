@@ -47,6 +47,7 @@ function defaultTemplateSlugForAgent(input: {
   if (toolProfile === "coding" && localModelCodingEnabled) return "local_model_coding";
   if (toolProfile === "planning") return "planner";
   if (toolProfile === "coding") return "coding";
+  if (input.agentType === "learning") return "manager";
   if (toolProfile === "manager") return "manager";
   if (toolProfile === "router") return "router";
   return null;

@@ -6,8 +6,8 @@ import { TrackerKindSchema } from "./tracker-kinds.js";
  * (one row per workspace, PK on `workspace_id`).
  *
  * v1 fields:
- *   - learningEnabled: gates the learning sidecar's
- *     reflection / memory persistence for this workspace.
+ *   - learningEnabled: gates the daily learning meta-agent schedule
+ *     for this workspace.
  *   - trackerKind / trackerCredentialId: controls the workspace-scoped
  *     work tracker adapter used by the runtime.
  *

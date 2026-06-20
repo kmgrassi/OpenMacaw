@@ -16,6 +16,7 @@ import type { RunnerKind } from "./runner-kinds.js";
  *   - coding    → `codex`             — workspaceWrite: always. Edits files.
  *   - manager   → `llm_tool_runner`   — workspaceWrite: role_coding. Orchestrates.
  *   - router    → `llm_tool_runner`   — tool-calling model over routing tools.
+ *   - learning  → `llm_tool_runner`   — reviews sampled transcripts.
  *   - custom    → `openclaw_ws`       — external websocket runner.
  *
  * See `docs/reference/execution-profile-contract.md` for the full
@@ -30,6 +31,7 @@ export const DEFAULT_RUNNER_KIND_BY_AGENT_TYPE = {
   coding: "codex",
   manager: "llm_tool_runner",
   router: "llm_tool_runner",
+  learning: "llm_tool_runner",
   custom: "openclaw_ws",
 } as const satisfies Record<AgentType, RunnerKind>;
 

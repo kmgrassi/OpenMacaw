@@ -10,6 +10,7 @@ export const AgentTypeSchema = z.enum([
   "planning",
   "manager",
   "router",
+  "learning",
   "custom",
 ]);
 export type AgentType = z.infer<typeof AgentTypeSchema>;

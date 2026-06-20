@@ -70,18 +70,6 @@ describe("API auth routing", () => {
     expect(shouldRequireJwtAuth({ method: "POST", path: "/memory/items" } as never)).toBe(false);
     expect(
       shouldRequireJwtAuth({
-        method: "POST",
-        path: "/learning/jobs/learning_reflection",
-      } as never),
-    ).toBe(false);
-    expect(
-      shouldRequireJwtAuth({
-        method: "POST",
-        path: "/learning/jobs/learning_distillation",
-      } as never),
-    ).toBe(false);
-    expect(
-      shouldRequireJwtAuth({
         method: "GET",
         path: "/learning/jobs/learning_reflection",
       } as never),
@@ -148,45 +136,6 @@ describe("API auth routing", () => {
       error: { code: "auth_required" },
     });
     delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-  });
-
-  it("lets learning job service-role auth run behind the app auth middleware", async () => {
-    const previousServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    process.env.SUPABASE_SERVICE_ROLE_KEY = "service-role-key";
-    server = createServer(createApp(config));
-    const port = await listen(server);
-    const baseUrl = `http://127.0.0.1:${port}`;
-
-    const response = await fetch(`${baseUrl}/api/learning/jobs/learning_reflection`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: "Bearer user-jwt-token",
-      },
-      body: JSON.stringify({
-        kind: "learning_reflection",
-        scheduled_task_id: "33333333-3333-4333-8333-333333333333",
-        scheduled_task_run_id: "44444444-4444-4444-8444-444444444444",
-        scheduled_run_id: "scheduled_run-123",
-        workspace_id: "11111111-1111-4111-8111-111111111111",
-        agent_id: "22222222-2222-4222-8222-222222222222",
-        delivery: {
-          kind: "learning_reflection",
-          sourceRunId: "run-123",
-          sourceTaskId: "task-456",
-        },
-      }),
-    });
-
-    if (previousServiceRoleKey === undefined) {
-      delete process.env.SUPABASE_SERVICE_ROLE_KEY;
-    } else {
-      process.env.SUPABASE_SERVICE_ROLE_KEY = previousServiceRoleKey;
-    }
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      error: { code: "service_role_forbidden" },
-    });
   });
 
   it("returns and preserves request correlation headers", async () => {
