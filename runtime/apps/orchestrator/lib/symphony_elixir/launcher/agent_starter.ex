@@ -386,7 +386,9 @@ defmodule SymphonyElixir.Launcher.AgentStarter do
        when is_binary(workspace_id) and workspace_id != "" do
     case resolve_workspace_tracker_kind(workspace_id) do
       {:ok, kind} ->
-        Map.put(config, "tracker", Map.put(existing_tracker(config), "kind", kind))
+        # Workspace settings are authoritative for the tracker kind.
+        tracker = config |> existing_tracker() |> Map.put("kind", kind) |> with_tracker_defaults()
+        Map.put(config, "tracker", tracker)
 
       :skip ->
         ensure_tracker_kind(config)
@@ -425,11 +427,24 @@ defmodule SymphonyElixir.Launcher.AgentStarter do
   defp ensure_tracker_kind(config) do
     tracker = existing_tracker(config)
 
-    case Map.get(tracker, "kind") do
-      kind when is_binary(kind) and kind != "" -> config
-      _ -> Map.put(config, "tracker", Map.put(tracker, "kind", "database"))
-    end
+    tracker =
+      case Map.get(tracker, "kind") do
+        kind when is_binary(kind) and kind != "" -> tracker
+        _ -> Map.put(tracker, "kind", "database")
+      end
+
+    Map.put(config, "tracker", with_tracker_defaults(tracker))
   end
+
+  # A database tracker needs an explicit `table`; endpoint/api_key fall back to the
+  # Supabase service-role env in `Config.Schema.finalize_tracker/1`, but `table` is
+  # never defaulted there and `Config.validate!/0` rejects a database tracker
+  # without it (`:missing_database_table`). Seed the same default the manager
+  # gateway config uses so newly unblocked agents can actually read `work_items`.
+  defp with_tracker_defaults(%{"kind" => "database"} = tracker),
+    do: Map.put_new(tracker, "table", "work_items")
+
+  defp with_tracker_defaults(tracker), do: tracker
 
   defp existing_tracker(config) do
     case Map.get(config, "tracker") do

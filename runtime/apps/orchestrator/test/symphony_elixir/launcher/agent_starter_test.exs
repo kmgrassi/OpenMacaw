@@ -123,5 +123,8 @@ defmodule SymphonyElixir.Launcher.AgentStarterTest do
 
     assert {:ok, config, _resolution} = AgentStarter.resolve_and_validate_agent_config(agent, %{})
     assert get_in(config, ["tracker", "kind"]) == "database"
+    # A database tracker needs an explicit table or Config.validate!/0 rejects it
+    # with :missing_database_table.
+    assert get_in(config, ["tracker", "table"]) == "work_items"
   end
 end
