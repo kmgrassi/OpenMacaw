@@ -26,6 +26,7 @@ defmodule SymphonyElixir.Launcher.AgentStarter do
   alias SymphonyElixir.Launcher.GatewayConfig
   alias SymphonyElixir.Launcher.GatewayConfig.Resolved
   alias SymphonyElixir.WorkerBridge.SecretResolver
+  alias SymphonyElixir.WorkspaceSettings
 
   @spec resolve_and_validate_agent_config(Agent.t(), map()) ::
           {:ok, map(), map() | nil} | {:error, term()}
@@ -43,6 +44,7 @@ defmodule SymphonyElixir.Launcher.AgentStarter do
       with {:ok, base, resolution} <- resolve_launch_config(agent, launch_params) do
         {merged, credential_refresh} =
           base
+          |> inject_workspace_tracker(agent.workspace_id)
           |> inject_stored_agent(agent)
           |> inject_stored_credentials(agent.id)
 
@@ -370,6 +372,83 @@ defmodule SymphonyElixir.Launcher.AgentStarter do
       _ ->
         config
     end
+  end
+
+  # The tracker is a workspace-level concern: its source of truth is the
+  # `workspace_settings` table (kind defaults to "database", NOT NULL). Per-agent
+  # gateway_configs deliberately omit it, so inject the workspace tracker here —
+  # before credential injection, so `maybe_inject_linear_api_key` sees the kind —
+  # otherwise the launcher rejects every non-manager agent with
+  # `missing_tracker_kind`. Runs for all runner kinds since the runtime
+  # self-resolves launch config from the DB (the platform only forwards an
+  # execution profile for local runners).
+  defp inject_workspace_tracker(config, workspace_id)
+       when is_binary(workspace_id) and workspace_id != "" do
+    case resolve_workspace_tracker_kind(workspace_id) do
+      {:ok, kind} ->
+        Map.put(config, "tracker", Map.put(existing_tracker(config), "kind", kind))
+
+      :skip ->
+        ensure_tracker_kind(config)
+    end
+  end
+
+  defp inject_workspace_tracker(config, _workspace_id), do: ensure_tracker_kind(config)
+
+  defp resolve_workspace_tracker_kind(workspace_id) do
+    repository = workspace_settings_repository()
+
+    if workspace_settings_configured?(repository) do
+      case repository.tracker_settings(workspace_id) do
+        {:ok, %{"tracker_kind" => kind}} when is_binary(kind) and kind != "" ->
+          {:ok, kind}
+
+        {:ok, _row} ->
+          {:ok, "database"}
+
+        {:error, reason} ->
+          Logger.warning(
+            "AgentStarter: workspace tracker lookup failed for workspace #{workspace_id}: " <>
+              "#{inspect(reason)}; falling back to config/default tracker"
+          )
+
+          :skip
+      end
+    else
+      :skip
+    end
+  end
+
+  # No workspace settings available (e.g. service-role client not configured, as
+  # in unit tests): keep any tracker the config already carries, otherwise default
+  # to the same "database" tracker the schema defaults to.
+  defp ensure_tracker_kind(config) do
+    tracker = existing_tracker(config)
+
+    case Map.get(tracker, "kind") do
+      kind when is_binary(kind) and kind != "" -> config
+      _ -> Map.put(config, "tracker", Map.put(tracker, "kind", "database"))
+    end
+  end
+
+  defp existing_tracker(config) do
+    case Map.get(config, "tracker") do
+      %{} = tracker -> tracker
+      _ -> %{}
+    end
+  end
+
+  defp workspace_settings_configured?(WorkspaceSettings.Repository),
+    do: WorkspaceSettings.Repository.configured?()
+
+  defp workspace_settings_configured?(_repository), do: true
+
+  defp workspace_settings_repository do
+    Application.get_env(
+      :symphony_elixir,
+      :launcher_workspace_settings_repository,
+      WorkspaceSettings.Repository
+    )
   end
 
   defp normalize_map(value) when is_map(value) do
