@@ -322,7 +322,6 @@ describe("syncCredentialIntoRoutingRuleForAgent", () => {
       },
       credentialId: "cred-new",
       provider: "openai",
-      userId,
     });
 
     expect(upsertAgentCredentialReferenceRule).toHaveBeenCalledWith({
@@ -371,7 +370,6 @@ describe("syncCredentialIntoRoutingRuleForAgent", () => {
       },
       credentialId: "cred-mgr",
       provider: "openai",
-      userId,
     });
 
     expect(upsertAgentCredentialReferenceRule).toHaveBeenCalledWith(
@@ -405,7 +403,6 @@ describe("syncCredentialIntoRoutingRuleForAgent", () => {
       },
       credentialId: "cred-fresh",
       provider: "openai",
-      userId,
     });
 
     expect(rule.credential_id).toBe("cred-fresh");
@@ -438,7 +435,6 @@ describe("syncCredentialIntoRoutingRuleForAgent", () => {
       },
       credentialId: "cred-oauth",
       provider: "openai_codex",
-      userId,
     });
 
     const call = vi.mocked(upsertAgentCredentialReferenceRule).mock.calls[0]?.[0];
@@ -473,7 +469,6 @@ describe("syncCredentialIntoRoutingRuleForAgent", () => {
       },
       credentialId: "cred-2",
       provider: "openai",
-      userId,
     });
 
     const call = vi.mocked(upsertAgentCredentialReferenceRule).mock.calls[0]?.[0];
@@ -507,7 +502,6 @@ describe("syncModelIntoRoutingRuleForAgent", () => {
     const rule = await syncModelIntoRoutingRuleForAgent({
       agent: { id: agentId, workspaceId, agentType: "coding" },
       newModel: "openai/gpt-5.5",
-      userId,
     });
 
     expect(rule).toBeNull();
@@ -542,7 +536,6 @@ describe("syncModelIntoRoutingRuleForAgent", () => {
     await syncModelIntoRoutingRuleForAgent({
       agent: { id: agentId, workspaceId, agentType: "coding" },
       newModel: "openai/gpt-5.5",
-      userId,
     });
 
     const call = vi.mocked(upsertAgentCredentialReferenceRule).mock.calls[0]?.[0];
@@ -579,7 +572,6 @@ describe("syncModelIntoRoutingRuleForAgent", () => {
     await syncModelIntoRoutingRuleForAgent({
       agent: { id: agentId, workspaceId, agentType: "coding" },
       newModel: "anthropic/claude-sonnet-4-6",
-      userId,
     });
 
     const call = vi.mocked(upsertAgentCredentialReferenceRule).mock.calls[0]?.[0];

@@ -402,7 +402,6 @@ describe("credential routes", () => {
       },
       credentialId: "credential-row-2",
       provider: "openai",
-      userId: "user-1",
     });
   });
 });

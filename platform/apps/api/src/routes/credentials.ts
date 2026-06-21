@@ -206,7 +206,6 @@ export function registerCredentialRoutes(app: Express) {
             },
             credentialId: saved.credentialRowId,
             provider: saved.provider ?? key.provider,
-            userId,
           });
         }
 

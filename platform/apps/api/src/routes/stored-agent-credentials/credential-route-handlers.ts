@@ -284,7 +284,6 @@ async function syncSavedCredentialIntoRouting(
     },
     credentialId: input.credentialRowId,
     provider: input.provider,
-    userId: input.userId,
   });
 }
 
