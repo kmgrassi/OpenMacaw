@@ -45,7 +45,7 @@ function CopyCommandButton({ command }: { command: string }) {
   );
 }
 
-function helperProbeMessage(probe: LocalModelProbeResponse) {
+function relayProbeMessage(probe: LocalModelProbeResponse) {
   if (probe.reachable && probe.modelFound) {
     return `Local model endpoint reachable - model ${probe.model} detected.`;
   }
@@ -55,7 +55,7 @@ function helperProbeMessage(probe: LocalModelProbeResponse) {
   return `Reached ${probe.endpoint}, but model ${probe.model} was not found.`;
 }
 
-export function LocalHelperCard({ onBack, onContinue, onSkip }: Props) {
+export function LocalRuntimeRelayCard({ onBack, onContinue, onSkip }: Props) {
   const auth = useAuthStore();
   const authStateQuery = useAuthStateQuery(false);
   const localRuntimeMutations = useLocalRuntimeMutations(auth.workspaceId);
@@ -265,7 +265,7 @@ export function LocalHelperCard({ onBack, onContinue, onSkip }: Props) {
               : "border-amber-800/70 bg-amber-950/30 text-amber-300",
           )}
         >
-          {helperProbeMessage(probe)}
+          {relayProbeMessage(probe)}
         </div>
       )}
 
