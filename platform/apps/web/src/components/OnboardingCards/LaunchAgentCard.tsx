@@ -4,6 +4,7 @@ import { useOnboardingStore } from "../../stores/onboarding";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
+import { useDefaultAgentRows } from "./useDefaultAgentRows";
 
 type Props = {
   canOpenDashboard: boolean;
@@ -20,9 +21,9 @@ export function LaunchAgentCard({
   const planningAgentId = useAuthStore(
     (state) => state.defaultAgents.planning.agentId,
   );
-  const { error, saving, selectedAgentIds, setError, setSaving } =
-    useOnboardingStore();
+  const { error, saving, setError, setSaving } = useOnboardingStore();
   const targetAgentId = planningAgentId ?? resolvedAgentId;
+  const agents = useDefaultAgentRows();
 
   async function launchAndOpenDashboard() {
     if (!targetAgentId || !workspaceId) return;
@@ -58,14 +59,21 @@ export function LaunchAgentCard({
       </p>
 
       <div className="mt-4 grid gap-2 text-sm text-slate-300">
-        {selectedAgentIds.length > 0 ? (
-          selectedAgentIds.map((agentId) => (
+        {agents.length > 0 ? (
+          agents.map((agent) => (
             <div
-              key={agentId}
-              className="flex items-center gap-2 rounded-md bg-slate-950/60 px-3 py-2"
+              key={agent.key}
+              className="flex gap-3 rounded-md bg-slate-950/60 px-3 py-2"
             >
-              <Badge variant="success">Ready</Badge>
-              <span className="break-all">{agentId}</span>
+              <Badge variant={agent.agentId ? "success" : "warning"}>
+                {agent.agentId ? "Ready" : "Pending"}
+              </Badge>
+              <div>
+                <div className="font-medium text-white">{agent.role}</div>
+                <div className="mt-1 text-slate-400">
+                  {agent.description}
+                </div>
+              </div>
             </div>
           ))
         ) : (
