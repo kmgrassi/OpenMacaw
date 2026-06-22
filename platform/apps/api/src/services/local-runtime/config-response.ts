@@ -10,6 +10,7 @@ const DEFAULT_LOCAL_RELAY_WS_URL = "ws://127.0.0.1:4000";
 
 type BaseConfigInput = {
   workspaceId: string;
+  machineId: string;
   displayName: string;
   workspaceRoot: string | null;
   token: string;
@@ -34,6 +35,7 @@ export function buildRegistrationConfig(
   input: BaseConfigInput & { runners: LocalRuntimeRegistrationRequest["runners"] },
 ) {
   return {
+    machineId: input.machineId,
     displayName: input.displayName,
     workspaceRoot: input.workspaceRoot,
     runtimeEndpoint: localRelayRuntimeEndpoint(),
@@ -57,6 +59,7 @@ export function buildLocalRuntimeConfigResponse(input: {
     token: input.token,
     tokenAvailable: input.tokenAvailable,
     config: {
+      machineId: input.machineId,
       displayName: input.machineDisplayName,
       workspaceRoot: input.workspaceRoot,
       runtimeEndpoint: localRelayRuntimeEndpoint(),

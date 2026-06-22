@@ -3,6 +3,7 @@
 # `local-runtime-helper register --workspace=<id> --token=<token>` writes this.
 
 [machine]
+id = "machine_..."           # written by `register --machine-id`
 display_name = "my-laptop"
 
 [cloud]
