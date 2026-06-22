@@ -18,19 +18,18 @@ export const DEFAULT_AGENT_DESCRIPTIONS: Array<
     role: "Planning agent",
     key: "planning",
     description:
-      "This is the agent you talk to. It plans work and hands coding tasks off to your coding agent.",
+      "This is the planning agent that helps you plan things.",
   },
   {
     role: "Coding agent",
     key: "coding",
-    description:
-      "Works in the background. The planning agent sends it coding tasks; you rarely need to message it directly.",
+    description: "This is the coding agent that helps with coding tasks.",
   },
   {
     role: "Manager agent",
     key: "manager",
     description:
-      "Works in the background to coordinate work across your agents.",
+      "This is the manager agent that helps keep track of stuff.",
   },
 ];
 
