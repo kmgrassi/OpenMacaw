@@ -85,8 +85,10 @@ describe("setup gateway config builders", () => {
     });
   });
 
-  it("does not write tracker into default planning gateway configs", () => {
-    expect(defaultAgentGatewayConfig("planning", "openai", "openai/gpt-5.2")).not.toHaveProperty("tracker");
+  it("writes tracker defaults into default planning gateway configs", () => {
+    expect(defaultAgentGatewayConfig("planning", "openai", "openai/gpt-5.2")).toMatchObject({
+      tracker: { kind: "database", table: "work_items" },
+    });
   });
 
   it("can seed default planning agents with a local relay runner", () => {
@@ -113,7 +115,7 @@ describe("setup gateway config builders", () => {
     expect((repaired as Record<string, unknown>).tracker).not.toHaveProperty("table");
   });
 
-  it("does not add tracker while repairing configs that omit it", () => {
+  it("adds tracker defaults while repairing configs that omit it", () => {
     const repaired = repairGatewayConfig(
       {
         runners: [{ kind: "codex", model: "old-model", provider: "old-provider" }],
@@ -124,9 +126,9 @@ describe("setup gateway config builders", () => {
     );
 
     expect(repaired).toMatchObject({
+      tracker: { kind: "database", table: "work_items" },
       runners: [{ kind: "codex", model: "openai/gpt-5.2", provider: "openai" }],
     });
-    expect(repaired).not.toHaveProperty("tracker");
   });
 
   it("does not write tracker into setup-created gateway configs", () => {

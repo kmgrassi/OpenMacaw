@@ -660,18 +660,21 @@ describe("applyDefaultAgentCredentials", () => {
       model: "openai/gpt-5.2",
       credential_id: planningCredential?.id,
     });
+    expect(planningConfig?.tracker).toMatchObject({ kind: "database", table: "work_items" });
     expect(codingConfig?.execution_profile).toMatchObject({
       runner_kind: "codex",
       provider: "openai",
       model: "openai/gpt-5.2",
       credential_id: codingCredential?.id,
     });
+    expect(codingConfig?.tracker).toMatchObject({ kind: "database", table: "work_items" });
     expect(managerConfig?.execution_profile).toMatchObject({
       runner_kind: "llm_tool_runner",
       provider: "openai",
       model: "openai/gpt-5.2",
       credential_id: managerCredential?.id,
     });
+    expect(managerConfig?.tracker).toMatchObject({ kind: "database", table: "work_items" });
 
     // The secret must never be persisted into gateway_config.
     for (const config of [planningConfig, codingConfig, managerConfig]) {

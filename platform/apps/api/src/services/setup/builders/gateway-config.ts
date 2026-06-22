@@ -3,6 +3,10 @@ import type { DefaultAgentRole, SetupRequest, SetupUpdateRequest } from "../../.
 import { agentType } from "./agent-defaults.js";
 import type { ResolvedExecutionProfileBlock } from "./execution-profile.js";
 
+function defaultTracker() {
+  return { kind: "database", table: "work_items" };
+}
+
 export function defaultAgentGatewayConfig(
   role: DefaultAgentRole,
   provider: string,
@@ -11,6 +15,7 @@ export function defaultAgentGatewayConfig(
   executionProfile: ResolvedExecutionProfileBlock | null = null,
 ) {
   return {
+    tracker: defaultTracker(),
     workflow_template: { id: `${role}-default` },
     runners: [{ kind: runnerKind, model, provider }],
     max_concurrent_agents: 1,
@@ -117,9 +122,14 @@ export function repairGatewayConfig(
   // Drop any stale `execution_profile` from the existing config so a missing
   // resolution overwrites rather than preserving an old credential ref.
   const { execution_profile: _staleProfile, ...configWithoutProfile } = config;
+  const existingTracker =
+    config.tracker && typeof config.tracker === "object" && !Array.isArray(config.tracker)
+      ? (config.tracker as Record<string, unknown>)
+      : null;
 
   return {
     ...configWithoutProfile,
+    tracker: existingTracker ?? defaultTracker(),
     runners:
       runners.length > 0
         ? runners.map((runner, index) =>
@@ -170,7 +180,7 @@ export function repairManagerGatewayConfig(input: {
     config.tracker && typeof config.tracker === "object" && !Array.isArray(config.tracker)
       ? (config.tracker as Record<string, unknown>)
       : null;
-  const tracker = existingTracker ?? { kind: "database", table: "work_items" };
+  const tracker = existingTracker ?? defaultTracker();
   const existingWorkflowTemplate =
     config.workflow_template && typeof config.workflow_template === "object" && !Array.isArray(config.workflow_template)
       ? (config.workflow_template as Record<string, unknown>)
