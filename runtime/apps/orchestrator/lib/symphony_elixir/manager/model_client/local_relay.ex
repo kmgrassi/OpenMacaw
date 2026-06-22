@@ -287,7 +287,10 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
   end
 
   defp log_result({:ok, response} = result, context, started_at) do
-    Observability.log_model_call_completed(context, elapsed_ms(started_at), provider_request_id: response_id(response))
+    Observability.log_model_call_completed(context, elapsed_ms(started_at),
+      provider_request_id: response_id(response),
+      response: response
+    )
 
     result
   end

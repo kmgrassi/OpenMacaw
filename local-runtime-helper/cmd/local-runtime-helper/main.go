@@ -297,6 +297,7 @@ func buildRunners(cfg *config.Config, logger *slog.Logger) ([]runner.Runner, []s
 			APIKey:       rc.APIKey,
 			Model:        rc.Model,
 			ToolExecutor: localToolExecutor,
+			Logger:       logger,
 		})
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("initialize openai_compatible runner: %w", err)

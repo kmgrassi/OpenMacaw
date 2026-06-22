@@ -566,7 +566,10 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   end
 
   defp log_provider_result({:ok, response} = result, context, started_at) do
-    Observability.log_model_call_completed(context, elapsed_ms(started_at), provider_request_id: Map.get(response, "correlation_id"))
+    Observability.log_model_call_completed(context, elapsed_ms(started_at),
+      provider_request_id: Map.get(response, "correlation_id"),
+      response: response
+    )
 
     result
   end
