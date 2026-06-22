@@ -364,6 +364,45 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionTest do
     assert %{"ok" => true, "stdout" => "PR #1\\n", "stderr" => ""} = Jason.decode!(content)
   end
 
+  test "OpenAI Responses manager encodes structured function call outputs as strings" do
+    request =
+      ModelClient.OpenAIResponses.follow_up_request(
+        %{model: "gpt-test", provider_tool_name_map: %{}},
+        %{"id" => "resp-1"},
+        [
+          %{
+            "type" => "function_call_output",
+            "call_id" => "call-1",
+            "output" => [
+              %{"name" => "demo.txt", "path" => "demo.txt"},
+              %{"name" => "src", "path" => "src"}
+            ]
+          },
+          %{
+            "type" => "function_call_output",
+            "call_id" => "call-2",
+            "output" => %{"ok" => true, "stdout" => "PR #1\\n"}
+          },
+          %{
+            "type" => "function_call_output",
+            "call_id" => "call-3",
+            "output" => "already encoded"
+          }
+        ]
+      )
+
+    assert [
+             %{"type" => "function_call_output", "call_id" => "call-1", "output" => list_output},
+             %{"type" => "function_call_output", "call_id" => "call-2", "output" => map_output},
+             %{"type" => "function_call_output", "call_id" => "call-3", "output" => "already encoded"}
+           ] = request["input"]
+
+    assert is_binary(list_output)
+    assert [%{"name" => "demo.txt"}, %{"name" => "src"}] = Jason.decode!(list_output)
+    assert is_binary(map_output)
+    assert %{"ok" => true, "stdout" => "PR #1\\n"} = Jason.decode!(map_output)
+  end
+
   test "fails clearly when chat-completions backend omits native tool calls" do
     Req.Test.stub(__MODULE__, fn conn ->
       conn
