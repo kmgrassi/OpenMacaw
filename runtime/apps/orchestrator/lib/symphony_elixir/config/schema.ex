@@ -301,6 +301,7 @@ defmodule SymphonyElixir.Config.Schema do
     embedded_schema do
       field(:default, :string, default: "codex")
       field(:codex, :map, default: %{})
+      field(:llm_tool_runner, :map, default: %{})
       field(:planner, :map, default: %{})
       field(:openclaw, :map, default: %{})
       field(:openclaw_ws, :map, default: %{})
@@ -314,6 +315,7 @@ defmodule SymphonyElixir.Config.Schema do
       fields = [
         :default,
         :codex,
+        :llm_tool_runner,
         :planner,
         :openclaw,
         :openclaw_ws,
@@ -323,7 +325,7 @@ defmodule SymphonyElixir.Config.Schema do
       ]
 
       runner_kinds =
-        ~w(codex planner openclaw openclaw_ws computer_use local_relay local_model_coding)
+        ~w(codex llm_tool_runner planner openclaw openclaw_ws computer_use local_relay local_model_coding)
 
       schema
       |> cast_with(attrs, fields)
@@ -526,6 +528,7 @@ defmodule SymphonyElixir.Config.Schema do
     %{
       runners
       | codex: SecretResolver.resolve_map(runners.codex),
+        llm_tool_runner: SecretResolver.resolve_map(runners.llm_tool_runner),
         planner: SecretResolver.resolve_map(runners.planner),
         openclaw: SecretResolver.resolve_map(runners.openclaw),
         openclaw_ws: SecretResolver.resolve_map(runners.openclaw_ws),
@@ -659,5 +662,4 @@ defmodule SymphonyElixir.Config.Schema do
   defp default_workspace_root(nil, fallback), do: fallback
   defp default_workspace_root("", fallback), do: fallback
   defp default_workspace_root(workspace, _fallback), do: workspace
-
 end

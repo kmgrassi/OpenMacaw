@@ -221,7 +221,7 @@ describe("applyDefaultAgentCredentials", () => {
       primary: "openai/gpt-5.2",
     });
     expect(db.agent.find((agent) => agent.id === codingAgentId)?.model_settings).toEqual({
-      primary: "openai/gpt-5.1-codex",
+      primary: "openai/gpt-5.2",
     });
     expect(db.agent.find((agent) => agent.id === planningAgentId)?.tool_policy).toMatchObject({
       planning: { destination: "database" },
@@ -238,7 +238,7 @@ describe("applyDefaultAgentCredentials", () => {
           runners: [expect.objectContaining({ kind: "planner", model: "openai/gpt-5.2" })],
         }),
         expect.objectContaining({
-          runners: [expect.objectContaining({ kind: "codex", model: "openai/gpt-5.1-codex" })],
+          runners: [expect.objectContaining({ kind: "llm_tool_runner", model: "openai/gpt-5.2" })],
         }),
       ]),
     );
@@ -290,11 +290,11 @@ describe("applyDefaultAgentCredentials", () => {
 
     // runner_kind must match what writeGatewayConfigForDefaultAgent
     // writes (onboardingAgentDefaults: planning → planner, coding →
-    // codex, manager → llm_tool_runner). resolveExecutionProfile
+    // llm_tool_runner, manager → llm_tool_runner). resolveExecutionProfile
     // prefers the routing_rule, so any mismatch silently moves the
     // agent onto the wrong runner.
     expect(ruleByAgent.get(planningAgentId)?.runner_kind).toBe("planner");
-    expect(ruleByAgent.get(codingAgentId)?.runner_kind).toBe("codex");
+    expect(ruleByAgent.get(codingAgentId)?.runner_kind).toBe("llm_tool_runner");
     expect(ruleByAgent.get(managerAgentId)?.runner_kind).toBe("llm_tool_runner");
     expect(ruleByAgent.get(learningAgentId)?.runner_kind).toBe("llm_tool_runner");
     expect(ruleByAgent.get(routerAgentId)?.runner_kind).toBe("llm_tool_runner");
@@ -718,7 +718,7 @@ describe("applyDefaultAgentCredentials", () => {
     });
     expect(planningConfig?.tracker).toMatchObject({ kind: "database", table: "work_items" });
     expect(codingConfig?.execution_profile).toMatchObject({
-      runner_kind: "codex",
+      runner_kind: "llm_tool_runner",
       provider: "openai",
       model: "openai/gpt-5.2",
       credential_id: codingCredential?.id,

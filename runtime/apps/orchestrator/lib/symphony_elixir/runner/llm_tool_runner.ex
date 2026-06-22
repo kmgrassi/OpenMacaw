@@ -26,7 +26,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   @local_helper_cli_tools ["git.run"]
 
   @impl true
-  def start_session(config, _workspace) when is_map(config) do
+  def start_session(config, workspace) when is_map(config) do
     if probe_only?(config) do
       with :ok <- ping(config) do
         {:ok, %{probe_only: true, runner: "manager"}}
@@ -49,6 +49,8 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
            credential_id: credential.credential_id,
            credential_ref: credential_ref(config),
            credential_scope: Map.get(credential, :credential_scope),
+           workspace: workspace,
+           workspace_root: workspace,
            workspace_id: config_value(config, "workspace_id"),
            model: provider_model(config_value(config, "model")) || @default_model,
            model_tier_floor: model_tier_floor(config),
@@ -531,6 +533,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
       "manager" -> :manager
       "learning" -> :learning
       "router" -> :router
+      "coding" -> :coding
       "planning" -> :planner
       "planner" -> :planner
       value when is_atom(value) -> value
@@ -863,7 +866,10 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   defp req_options(config, _model_client) do
     configured = config_value(config, "req_options") || []
     env_options = Application.get_env(:symphony_elixir, :manager_responses_req_options, [])
+    defaults = [receive_timeout: 120_000]
 
-    Keyword.merge(List.wrap(configured), env_options)
+    defaults
+    |> Keyword.merge(List.wrap(configured))
+    |> Keyword.merge(env_options)
   end
 end

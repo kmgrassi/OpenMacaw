@@ -126,7 +126,6 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
     assert runner_kinds == ExecutionProfile.supported_runner_kinds() ++ [nil]
 
     refute "local_runtime" in runner_kinds
-    refute "llm_tool_runner" in runner_kinds
     refute "openclaw_http_sse" in runner_kinds
 
     assert %{

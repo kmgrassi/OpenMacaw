@@ -28,6 +28,7 @@ type ProviderAgentDefaults = Record<
   OnboardingDefaultAgentRole,
   {
     model: string;
+    runnerKind?: RunnerKind;
   }
 >;
 
@@ -36,7 +37,8 @@ const OPENAI_ONBOARDING_DEFAULTS: ProviderAgentDefaults = {
     model: "openai/gpt-5.2",
   },
   coding: {
-    model: "openai/gpt-5.1-codex",
+    model: "openai/gpt-5.2",
+    runnerKind: "llm_tool_runner",
   },
   manager: {
     model: "openai/gpt-5.2",
@@ -55,6 +57,7 @@ const ANTHROPIC_ONBOARDING_DEFAULTS: ProviderAgentDefaults = {
   },
   coding: {
     model: "anthropic/claude-sonnet-4-6",
+    runnerKind: "llm_tool_runner",
   },
   manager: {
     model: "anthropic/claude-sonnet-4-6",
@@ -81,7 +84,9 @@ export function onboardingAgentDefaults(input: {
   if (!model) return null;
   return {
     model,
-    runnerKind: DEFAULT_RUNNER_KIND_BY_AGENT_TYPE[input.role],
+    runnerKind:
+      ONBOARDING_DEFAULTS_BY_PROVIDER[input.provider]?.[input.role]?.runnerKind ??
+      DEFAULT_RUNNER_KIND_BY_AGENT_TYPE[input.role],
   };
 }
 

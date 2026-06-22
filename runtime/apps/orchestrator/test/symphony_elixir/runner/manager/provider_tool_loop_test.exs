@@ -5,6 +5,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.ProviderToolLoopTest do
 
   alias SymphonyElixir.Cutover.Cooldown
   alias SymphonyElixir.AgentInventory.StoredCredential
+  alias SymphonyElixir.Planner.ToolNameMapping
 
   defmodule CutoverAgentInventory do
     @spec list_agents() :: {:ok, []}
@@ -392,7 +393,11 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.ProviderToolLoopTest do
     assert first_request["instructions"] =~ "manager agent"
     assert first_request["metadata"]["runner"] == "manager"
     assert first_request["metadata"]["workspace_id"] == "workspace-1"
-    assert Enum.map(first_request["tools"], & &1["name"]) == tool_names()
+    expected_provider_tool_names =
+      ToolNameMapping.runtime_to_provider(tool_names())
+      |> then(fn mapping -> Enum.map(tool_names(), &Map.fetch!(mapping, &1)) end)
+
+    assert Enum.map(first_request["tools"], & &1["name"]) == expected_provider_tool_names
 
     assert_received {:follow_up_request, follow_up_request}
 

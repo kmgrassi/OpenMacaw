@@ -17,7 +17,7 @@ export function defaultAgentGatewayConfig(
   return {
     tracker: defaultTracker(),
     workflow_template: { id: `${role}-default` },
-    runners: [{ kind: runnerKind, model, provider }],
+    runners: [{ kind: runnerKind, model, provider, agent_type: role }],
     max_concurrent_agents: 1,
     ...(executionProfile ? { execution_profile: executionProfile } : {}),
   };
@@ -134,10 +134,14 @@ export function repairGatewayConfig(
       runners.length > 0
         ? runners.map((runner, index) =>
             index === 0
-              ? configuredRunner(provider, model, runnerKind ? { ...(runner as object), kind: runnerKind } : runner)
+              ? configuredRunner(provider, model, {
+                  ...(runner as object),
+                  ...(runnerKind ? { kind: runnerKind } : {}),
+                  agent_type: role,
+                })
               : runner,
           )
-        : [configuredRunner(provider, model, runnerKind ? { kind: runnerKind } : undefined)],
+        : [configuredRunner(provider, model, { ...(runnerKind ? { kind: runnerKind } : {}), agent_type: role })],
     ...(executionProfile ? { execution_profile: executionProfile } : {}),
   };
 }

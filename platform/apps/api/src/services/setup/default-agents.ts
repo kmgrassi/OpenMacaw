@@ -426,7 +426,11 @@ export async function applyDefaultAgentCredentials(
     // syncCredentialIntoRoutingRuleForAgent. `defaults.runnerKind`
     // comes from the canonical `DEFAULT_RUNNER_KIND_BY_AGENT_TYPE`
     // map, so the rule we write here agrees with the gateway_config
-    // that `writeGatewayConfigForDefaultAgent` writes next.
+    // that `writeGatewayConfigForDefaultAgent` writes next. Provider-specific
+    // onboarding defaults may intentionally override the canonical default
+    // runner, for example cloud API-key coding agents can use the generic
+    // LLM tool runner while explicit Codex/local-model profiles keep their
+    // selected runner kind.
     if (savedCredential?.id) {
       await upsertAgentCredentialReferenceRule({
         agentId: agent.id,

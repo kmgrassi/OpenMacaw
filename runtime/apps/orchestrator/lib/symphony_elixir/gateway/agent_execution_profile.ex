@@ -54,11 +54,8 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
     agent_inventory = Keyword.get(opts, :agent_inventory, AgentInventory)
     secret_resolver = Keyword.get(opts, :secret_resolver, SecretResolver)
 
-    with {:ok, config} <- resolve_config(),
-         {:ok, agent} <- validate_agent_workspace(agent_id, workspace_id, agent_inventory),
-         {:ok, rule_ids} <- match_rule_ids(config, agent_id, workspace_id),
-         {:ok, rule} <- pick_rule(config, rule_ids, workspace_id, agent),
-         {:ok, profile} <- profile_from_rule(rule, agent_id, workspace_id, agent),
+    with {:ok, profile, rule, agent} <-
+           resolve_profile_route(agent_id, workspace_id, agent_inventory),
          :ok <- validate_profile_policy(profile),
          {:ok, profile} <-
            attach_credential(profile, rule, workspace_id, agent_inventory, secret_resolver),
@@ -69,6 +66,33 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
   end
 
   def resolve(_agent_id, _workspace_id, _opts), do: {:error, :invalid_agent_profile_scope}
+
+  @spec resolve_route(String.t(), String.t()) :: {:ok, resolution()} | {:error, term()}
+  def resolve_route(agent_id, workspace_id, opts \\ [])
+
+  def resolve_route(agent_id, workspace_id, opts)
+      when is_binary(agent_id) and agent_id != "" and is_binary(workspace_id) and
+             workspace_id != "" do
+    agent_inventory = Keyword.get(opts, :agent_inventory, AgentInventory)
+
+    with {:ok, profile, _rule, agent} <- resolve_profile_route(agent_id, workspace_id, agent_inventory),
+         {:ok, profile} <- attach_agent_user(profile, agent_id, workspace_id, agent_inventory),
+         {:ok, profile} <- attach_agent_context(profile, agent) do
+      {:ok, profile}
+    end
+  end
+
+  def resolve_route(_agent_id, _workspace_id, _opts), do: {:error, :invalid_agent_profile_scope}
+
+  defp resolve_profile_route(agent_id, workspace_id, agent_inventory) do
+    with {:ok, config} <- resolve_config(),
+         {:ok, agent} <- validate_agent_workspace(agent_id, workspace_id, agent_inventory),
+         {:ok, rule_ids} <- match_rule_ids(config, agent_id, workspace_id),
+         {:ok, rule} <- pick_rule(config, rule_ids, workspace_id, agent),
+         {:ok, profile} <- profile_from_rule(rule, agent_id, workspace_id, agent) do
+      {:ok, profile, rule, agent}
+    end
+  end
 
   defp match_rule_ids(config, agent_id, workspace_id) do
     query = %{

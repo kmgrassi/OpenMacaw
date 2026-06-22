@@ -140,6 +140,7 @@ defmodule SymphonyElixir.Config do
     %{
       "default" => runners.default,
       "codex" => runners.codex,
+      "llm_tool_runner" => runners.llm_tool_runner,
       "planner" => runners.planner,
       "openclaw" => runners.openclaw,
       "openclaw_ws" => runners.openclaw_ws,
