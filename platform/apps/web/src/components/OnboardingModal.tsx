@@ -9,7 +9,9 @@ const DISMISSED_KEY_PREFIX = "onboarding-dismissed";
 
 export function OnboardingModal() {
   const { defaultAgentOnboarding, userId, workspaceId } = useAuthStore();
-  const resetOnboarding = useOnboardingStore((state) => state.reset);
+  const resumeIncompleteStep = useOnboardingStore(
+    (state) => state.resumeIncompleteStep,
+  );
   const navigate = useNavigate();
   const [visible, setVisible] = useState(false);
   const dismissedKey = useMemo(() => {
@@ -38,9 +40,9 @@ export function OnboardingModal() {
 
   const goToOnboarding = useCallback(() => {
     dismiss();
-    resetOnboarding();
+    resumeIncompleteStep();
     navigate("/onboarding");
-  }, [dismiss, navigate, resetOnboarding]);
+  }, [dismiss, navigate, resumeIncompleteStep]);
 
   if (!visible) return null;
 
