@@ -303,6 +303,7 @@ export async function updateAgentRuntimeProfile(input: {
   userId: string;
   agentId: string;
   body: AgentRuntimeProfileUpdateRequest;
+  localMachineId?: string | null;
 }): Promise<AgentRuntimeProfile> {
   const agent = await findStoredAgentRowById(input.accessToken, input.agentId);
   if (!agent) throw new ApiRouteError(404, "agent_not_found", "Stored agent was not found");
@@ -346,6 +347,10 @@ export async function updateAgentRuntimeProfile(input: {
     fallbacks: input.body.fallbacks ?? [],
     modelTierFloor: input.body.modelTierFloor ?? "any",
     localEndpointUrl: input.body.localEndpointUrl ?? null,
+    localMachineId:
+      input.body.provider === "local"
+        ? input.localMachineId
+        : null,
   });
 
   if (agentType === "manager") {
@@ -390,6 +395,7 @@ export async function updateAgentRuntimeProfileForAuthenticatedUser(input: {
   };
   agentId: string;
   body: AgentRuntimeProfileUpdateRequest;
+  localMachineId?: string | null;
 }): Promise<AgentRuntimeProfile> {
   if (!input.auth.accessToken.trim() || !input.auth.userId.trim()) {
     throw new ApiRouteError(401, "unauthorized", "Authenticated user context is required");
@@ -400,5 +406,6 @@ export async function updateAgentRuntimeProfileForAuthenticatedUser(input: {
     userId: input.auth.userId,
     agentId: input.agentId,
     body: input.body,
+    localMachineId: input.localMachineId,
   });
 }

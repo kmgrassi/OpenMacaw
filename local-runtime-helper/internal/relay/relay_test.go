@@ -60,7 +60,7 @@ func TestDiagnosticsCancellationIncludesTypedFailure(t *testing.T) {
 
 func TestNewClientFromConfigAdvertisesRuntimeManagedTools(t *testing.T) {
 	cfg := &config.Config{
-		Machine: config.MachineConfig{DisplayName: "dev-machine"},
+		Machine: config.MachineConfig{ID: "machine-uuid", DisplayName: "dev-machine"},
 		Cloud: config.CloudConfig{
 			Endpoint:    "ws://127.0.0.1:4000",
 			WorkspaceID: "dev-workspace",
@@ -77,6 +77,12 @@ func TestNewClientFromConfigAdvertisesRuntimeManagedTools(t *testing.T) {
 	clientCfg := NewClientFromConfig(cfg, []string{"openai_compatible"}, "0.2.0-test", nil, nil)
 	if clientCfg.Version != "0.2.0-test" {
 		t.Fatalf("version = %q, want 0.2.0-test", clientCfg.Version)
+	}
+	if clientCfg.MachineID != "machine-uuid" {
+		t.Fatalf("machine id = %q, want machine-uuid", clientCfg.MachineID)
+	}
+	if clientCfg.MachineDisplayName != "dev-machine" {
+		t.Fatalf("machine display name = %q, want dev-machine", clientCfg.MachineDisplayName)
 	}
 	if len(clientCfg.Runners) != 1 {
 		t.Fatalf("runners = %#v, want one runner registration", clientCfg.Runners)

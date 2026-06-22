@@ -40,6 +40,7 @@ type Config struct {
 
 // MachineConfig captures display/identity for this machine.
 type MachineConfig struct {
+	ID            string `toml:"id"`
 	DisplayName   string `toml:"display_name"`
 	WorkspaceRoot string `toml:"workspace_root"`
 }

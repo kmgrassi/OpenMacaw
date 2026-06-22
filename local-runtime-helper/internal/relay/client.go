@@ -105,7 +105,10 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 // in cmdStart, not all config sections — to avoid advertising capabilities
 // the daemon cannot execute.
 func NewClientFromConfig(appCfg *config.Config, runnerKinds []string, version string, dispatcher *Dispatcher, logger *slog.Logger) ClientConfig {
-	machineID := appCfg.Machine.DisplayName
+	machineID := appCfg.Machine.ID
+	if machineID == "" {
+		machineID = appCfg.Machine.DisplayName
+	}
 	if machineID == "" {
 		machineID = "local-helper"
 	}

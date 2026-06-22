@@ -178,6 +178,7 @@ export async function assignLocalModelToAgent(input: {
         credentialRef: null,
         localEndpointUrl,
       },
+      localMachineId: machineId,
     });
   }
 
