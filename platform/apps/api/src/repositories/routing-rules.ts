@@ -211,6 +211,7 @@ export async function upsertAgentCredentialReferenceRule(input: {
   fallbacks?: RoutingRuleFallbackInput[];
   modelTierFloor?: ModelTierFloor;
   localEndpointUrl?: string | null;
+  localMachineId?: string | null;
 }): Promise<AgentCredentialReferenceRule> {
   // Fail fast with a clear message before the DB rejects the row. The
   // raw 23514 from PostgREST gives the failing values but obscures the
@@ -278,6 +279,11 @@ export async function upsertAgentCredentialReferenceRule(input: {
         workspaceId: input.workspaceId,
         endpointUrl: input.localEndpointUrl,
       });
+      await syncAgentLocalMachineMatch({
+        ruleId: updated.id,
+        workspaceId: input.workspaceId,
+        machineId: input.localMachineId,
+      });
       if (input.fallbacks) {
         await syncRoutingRuleFallbacks({
           ruleId: updated.id,
@@ -320,6 +326,11 @@ export async function upsertAgentCredentialReferenceRule(input: {
       ruleId: inserted.id,
       workspaceId: input.workspaceId,
       endpointUrl: input.localEndpointUrl,
+    });
+    await syncAgentLocalMachineMatch({
+      ruleId: inserted.id,
+      workspaceId: input.workspaceId,
+      machineId: input.localMachineId,
     });
     if (input.fallbacks) {
       await syncRoutingRuleFallbacks({
@@ -450,6 +461,35 @@ async function syncAgentLocalEndpointMatch(input: {
     kind: "local_endpoint",
     key: "url",
     value: input.endpointUrl,
+  });
+  if (insertError) throw normalizeSupabaseError("routing_rule_match insert", insertError);
+}
+
+async function syncAgentLocalMachineMatch(input: {
+  ruleId: string;
+  workspaceId: string;
+  machineId?: string | null;
+}) {
+  if (input.machineId === undefined) return;
+
+  const supabase = getServiceRoleSupabase();
+  const { error: deleteError } = await supabase
+    .from("routing_rule_match")
+    .delete()
+    .eq("rule_id", input.ruleId)
+    .eq("workspace_id", input.workspaceId)
+    .eq("kind", "local_machine")
+    .eq("key", "id");
+  if (deleteError) throw normalizeSupabaseError("routing_rule_match delete", deleteError);
+
+  if (!input.machineId) return;
+
+  const { error: insertError } = await supabase.from("routing_rule_match").insert({
+    rule_id: input.ruleId,
+    workspace_id: input.workspaceId,
+    kind: "local_machine",
+    key: "id",
+    value: input.machineId,
   });
   if (insertError) throw normalizeSupabaseError("routing_rule_match insert", insertError);
 }

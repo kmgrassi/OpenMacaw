@@ -123,6 +123,7 @@ export async function registerLocalRuntimeForWorkspace({ workspaceId, userId, re
     machine: { id: machineId, displayName: machineDisplayName },
     token: plaintextToken,
     config: buildRegistrationConfig({
+      machineId,
       displayName,
       workspaceRoot: sharedWorkspaceRoot,
       workspaceId,

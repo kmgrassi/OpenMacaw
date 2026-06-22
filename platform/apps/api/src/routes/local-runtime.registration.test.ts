@@ -509,10 +509,12 @@ describe("local runtime route registration", () => {
       toolCallCapability: "native_tools",
     });
     expect(body.configSnippet).toContain("[runner.openai_compatible]");
+    expect(body.configSnippet).toContain("id = ");
     expect(body.configSnippet).toContain('model = "qwen3-coder:30b"');
     expect(body.configSnippet).not.toContain("[runner.openclaw]");
     expect(body.setupCommand).toContain('"$HELPER_BIN"');
     expect(body.setupCommand).toContain("'register'");
+    expect(body.setupCommand).toContain("--machine-id");
     expect(body.setupCommand).toContain("--openai-compatible-endpoint");
     expect(body.setupCommand).toContain("--openai-compatible-model");
     expect(body.setupCommand).toContain("--workspace-root");

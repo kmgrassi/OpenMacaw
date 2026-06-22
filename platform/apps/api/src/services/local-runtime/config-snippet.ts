@@ -57,6 +57,7 @@ export type RunnerSnippet =
     };
 
 export type ConfigSnippetInput = {
+  machineId: string;
   displayName: string;
   /** Workspace root applies to the openai_compatible runner only; rendered on the [machine] table. */
   workspaceRoot: string | null;
@@ -77,6 +78,8 @@ export function buildSetupCommand(input: ConfigSnippetInput) {
     input.runtimeEndpoint,
     "--workspace",
     input.workspaceId,
+    "--machine-id",
+    input.machineId,
     "--name",
     input.displayName,
     "--token",
@@ -118,6 +121,7 @@ export function buildSetupCommand(input: ConfigSnippetInput) {
 export function buildConfigSnippet(input: ConfigSnippetInput) {
   const header = [
     "[machine]",
+    `id = ${tomlString(input.machineId)}`,
     `display_name = ${tomlString(input.displayName)}`,
     input.workspaceRoot ? `workspace_root = ${tomlString(input.workspaceRoot)}` : null,
     "",

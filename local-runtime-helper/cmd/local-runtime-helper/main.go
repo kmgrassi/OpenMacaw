@@ -79,6 +79,7 @@ Commands:
 Register flags:
   --endpoint <wss-url>       Cloud relay endpoint
   --workspace <id>           Workspace id to register with
+  --machine-id <id>          Stable machine id from OpenMacaw registration
   --name <display-name>      Machine display name
   --token <token>            One-time local runtime token
   --workspace-root <path>    Local workspace root for filesystem tools
@@ -104,6 +105,7 @@ func cmdRegister(args []string) {
 
 	endpoint := fs.String("endpoint", "", "cloud relay endpoint")
 	workspaceID := fs.String("workspace", "", "workspace id")
+	machineID := fs.String("machine-id", "", "stable machine id from OpenMacaw registration")
 	displayName := fs.String("name", "", "machine display name")
 	token := fs.String("token", "", "one-time local runtime token")
 	workspaceRoot := fs.String("workspace-root", "", "local workspace root for filesystem tools")
@@ -118,7 +120,7 @@ func cmdRegister(args []string) {
 
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, `Usage:
-  local-runtime-helper register --endpoint <wss-url> --workspace <id> --name <display-name> --token <token> --openai-compatible-endpoint <url> --openai-compatible-model <model> [--workspace-root <path>] [--force]
+  local-runtime-helper register --endpoint <wss-url> --workspace <id> --machine-id <id> --name <display-name> --token <token> --openai-compatible-endpoint <url> --openai-compatible-model <model> [--workspace-root <path>] [--force]
 
 Flags:`)
 		fs.PrintDefaults()
@@ -135,6 +137,7 @@ Flags:`)
 
 	cfg := config.Config{
 		Machine: config.MachineConfig{
+			ID:            strings.TrimSpace(*machineID),
 			DisplayName:   strings.TrimSpace(*displayName),
 			WorkspaceRoot: strings.TrimSpace(*workspaceRoot),
 		},
