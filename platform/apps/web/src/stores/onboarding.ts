@@ -4,7 +4,7 @@ import { persist } from "zustand/middleware";
 export type OnboardingCard =
   | "choose-path"
   | "cloud-key"
-  | "local-helper"
+  | "local-runtime-relay"
   | "launch";
 export type OnboardingPath = "cloud" | "local" | null;
 export type OnboardingCloudProvider = "openai" | "anthropic";
@@ -67,9 +67,42 @@ const CLOUD_CARD_ORDER: OnboardingCard[] = [
   "launch",
 ];
 
+export function normalizePersistedOnboardingCard(
+  value: unknown,
+): OnboardingCard {
+  if (
+    value === "choose-path" ||
+    value === "cloud-key" ||
+    value === "local-runtime-relay" ||
+    value === "launch"
+  ) {
+    return value;
+  }
+  return "choose-path";
+}
+
+export function sanitizePersistedOnboardingEnvelope(parsed: {
+  state?: Record<string, unknown>;
+  version?: number;
+}): {
+  state?: Record<string, unknown>;
+  version?: number;
+} {
+  if (!parsed.state) return parsed;
+
+  const { cloudApiKey: _cloudApiKey, ...state } = parsed.state;
+  return {
+    ...parsed,
+    state: {
+      ...state,
+      currentCard: normalizePersistedOnboardingCard(state.currentCard),
+    },
+  };
+}
+
 function cardOrderForPath(path: OnboardingPath): OnboardingCard[] {
   if (path === "local") {
-    return ["choose-path", "local-helper", "launch"];
+    return ["choose-path", "local-runtime-relay", "launch"];
   }
   return CLOUD_CARD_ORDER;
 }
@@ -100,7 +133,14 @@ const INITIAL_STATE = {
 };
 
 function sanitizePersistedOnboardingState() {
-  if (typeof globalThis.localStorage === "undefined") return;
+  if (
+    typeof globalThis.localStorage === "undefined" ||
+    typeof globalThis.localStorage.getItem !== "function" ||
+    typeof globalThis.localStorage.setItem !== "function" ||
+    typeof globalThis.localStorage.removeItem !== "function"
+  ) {
+    return;
+  }
 
   for (const storageKey of STORAGE_KEYS_TO_SANITIZE) {
     const raw = globalThis.localStorage.getItem(storageKey);
@@ -111,13 +151,8 @@ function sanitizePersistedOnboardingState() {
         state?: Record<string, unknown>;
         version?: number;
       };
-      if (!parsed.state || !("cloudApiKey" in parsed.state)) continue;
-
-      const { cloudApiKey: _cloudApiKey, ...state } = parsed.state;
-      globalThis.localStorage.setItem(
-        storageKey,
-        JSON.stringify({ ...parsed, state }),
-      );
+      const sanitized = sanitizePersistedOnboardingEnvelope(parsed);
+      globalThis.localStorage.setItem(storageKey, JSON.stringify(sanitized));
     } catch {
       globalThis.localStorage.removeItem(storageKey);
     }
@@ -134,7 +169,7 @@ export const useOnboardingStore = create<OnboardingState>()(
       setPath: (path) =>
         set({
           path,
-          currentCard: path === "local" ? "local-helper" : "cloud-key",
+          currentCard: path === "local" ? "local-runtime-relay" : "cloud-key",
           error: null,
         }),
       setCurrentCard: (currentCard) => set({ currentCard, error: null }),

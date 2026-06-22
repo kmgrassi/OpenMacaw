@@ -383,7 +383,7 @@ export function SystemArchitectureSection({ theme }: ThemeProps) {
           </p>
           <h2 className="mt-3 text-3xl font-semibold leading-tight sm:text-4xl">
             A single source tree for the platform, orchestrator, and local
-            helper.
+            runtime relay.
           </h2>
           <p
             className="mt-5 text-sm leading-7"
@@ -434,13 +434,13 @@ export function LocalFirstSection({ theme }: ThemeProps) {
         </div>
         <div className="text-sm leading-7" style={{ color: theme.muted }}>
           <p>
-            The local runtime helper runs as a daemon on your own machine (or in
+            The local runtime relay runs as a daemon on your own machine (or in
             your own cloud), opens an outbound relay connection, advertises your
             configured local models and runners, and can execute supported
             workflows without requiring inbound network access.
           </p>
           <p className="mt-5">
-            Full end-to-end behavior can include the platform, runtime, helper,
+            Full end-to-end behavior can include the platform, runtime, relay,
             provider credentials, and a configured database path. The project is
             pre-release, and the public self-hosting path is being made more
             explicit as the repository hardens.

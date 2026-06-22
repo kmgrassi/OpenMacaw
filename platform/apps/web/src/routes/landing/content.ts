@@ -165,7 +165,7 @@ export const systemLayers = [
       "Elixir orchestrator, launcher, relay-facing behavior, worker bridge, smoke tools, and generated runtime schemas.",
   },
   {
-    name: "Local helper",
+    name: "Local runtime relay",
     detail:
       "Installable daemon for outbound relay connections, local runner advertisement, and local workflow execution.",
   },
@@ -182,7 +182,7 @@ export const stats = [
   ["Web", "React control plane"],
   ["API", "Database-backed coordination"],
   ["Runtime", "Launcher and orchestrator"],
-  ["Helper", "Local runner bridge"],
+  ["Relay", "Local runner bridge"],
 ];
 
 export type ComparisonRow = {

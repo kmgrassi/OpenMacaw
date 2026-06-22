@@ -44,7 +44,7 @@ export function ChoosePathCard({ onChooseCloud, onChooseLocal }: Props) {
             Run a model on this machine, no API key required.
           </p>
           <p className="mt-4 text-sm text-slate-500">
-            Requires installing the local runtime relay helper.
+            Requires installing the local runtime relay.
           </p>
           <span className="mt-6 inline-flex w-full items-center justify-center rounded-md bg-blue-600 px-3.5 py-2 text-sm font-medium text-white">
             Continue
