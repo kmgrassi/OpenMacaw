@@ -17,7 +17,9 @@ export function OnboardingNudgeBanner({ onboarding }: Props) {
   const navigate = useNavigate();
   const userId = useAuthStore((state) => state.userId);
   const workspaceId = useAuthStore((state) => state.workspaceId);
-  const resetOnboarding = useOnboardingStore((state) => state.reset);
+  const resumeIncompleteStep = useOnboardingStore(
+    (state) => state.resumeIncompleteStep,
+  );
   const [dismissed, setDismissed] = useState(false);
 
   const dismissedKey = useMemo(() => {
@@ -37,9 +39,9 @@ export function OnboardingNudgeBanner({ onboarding }: Props) {
   }, [dismissedKey]);
 
   const resumeSetup = useCallback(() => {
-    resetOnboarding();
+    resumeIncompleteStep();
     navigate("/onboarding");
-  }, [navigate, resetOnboarding]);
+  }, [navigate, resumeIncompleteStep]);
 
   if (!onboarding.required || dismissed) {
     return null;

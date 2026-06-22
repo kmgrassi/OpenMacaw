@@ -5,6 +5,7 @@ import {
   normalizePersistedOnboardingCard,
   sanitizePersistedOnboardingEnvelope,
   summarizeOnboardingBlockers,
+  useOnboardingStore,
 } from "./onboarding";
 
 describe("onboarding state migration", () => {
@@ -64,5 +65,45 @@ describe("summarizeOnboardingBlockers", () => {
     expect(summarizeOnboardingBlockers([])).toBe(
       "Your agents still need configuration before you can continue.",
     );
+  });
+});
+
+describe("resumeIncompleteStep", () => {
+  it("returns cloud setup to the key step without clearing selected progress", () => {
+    const store = useOnboardingStore.getState();
+    store.reset();
+    store.setPath("cloud");
+    store.setProvider("anthropic");
+    store.setSelectedAgentIds(["planning-agent"]);
+    store.goToLaunch();
+
+    useOnboardingStore.getState().resumeIncompleteStep();
+
+    expect(useOnboardingStore.getState()).toMatchObject({
+      currentCard: "cloud-key",
+      path: "cloud",
+      provider: "anthropic",
+      selectedAgentIds: ["planning-agent"],
+    });
+  });
+
+  it("returns local setup to the relay step without clearing selected progress", () => {
+    const store = useOnboardingStore.getState();
+    store.reset();
+    store.setPath("local");
+    store.setLocalEndpoint("http://127.0.0.1:11434/v1");
+    store.setLocalModel("dev-coder");
+    store.setLocalRepositoryPath("/tmp/openmacaw");
+    store.goToLaunch();
+
+    useOnboardingStore.getState().resumeIncompleteStep();
+
+    expect(useOnboardingStore.getState()).toMatchObject({
+      currentCard: "local-runtime-relay",
+      path: "local",
+      localEndpoint: "http://127.0.0.1:11434/v1",
+      localModel: "dev-coder",
+      localRepositoryPath: "/tmp/openmacaw",
+    });
   });
 });
