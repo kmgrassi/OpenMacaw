@@ -4,7 +4,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   routing rules and dispatches to the matching runner module:
 
     * planning agent type   -> `Runner.Planner`
-    * manager/learning type -> `Runner.LlmToolRunner`
+    * manager/learning/router type -> `Runner.LlmToolRunner`
     * `local_model_coding`  -> `Runner.LocalModelCoding`
     * `local_relay`         -> `Runner.LocalRelay`
     * everything else       -> `Codex.AppServer`
@@ -34,16 +34,14 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         Logger.info("ChatRunner.dispatch agent_id=#{scope.agent_id} branch=planner")
         run_planner(agent, scope, prompt, run_id, owner_pid)
 
-      Agent.kind?(agent, "manager") or Agent.kind?(agent, "learning") ->
+      Agent.kind?(agent, "manager") or Agent.kind?(agent, "learning") or Agent.kind?(agent, "router") ->
         Logger.info("ChatRunner.dispatch agent_id=#{scope.agent_id} branch=llm_tool_runner")
         run_manager(agent, scope, prompt, run_id, owner_pid)
 
       true ->
         kind = resolved_runner_kind(scope)
 
-        Logger.info(
-          "ChatRunner.dispatch agent_id=#{scope.agent_id} resolved_runner_kind=#{inspect(kind)}"
-        )
+        Logger.info("ChatRunner.dispatch agent_id=#{scope.agent_id} resolved_runner_kind=#{inspect(kind)}")
 
         case kind do
           "local_model_coding" ->
@@ -67,9 +65,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         kind
 
       {:error, reason} ->
-        Logger.warning(
-          "ChatRunner.resolved_runner_kind agent=#{agent_id} workspace=#{workspace_id} fallback_to=codex reason=#{inspect(reason)}"
-        )
+        Logger.warning("ChatRunner.resolved_runner_kind agent=#{agent_id} workspace=#{workspace_id} fallback_to=codex reason=#{inspect(reason)}")
 
         nil
     end
@@ -208,9 +204,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         end
 
       {:idle, reason, _details} ->
-        Logger.warning(
-          "ChatRunner.run_manager idle agent=#{scope.agent_id} workspace=#{scope.workspace_id} reason=#{inspect(reason)}"
-        )
+        Logger.warning("ChatRunner.run_manager idle agent=#{scope.agent_id} workspace=#{scope.workspace_id} reason=#{inspect(reason)}")
 
         send(
           owner_pid,
@@ -218,9 +212,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         )
 
       {:error, reason, _details} ->
-        Logger.warning(
-          "ChatRunner.run_manager error agent=#{scope.agent_id} workspace=#{scope.workspace_id} reason=#{inspect(reason)}"
-        )
+        Logger.warning("ChatRunner.run_manager error agent=#{scope.agent_id} workspace=#{scope.workspace_id} reason=#{inspect(reason)}")
 
         send(owner_pid, {:gateway_runner_failed, scope.session_key, run_id, reason})
     end
@@ -262,8 +254,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         {:idle, :credential_missing, %{status: :idle_awaiting_credential}}
 
       {:error, {:credential_unresolved, reason}} ->
-        {:idle, :credential_unresolved,
-         %{status: :idle_awaiting_credential, reason: inspect(reason)}}
+        {:idle, :credential_unresolved, %{status: :idle_awaiting_credential, reason: inspect(reason)}}
 
       {:error, {:provider_unsupported, provider}} ->
         {:idle, :provider_unsupported, %{status: :idle_awaiting_config, provider: provider}}
@@ -304,9 +295,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         config
 
       {:error, reason} ->
-        Logger.warning(
-          "ChatRunner could not resolve planner credentials agent=#{inspect(agent_id(agent))} reason=#{inspect(reason)}"
-        )
+        Logger.warning("ChatRunner could not resolve planner credentials agent=#{inspect(agent_id(agent))} reason=#{inspect(reason)}")
 
         config
     end
@@ -319,9 +308,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
           {:ok, Map.merge(env_map, acc)}
 
         {:error, reason} ->
-          Logger.warning(
-            "ChatRunner skipped planner credential #{inspect(credential.id)} env_var=#{inspect(credential.env_var)} reason=#{inspect(reason)}"
-          )
+          Logger.warning("ChatRunner skipped planner credential #{inspect(credential.id)} env_var=#{inspect(credential.env_var)} reason=#{inspect(reason)}")
 
           {:ok, acc}
       end
@@ -350,8 +337,8 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       "credential_alias" => Map.get(profile, :credential_alias),
       "api_key" => Map.get(profile, :api_key),
       "user_id" => Map.get(profile, :user_id),
-      "agent_type" => "manager",
-      "tool_bundle" => "manager",
+      "agent_type" => Map.get(profile, :agent_type) || "manager",
+      "tool_bundle" => Map.get(profile, :agent_type) || "manager",
       "base_url" => default_base_url(profile),
       "trace_id" => Process.get(:symphony_trace_id),
       "history_window" => Map.get(scope, :history_window) || Map.get(scope, "history_window"),
@@ -588,8 +575,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       # A provider naming a helper-advertisable runtime (openclaw et al.)
       # selects which registered helper runner serves the dispatch; nil
       # falls back to Runner.LocalRelay's "openai_compatible" default.
-      "target_runner_kind" =>
-        ExecutionProfile.local_relay_target_runner_kind(Map.get(profile, :provider)),
+      "target_runner_kind" => ExecutionProfile.local_relay_target_runner_kind(Map.get(profile, :provider)),
       "credential_ref" => Map.get(profile, :credential_ref),
       "workspace_root" => local_workspace_root(profile),
       "tool_definitions" => local_relay_tool_definitions(profile),
@@ -678,8 +664,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     route_properties = %{
       "repository_path" => %{
         "type" => ["string", "null"],
-        "description" =>
-          "Optional absolute local repository checkout path. If omitted, the runtime-provided local_workspace_root is used."
+        "description" => "Optional absolute local repository checkout path. If omitted, the runtime-provided local_workspace_root is used."
       },
       "cwd" => %{
         "type" => ["string", "null"],

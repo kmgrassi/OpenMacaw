@@ -3,6 +3,10 @@ import type { DefaultAgentRole, SetupRequest, SetupUpdateRequest } from "../../.
 import { agentType } from "./agent-defaults.js";
 import type { ResolvedExecutionProfileBlock } from "./execution-profile.js";
 
+function defaultTracker() {
+  return { kind: "database", table: "work_items" };
+}
+
 export function defaultAgentGatewayConfig(
   role: DefaultAgentRole,
   provider: string,
@@ -11,6 +15,7 @@ export function defaultAgentGatewayConfig(
   executionProfile: ResolvedExecutionProfileBlock | null = null,
 ) {
   return {
+    tracker: defaultTracker(),
     workflow_template: { id: `${role}-default` },
     runners: [{ kind: runnerKind, model, provider }],
     max_concurrent_agents: 1,
@@ -117,9 +122,14 @@ export function repairGatewayConfig(
   // Drop any stale `execution_profile` from the existing config so a missing
   // resolution overwrites rather than preserving an old credential ref.
   const { execution_profile: _staleProfile, ...configWithoutProfile } = config;
+  const existingTracker =
+    config.tracker && typeof config.tracker === "object" && !Array.isArray(config.tracker)
+      ? (config.tracker as Record<string, unknown>)
+      : null;
 
   return {
     ...configWithoutProfile,
+    tracker: existingTracker ?? defaultTracker(),
     runners:
       runners.length > 0
         ? runners.map((runner, index) =>
@@ -140,6 +150,25 @@ export function repairManagerGatewayConfig(input: {
   cadenceMs?: number;
   executionProfile?: ResolvedExecutionProfileBlock | null;
 }) {
+  return repairLlmToolGatewayConfig({
+    ...input,
+    agentType: "manager",
+    runnerKey: "manager",
+    workflowTemplateId: "manager-default",
+  });
+}
+
+export function repairLlmToolGatewayConfig(input: {
+  configJson: unknown;
+  provider: string;
+  model: string;
+  runnerKind: RunnerKind;
+  agentType: "manager" | "learning" | "router";
+  runnerKey?: string;
+  workflowTemplateId?: string;
+  cadenceMs?: number;
+  executionProfile?: ResolvedExecutionProfileBlock | null;
+}) {
   const config =
     input.configJson && typeof input.configJson === "object" && !Array.isArray(input.configJson)
       ? { ...(input.configJson as Record<string, unknown>) }
@@ -149,8 +178,10 @@ export function repairManagerGatewayConfig(input: {
       ? { ...(config.runners as Record<string, unknown>) }
       : {};
   const manager =
-    runners.manager && typeof runners.manager === "object" && !Array.isArray(runners.manager)
-      ? { ...(runners.manager as Record<string, unknown>) }
+    runners[input.runnerKey ?? input.agentType] &&
+    typeof runners[input.runnerKey ?? input.agentType] === "object" &&
+    !Array.isArray(runners[input.runnerKey ?? input.agentType])
+      ? { ...(runners[input.runnerKey ?? input.agentType] as Record<string, unknown>) }
       : {};
 
   // Drop any stale `execution_profile` block so a missing resolution
@@ -170,12 +201,13 @@ export function repairManagerGatewayConfig(input: {
     config.tracker && typeof config.tracker === "object" && !Array.isArray(config.tracker)
       ? (config.tracker as Record<string, unknown>)
       : null;
-  const tracker = existingTracker ?? { kind: "database", table: "work_items" };
+  const tracker = existingTracker ?? defaultTracker();
   const existingWorkflowTemplate =
     config.workflow_template && typeof config.workflow_template === "object" && !Array.isArray(config.workflow_template)
       ? (config.workflow_template as Record<string, unknown>)
       : null;
-  const workflowTemplate = existingWorkflowTemplate ?? { id: "manager-default" };
+  const workflowTemplate = existingWorkflowTemplate ?? { id: input.workflowTemplateId ?? `${input.agentType}-default` };
+  const runnerKey = input.runnerKey ?? input.agentType;
 
   return {
     ...configWithoutProfile,
@@ -183,7 +215,7 @@ export function repairManagerGatewayConfig(input: {
     workflow_template: workflowTemplate,
     runners: {
       ...runners,
-      manager: {
+      [runnerKey]: {
         ...manager,
         kind: input.runnerKind,
         provider: input.provider,

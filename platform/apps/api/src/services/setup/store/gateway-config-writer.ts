@@ -9,6 +9,7 @@ import {
   defaultAgentGatewayConfig,
   hashConfig,
   repairGatewayConfig,
+  repairLlmToolGatewayConfig,
   repairManagerGatewayConfig,
 } from "../builders.js";
 import type { AgentRow, GatewayConfigRow } from "../types.js";
@@ -137,16 +138,57 @@ export async function writeGatewayConfigForManagerAgent(
   },
   retryAfterCreateConflict = true,
 ) {
+  return writeGatewayConfigForLlmToolAgent(
+    {
+      ...input,
+      agentType: "manager",
+      runnerKey: "manager",
+      workflowTemplateId: "manager-default",
+      changeSummary: { manager_agent: true },
+    },
+    retryAfterCreateConflict,
+  );
+}
+
+export async function writeGatewayConfigForLlmToolAgent(
+  input: {
+    accessToken: string;
+    userId: string;
+    agent: AgentRow;
+    provider: string;
+    model: string;
+    runnerKind: "llm_tool_runner";
+    agentType: "manager" | "learning" | "router";
+    runnerKey?: string;
+    workflowTemplateId?: string;
+    cadenceMs?: number;
+    changeSummary?: Record<string, unknown>;
+  },
+  retryAfterCreateConflict = true,
+) {
   const existingGatewayConfig = await getGatewayConfig(input.accessToken, input.agent.id);
   const executionProfile = await resolveExecutionProfileBlock(input.agent.id, input.accessToken);
-  const nextConfigJson = repairManagerGatewayConfig({
-    configJson: existingGatewayConfig?.config_json,
-    provider: input.provider,
-    model: input.model,
-    runnerKind: input.runnerKind,
-    cadenceMs: input.cadenceMs,
-    executionProfile,
-  });
+  const nextConfigJson =
+    input.agentType === "manager"
+      ? repairManagerGatewayConfig({
+          configJson: existingGatewayConfig?.config_json,
+          provider: input.provider,
+          model: input.model,
+          runnerKind: input.runnerKind,
+          cadenceMs: input.cadenceMs,
+          executionProfile,
+        })
+      : repairLlmToolGatewayConfig({
+          configJson: existingGatewayConfig?.config_json,
+          provider: input.provider,
+          model: input.model,
+          runnerKind: input.runnerKind,
+          agentType: input.agentType,
+          runnerKey: input.runnerKey,
+          workflowTemplateId: input.workflowTemplateId,
+          cadenceMs: input.cadenceMs,
+          executionProfile,
+        });
   const nextConfigHash = hashConfig(nextConfigJson);
 
   if (!existingGatewayConfig) {
@@ -164,7 +206,7 @@ export async function writeGatewayConfigForManagerAgent(
 
     if (error) {
       if (retryAfterCreateConflict && isUniqueConstraintViolation(error)) {
-        return writeGatewayConfigForManagerAgent(input, false);
+        return writeGatewayConfigForLlmToolAgent(input, false);
       }
       throw normalizeSupabaseError("gateway_config insert", error);
     }
@@ -181,7 +223,7 @@ export async function writeGatewayConfigForManagerAgent(
         config_hash: createdGatewayConfig.config_hash,
         config_json: createdGatewayConfig.config_json,
         created_by: input.userId,
-        change_summary: asJson({ created: true, manager_agent: true }),
+        change_summary: asJson({ created: true, agent_type: input.agentType, ...input.changeSummary }),
       });
     if (versionError) throw normalizeSupabaseError("gateway_config_versions insert", versionError);
     return;

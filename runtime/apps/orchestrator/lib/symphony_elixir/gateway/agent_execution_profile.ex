@@ -101,8 +101,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
 
   defp pick_rule(config, rule_ids, workspace_id, agent) do
     query = %{
-      "select" =>
-        "id,priority,runner_kind,provider,model,credential_id,credential_alias,enabled,workspace_id",
+      "select" => "id,priority,runner_kind,provider,model,credential_id,credential_alias,enabled,workspace_id",
       "id" => "in.(#{Enum.join(rule_ids, ",")})",
       "workspace_id" => "eq.#{workspace_id}",
       "enabled" => "eq.true",
@@ -181,8 +180,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
         |> Enum.reject(&routing_metadata_match?/1)
         |> length()
 
-      {-numeric_priority(Map.get(rule, "priority")), -predicate_count,
-       -local_model_coding_score(rule), index}
+      {-numeric_priority(Map.get(rule, "priority")), -predicate_count, -local_model_coding_score(rule), index}
     end)
     |> List.first()
     |> then(fn {rule, _index} ->
@@ -276,6 +274,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
         schema_profile
         |> ExecutionProfileSchema.to_map()
         |> atomize_profile()
+        |> Map.put(:agent_type, Agent.kind(agent))
         |> then(&{:ok, &1})
 
       {:error, changeset} ->

@@ -21,7 +21,9 @@ import {
   buildCredentialJson,
   buildRequirementStatusFromResolution,
   defaultAgentToolPolicy,
+  learningToolPolicyDefaults,
   managerToolPolicyDefaults,
+  routerToolPolicyDefaults,
 } from "./builders.js";
 import { updateAgentModelSettings, updateAgentRuntimeDefaults } from "./gateway-config.js";
 import { requireCurrentUser, workspaceManagerAgentId } from "./identity.js";
@@ -36,11 +38,14 @@ import {
   listWorkspaceMemberships,
   upsertDefaultAssignment,
   writeGatewayConfigForDefaultAgent,
+  writeGatewayConfigForLlmToolAgent,
   writeGatewayConfigForManagerAgent,
 } from "./store.js";
 import { mapDefaultAgentStatus, mapSetupAgent, mapWorkspace } from "./mappers.js";
 import { DEFAULT_AGENT_ROLES, onboardingAgentDefaults } from "./defaults.js";
 import type { AgentRow, DefaultAgentStatus } from "./types.js";
+
+type OnboardingConfiguredAgentRole = DefaultAgentRole | "manager" | "learning" | "router";
 
 async function buildDefaultAgentStatus(
   accessToken: string,
@@ -344,11 +349,15 @@ export async function applyDefaultAgentCredentials(
     }
   }
   const managerAgent = await ensureWorkspaceManagerAgent(accessToken, input.workspaceId, userId);
-  const roleByAgentId = new Map<string, DefaultAgentRole | "manager">();
+  const learningAgent = await ensureWorkspaceLearningAgent(accessToken, input.workspaceId, userId);
+  const routerAgent = await ensureWorkspaceRouterAgent(accessToken, input.workspaceId, userId);
+  const roleByAgentId = new Map<string, OnboardingConfiguredAgentRole>();
   for (const { role, assignment } of assignments) {
     if (assignment) roleByAgentId.set(assignment.agent_id, role);
   }
   roleByAgentId.set(managerAgent.id, "manager");
+  roleByAgentId.set(learningAgent.id, "learning");
+  roleByAgentId.set(routerAgent.id, "router");
 
   const unauthorizedAgentIds = agentIds.filter((agentId) => !roleByAgentId.has(agentId));
   if (unauthorizedAgentIds.length > 0) {
@@ -389,7 +398,14 @@ export async function applyDefaultAgentCredentials(
         { provider: input.provider, agent_type: role },
       );
     }
-    const toolPolicy = role === "manager" ? managerToolPolicyDefaults() : defaultAgentToolPolicy(role);
+    const toolPolicy =
+      role === "manager"
+        ? managerToolPolicyDefaults()
+        : role === "learning"
+          ? learningToolPolicyDefaults()
+          : role === "router"
+            ? routerToolPolicyDefaults()
+            : defaultAgentToolPolicy(role);
 
     await updateAgentRuntimeDefaults(accessToken, agent.id, defaults.model, toolPolicy);
 
@@ -430,6 +446,16 @@ export async function applyDefaultAgentCredentials(
         provider: input.provider,
         model: defaults.model,
         runnerKind: "llm_tool_runner",
+      });
+    } else if (role === "learning" || role === "router") {
+      await writeGatewayConfigForLlmToolAgent({
+        accessToken,
+        userId,
+        agent,
+        provider: input.provider,
+        model: defaults.model,
+        runnerKind: "llm_tool_runner",
+        agentType: role,
       });
     } else {
       await writeGatewayConfigForDefaultAgent(
