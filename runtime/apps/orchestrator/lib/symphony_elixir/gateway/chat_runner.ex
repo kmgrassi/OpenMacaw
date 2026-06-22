@@ -167,7 +167,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       send(owner_pid, {:gateway_runner_event, scope.session_key, run_id, message})
     end
 
-    case manager_session(scope) do
+    case manager_session(scope, agent) do
       {:ok, session, _details, ownership} ->
         # Compose: preserve any configured on_message hook and forward each
         # event to the gateway owner so websocket and scheduler callers can
@@ -221,11 +221,11 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
     end
   end
 
-  defp manager_session(%{manager_session: session}) when is_map(session) do
+  defp manager_session(%{manager_session: session}, _agent) when is_map(session) do
     {:ok, session, %{}, :caller_owned}
   end
 
-  defp manager_session(scope) do
+  defp manager_session(scope, agent) do
     case Application.get_env(:symphony_elixir, :gateway_manager_session_resolver) do
       resolver when is_atom(resolver) and not is_nil(resolver) ->
         case resolver.resolve(scope.workspace_id) do
@@ -234,14 +234,14 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         end
 
       _ ->
-        resolve_manager_session_from_profile(scope)
+        resolve_manager_session_from_profile(scope, agent)
     end
   end
 
-  defp resolve_manager_session_from_profile(scope) do
+  defp resolve_manager_session_from_profile(scope, agent) do
     with {:ok, profile} <- AgentExecutionProfile.resolve(scope.agent_id, scope.workspace_id),
          config <- llm_tool_runner_config(profile, scope),
-         {:ok, session} <- Runner.LlmToolRunner.start_session(config, nil) do
+         {:ok, session} <- Runner.LlmToolRunner.start_session(config, llm_tool_runner_workspace(agent)) do
       session =
         session
         |> Map.put(:runner, Runner.LlmToolRunner)
@@ -264,6 +264,12 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
 
       {:error, reason} ->
         {:error, reason, %{status: :error}}
+    end
+  end
+
+  defp llm_tool_runner_workspace(agent) do
+    if Agent.kind?(agent, "coding") do
+      resolve_agent_workspace(agent)
     end
   end
 

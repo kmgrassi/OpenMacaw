@@ -31,6 +31,8 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionTest do
   end
 
   test "coding sessions use the coding tool bundle without requiring Codex" do
+    workspace = System.tmp_dir!()
+
     assert {:ok, session} =
              Manager.start_session(
                %{
@@ -40,11 +42,13 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionTest do
                  "model" => "gpt-test",
                  "agent_type" => "coding"
                },
-               nil
+               workspace
              )
 
     assert session.provider == "openai"
     assert session.credential_id == "cred-1"
+    assert session.workspace == workspace
+    assert session.workspace_root == workspace
     assert session.prompt == "You are a helpful agent. Use the available tools when needed."
     assert MapSet.new(session.allowed_tools) == MapSet.new(ToolRegistry.bundle(:coding))
     assert "git.run" in session.allowed_tools
