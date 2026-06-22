@@ -108,7 +108,7 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
   def follow_up_request(session, response, tool_outputs) do
     %{
       "model" => session.model,
-      "input" => tool_outputs,
+      "input" => Enum.map(tool_outputs, &normalize_function_call_output/1),
       "previous_response_id" => response_id(response),
       "provider_tool_name_map" => Map.get(session, :provider_tool_name_map, %{})
     }
@@ -189,6 +189,14 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
   end
 
   defp maybe_put_previous_response_id(request, _previous_response_id), do: request
+
+  defp normalize_function_call_output(%{"output" => output} = item) when is_binary(output), do: item
+
+  defp normalize_function_call_output(%{"output" => output} = item) do
+    Map.put(item, "output", Jason.encode!(output))
+  end
+
+  defp normalize_function_call_output(item), do: item
 
   defp normalize_response(body, request) when is_map(body) do
     body
