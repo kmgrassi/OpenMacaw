@@ -1,8 +1,10 @@
 package openai_compatible
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,6 +64,56 @@ func TestDispatchHelperManagedToolLoop(t *testing.T) {
 		t.Fatalf("attempts = %d, want 2", attempts)
 	}
 	assertOutput(t, events, "file summarized")
+}
+
+func TestDispatchHelperManagedRawLoggingCapturesToolLoopResponses(t *testing.T) {
+	t.Setenv(rawModelIOEnvVar, "true")
+
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts == 1 {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"call_123","type":"function","function":{"name":"filesystem_read","arguments":"{\"path\":\"README.md\"}"}}]},"finish_reason":"tool_calls"}]}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"file summarized"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	var logs bytes.Buffer
+	executor := &fakeToolExecutor{result: runner.ToolCallResult{ToolCallID: "call_123", Success: true, Output: "contents"}}
+	r, err := New(Config{
+		Endpoint:     server.URL + "/v1",
+		Model:        "local-model",
+		ToolExecutor: executor,
+		Logger:       slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	err = r.Dispatch(context.Background(), runner.ChatCompletionInput{
+		Messages:        []runner.ChatMessage{{Role: "user", Content: "read"}},
+		ToolCallingMode: "helper_managed",
+		ToolDefinitions: []runner.ToolDefinition{{
+			Name:          "filesystem_read",
+			ExecutionKind: "helper",
+		}},
+	}, func(event any) error { return nil })
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+
+	logOutput := logs.String()
+	if !strings.Contains(logOutput, "local model response") {
+		t.Fatalf("logs did not include model responses:\n%s", logOutput)
+	}
+	if !strings.Contains(logOutput, "call_123") {
+		t.Fatalf("logs did not capture tool-call response:\n%s", logOutput)
+	}
+	if !strings.Contains(logOutput, "file summarized") {
+		t.Fatalf("logs did not capture final completion response:\n%s", logOutput)
+	}
 }
 
 func TestDispatchHelperManagedReturnsAbsentNativeToolAsResult(t *testing.T) {

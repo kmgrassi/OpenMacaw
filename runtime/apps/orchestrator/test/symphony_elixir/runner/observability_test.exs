@@ -303,6 +303,50 @@ defmodule SymphonyElixir.Runner.ObservabilityTest do
            end)
   end
 
+  test "omits the raw model response by default even when a response is provided" do
+    log =
+      capture_log(fn ->
+        Observability.log_model_call_completed(
+          %{provider: "local", model: "qwen", runner_kind: "local_relay"},
+          12,
+          response: %{"output_text" => "secret completion", "tool_calls" => [%{"name" => "git.run"}]}
+        )
+      end)
+
+    refute log =~ "raw_response"
+    refute log =~ "secret completion"
+  end
+
+  test "includes the raw model response when raw model-context logging is enabled" do
+    previous = Application.get_env(:symphony_elixir, :log_raw_model_request_context)
+    Application.put_env(:symphony_elixir, :log_raw_model_request_context, true)
+
+    on_exit(fn ->
+      if is_nil(previous) do
+        Application.delete_env(:symphony_elixir, :log_raw_model_request_context)
+      else
+        Application.put_env(:symphony_elixir, :log_raw_model_request_context, previous)
+      end
+    end)
+
+    log =
+      capture_log(fn ->
+        Observability.log_model_call_completed(
+          %{provider: "local", model: "qwen", runner_kind: "local_relay"},
+          12,
+          response: %{"output_text" => "hello world", "tool_calls" => [%{"name" => "git.run"}]}
+        )
+      end)
+
+    [entry] =
+      Regex.scan(~r/\{.*\}/, log)
+      |> Enum.map(fn [line] -> Jason.decode!(line) end)
+      |> Enum.filter(&(&1["event"] == "model_call_completed"))
+
+    assert get_in(entry, ["raw_response", "output_text"]) == "hello world"
+    assert get_in(entry, ["raw_response", "tool_calls"]) == [%{"name" => "git.run"}]
+  end
+
   test "emits model request context summaries without raw message text by default" do
     log =
       capture_log(fn ->

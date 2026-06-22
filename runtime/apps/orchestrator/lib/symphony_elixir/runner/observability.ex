@@ -85,8 +85,23 @@ defmodule SymphonyElixir.Runner.Observability do
       |> maybe_put(:provider_status, Keyword.get(opts, :status_code))
       |> maybe_put(:provider_request_id, Keyword.get(opts, :provider_request_id))
       |> maybe_put(:first_event_latency_ms, Keyword.get(opts, :first_event_latency_ms))
+      |> maybe_put_raw_response(Keyword.get(opts, :response))
 
     RuntimeLog.log(:info, :model_call_completed, fields)
+  end
+
+  # When raw model-context logging is enabled, include the model's raw response
+  # (completion text and any emitted tool calls) alongside the request context
+  # logged by `log_model_request_context_prepared/2`. Secrets in the payload are
+  # redacted by `RuntimeLog`.
+  defp maybe_put_raw_response(fields, nil), do: fields
+
+  defp maybe_put_raw_response(fields, response) do
+    if raw_model_request_context_logging?() do
+      Map.put(fields, :raw_response, response)
+    else
+      fields
+    end
   end
 
   @doc """
