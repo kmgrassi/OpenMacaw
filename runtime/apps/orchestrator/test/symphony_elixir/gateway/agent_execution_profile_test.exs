@@ -357,7 +357,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
              )
   end
 
-  test "rejects legacy llm_tool_runner routing rules instead of normalizing them" do
+  test "accepts llm_tool_runner routing rules for coding agents" do
     Req.Test.stub(AgentExecutionProfile, fn conn ->
       cond do
         conn.request_path == "/rest/v1/routing_rule_match" ->
@@ -395,7 +395,15 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
       end
     end)
 
-    assert {:error, {:runner_unsupported, "llm_tool_runner"}} =
+    assert {:ok,
+            %{
+              agent_id: "agent-1",
+              workspace_id: "workspace-1",
+              agent_type: "coding",
+              runner_kind: "llm_tool_runner",
+              provider: "openai_compatible",
+              model: "qwen3-coder:30b"
+            }} =
              AgentExecutionProfile.resolve("agent-1", "workspace-1", agent_inventory: AgentInventory)
   end
 

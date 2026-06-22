@@ -358,6 +358,21 @@ defmodule SymphonyElixir.Config.TrackerValidationTest do
       assert settings.runners.local_model_coding["model"] == "qwen2.5-coder"
     end
 
+    test "accepts llm_tool_runner as a runner default without removing codex defaults" do
+      assert {:ok, settings} =
+               Schema.parse(%{
+                 runners: %{
+                   default: "llm_tool_runner",
+                   codex: %{model: "gpt-5.1-codex"},
+                   llm_tool_runner: %{model: "gpt-5.2"}
+                 }
+               })
+
+      assert settings.runners.default == "llm_tool_runner"
+      assert settings.runners.codex["model"] == "gpt-5.1-codex"
+      assert settings.runners.llm_tool_runner["model"] == "gpt-5.2"
+    end
+
     test "validates runner default value" do
       assert {:error, {:invalid_workflow_config, message}} =
                Schema.parse(%{

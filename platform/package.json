@@ -35,7 +35,8 @@
     "contracts:check-generated-db-types": "./scripts/check-generated-db-types.sh",
     "migrate:workspace-tracker-kind": "node scripts/migrate-workspace-tracker-kind.mjs",
     "smoke:container": "node scripts/smoke-container.mjs",
-    "smoke:agent-browser": "node scripts/smoke-agent-browser.mjs"
+    "smoke:agent-browser": "node scripts/smoke-agent-browser.mjs",
+    "smoke:onboarded-agents-browser": "node scripts/smoke-onboarded-agents-browser.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0",

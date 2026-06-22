@@ -34,6 +34,18 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
        }}
     end
 
+    def get_agent("coding-1") do
+      {:ok,
+       %Agent{
+         id: "coding-1",
+         slug: "coding",
+         name: "Coding",
+         workspace_id: "workspace-1",
+         type: "coding",
+         created_by_user_id: "user-1"
+       }}
+    end
+
     def get_agent(_agent_id), do: {:error, :not_found}
 
     def list_credentials("planner-1") do
@@ -299,6 +311,45 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert result["output_text"] == "manager response"
     assert result["provider"] == "openai_compatible"
     assert result["model"] == "router-model"
+  end
+
+  test "coding agents with llm_tool_runner routes dispatch through Runner.LlmToolRunner-compatible turns" do
+    agent = coding_agent()
+
+    scope =
+      "workspace-1"
+      |> coding_scope()
+      |> Map.put(:manager_session, %{
+        workspace_id: "workspace-1",
+        runner: TestManagerRunner,
+        provider: "openai",
+        model: "gpt-5.2",
+        tool_bundle: :coding
+      })
+
+    setup_manager_profile_routing(%{
+      "id" => "rule-coding",
+      "agent_id" => "coding-1",
+      "runner_kind" => "llm_tool_runner",
+      "provider" => "openai",
+      "model" => "gpt-5.2"
+    })
+
+    assert :ok = ChatRunner.run(agent, scope, "hello coding", "run-coding", self())
+
+    assert_received {:manager_run_turn, session, "hello coding", work_item}
+    assert session.provider == "openai"
+    assert session.model == "gpt-5.2"
+    assert session.tool_bundle == :coding
+    assert work_item.id == "agent:coding-1:main"
+    assert work_item.identifier == "coding"
+
+    assert_received {:gateway_runner_complete, "agent:coding-1:main", "run-coding", {:ok, result}}
+
+    assert result["output_text"] == "manager response"
+    assert result["provider"] == "openai"
+    assert result["model"] == "gpt-5.2"
+    refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
   end
 
   test "manager agents do not stop caller-owned scheduler sessions" do
@@ -870,7 +921,9 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
           "workspace_id" => "workspace-1"
         },
         rule_overrides
-      )
+    )
+
+    rule_id = Map.fetch!(rule, "id")
 
     Req.Test.stub(__MODULE__, fn conn ->
       cond do
@@ -879,14 +932,14 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
 
           matches =
             if params["kind"] == "eq.agent_id" do
-              [%{"rule_id" => "rule-manager"}]
+              [%{"rule_id" => rule_id}]
             else
               [
                 %{
-                  "rule_id" => "rule-manager",
+                  "rule_id" => rule_id,
                   "kind" => "agent_id",
                   "key" => "agent_id",
-                  "value" => "manager-1"
+                  "value" => Map.get(rule, "agent_id") || "manager-1"
                 }
               ]
             end
@@ -959,6 +1012,17 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     }
   end
 
+  defp coding_agent do
+    %Agent{
+      id: "coding-1",
+      slug: "coding",
+      name: "Coding",
+      workspace_id: "workspace-1",
+      type: "coding",
+      context: "Work on code"
+    }
+  end
+
   defp planning_agent do
     %Agent{
       id: "planner-1",
@@ -1005,6 +1069,15 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
       workspace_id: workspace_id,
       user_id: "user-1",
       session_key: "agent:router-1:main"
+    }
+  end
+
+  defp coding_scope(workspace_id) do
+    %{
+      agent_id: "coding-1",
+      workspace_id: workspace_id,
+      user_id: "user-1",
+      session_key: "agent:coding-1:main"
     }
   end
 end

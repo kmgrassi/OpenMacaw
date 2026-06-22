@@ -110,7 +110,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     assert schema["properties"]["work_item"]["required"] == ["instructions"]
     assert intents == IntentVocabulary.names()
     assert runner_kinds == ExecutionProfile.supported_runner_kinds() ++ [nil]
-    refute "llm_tool_runner" in runner_kinds
+    assert "llm_tool_runner" in runner_kinds
     assert "local_model_coding" in runner_kinds
   end
 

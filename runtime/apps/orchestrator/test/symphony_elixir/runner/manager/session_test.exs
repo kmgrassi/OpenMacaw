@@ -30,6 +30,29 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionTest do
     assert :ok = Manager.stop_session(session)
   end
 
+  test "coding sessions use the coding tool bundle without requiring Codex" do
+    assert {:ok, session} =
+             Manager.start_session(
+               %{
+                 "api_key" => "test-key",
+                 "credential_id" => "cred-1",
+                 "workspace_id" => "workspace-1",
+                 "model" => "gpt-test",
+                 "agent_type" => "coding"
+               },
+               nil
+             )
+
+    assert session.provider == "openai"
+    assert session.credential_id == "cred-1"
+    assert session.prompt == "You are a helpful agent. Use the available tools when needed."
+    assert MapSet.new(session.allowed_tools) == MapSet.new(ToolRegistry.bundle(:coding))
+    assert "git.run" in session.allowed_tools
+    refute "snooze" in session.allowed_tools
+
+    assert :ok = Manager.stop_session(session)
+  end
+
   test "appends agent context to the system prompt when provided" do
     assert {:ok, session} =
              Manager.start_session(
@@ -172,6 +195,74 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionTest do
 
     assert_received {:explicit_schema_request, request}
     assert [%{"name" => "snooze", "parameters" => ^schema}] = request["tools"]
+
+    assert :ok = Manager.stop_session(session)
+  end
+
+  test "Responses manager maps dotted runtime tool names to provider-safe names" do
+    test_pid = self()
+
+    Req.Test.stub(__MODULE__, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:dotted_tool_request, Jason.decode!(body)})
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(
+        200,
+        Jason.encode!(%{
+          "id" => "resp-dotted-tool",
+          "status" => "completed",
+          "output" => [
+            %{
+              "type" => "message",
+              "role" => "assistant",
+              "content" => [%{"type" => "output_text", "text" => "Done."}]
+            }
+          ]
+        })
+      )
+    end)
+
+    schema = %{"type" => "object", "properties" => %{}}
+
+    {:ok, session} =
+      Manager.start_session(
+        %{
+          "api_key" => "test-key",
+          "model" => "gpt-test",
+          "workspace_id" => "workspace-1",
+          "tool_definitions" => [%{"name" => "skill.create", "description" => "Create a skill", "parameters" => schema}]
+        },
+        nil
+      )
+
+    assert {:ok, %{"output_text" => "Done."}} =
+             Manager.run_turn(session, ~s({"due_tasks":[]}), %WorkItem{id: "work-1", identifier: "MAN-1"})
+
+    assert_received {:dotted_tool_request, request}
+    refute Map.has_key?(request, "provider_tool_name_map")
+    assert [%{"name" => "skill_create", "parameters" => ^schema}] = request["tools"]
+
+    assert [
+             %{
+               "type" => "function_call",
+               "call_id" => "call-skill",
+               "name" => "skill.create",
+               "arguments" => "{\"name\":\"demo\"}"
+             }
+           ] =
+             ModelClient.OpenAIResponses.tool_calls(%{
+               "provider_tool_name_map" => %{"skill.create" => "skill_create"},
+               "output" => [
+                 %{
+                   "type" => "function_call",
+                   "call_id" => "call-skill",
+                   "name" => "skill_create",
+                   "arguments" => %{"name" => "demo"}
+                 }
+               ]
+             })
 
     assert :ok = Manager.stop_session(session)
   end

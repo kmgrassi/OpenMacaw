@@ -5,6 +5,7 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
 
   @behaviour SymphonyElixir.Manager.ModelClient
 
+  alias SymphonyElixir.Planner.ToolNameMapping
   alias SymphonyElixir.Runner.Observability
   alias SymphonyElixir.ToolAdapter.OpenAI, as: ToolCallAdapter
 
@@ -24,7 +25,7 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
     context = provider_context(session, attempt)
     Observability.log_model_call_started(context)
 
-    case Req.post(req, json: request) do
+    case Req.post(req, json: provider_request(request)) do
       {:ok, %Req.Response{status: status, body: body} = response} when status in 200..299 ->
         if Observability.provider_content_refusal?(body) do
           classification =
@@ -45,7 +46,7 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
             provider_request_id: Observability.provider_request_id(response)
           )
 
-          {:ok, body}
+          {:ok, normalize_response(body, request)}
         end
 
       {:ok, %Req.Response{status: status, body: body} = response} ->
@@ -97,7 +98,8 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
         "work_item_id" => work_item.id,
         "work_item_identifier" => work_item.identifier
       },
-      "tools" => Enum.map(session.tool_specs, &responses_tool_spec/1)
+      "provider_tool_name_map" => Map.get(session, :provider_tool_name_map, %{}),
+      "tools" => Enum.map(session.tool_specs, &responses_tool_spec(&1, Map.get(session, :provider_tool_name_map, %{})))
     }
     |> maybe_put_previous_response_id(Map.get(session, :previous_response_id))
   end
@@ -107,7 +109,8 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
     %{
       "model" => session.model,
       "input" => tool_outputs,
-      "previous_response_id" => response_id(response)
+      "previous_response_id" => response_id(response),
+      "provider_tool_name_map" => Map.get(session, :provider_tool_name_map, %{})
     }
   end
 
@@ -128,9 +131,11 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
 
   @impl true
   def tool_calls(response) when is_map(response) do
+    provider_tool_name_map = Map.get(response, "provider_tool_name_map", %{})
+
     response
     |> ToolCallAdapter.parse_tool_calls()
-    |> Enum.map(&canonical_to_responses_call/1)
+    |> Enum.map(&canonical_to_responses_call(&1, provider_tool_name_map))
   end
 
   def tool_calls(_response), do: []
@@ -139,10 +144,12 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
   def response_id(response) when is_map(response), do: Map.get(response, "id")
   def response_id(_response), do: nil
 
-  defp responses_tool_spec(spec) do
+  defp responses_tool_spec(spec, provider_tool_name_map) do
+    name = tool_name(spec)
+
     %{
       "type" => "function",
-      "name" => tool_name(spec),
+      "name" => ToolNameMapping.provider_name(name, provider_tool_name_map),
       "description" => tool_description(spec),
       "parameters" => tool_parameters(spec)
     }
@@ -159,11 +166,13 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
     end
   end
 
-  defp canonical_to_responses_call(call) do
+  defp canonical_to_responses_call(call, provider_tool_name_map) do
+    name = ToolNameMapping.runtime_name(call.name, provider_tool_name_map)
+
     %{
       "type" => "function_call",
       "call_id" => call.id,
-      "name" => call.name,
+      "name" => name,
       "arguments" => function_call_arguments(call)
     }
   end
@@ -180,6 +189,23 @@ defmodule SymphonyElixir.Manager.ModelClient.OpenAIResponses do
   end
 
   defp maybe_put_previous_response_id(request, _previous_response_id), do: request
+
+  defp normalize_response(body, request) when is_map(body) do
+    body
+    |> Map.put("provider_tool_name_map", Map.get(request, "provider_tool_name_map", %{}))
+  end
+
+  defp normalize_response(body, request) do
+    %{
+      "id" => nil,
+      "output" => [],
+      "metadata" => Map.get(request, "metadata", %{}),
+      "provider_tool_name_map" => Map.get(request, "provider_tool_name_map", %{}),
+      "raw_body" => body
+    }
+  end
+
+  defp provider_request(request), do: Map.drop(request, ["provider_tool_name_map"])
 
   defp content_text(%{"type" => type, "text" => text})
        when type in ["output_text", "text"] and is_binary(text),

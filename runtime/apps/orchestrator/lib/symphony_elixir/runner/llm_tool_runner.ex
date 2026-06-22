@@ -531,6 +531,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
       "manager" -> :manager
       "learning" -> :learning
       "router" -> :router
+      "coding" -> :coding
       "planning" -> :planner
       "planner" -> :planner
       value when is_atom(value) -> value
@@ -863,7 +864,10 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   defp req_options(config, _model_client) do
     configured = config_value(config, "req_options") || []
     env_options = Application.get_env(:symphony_elixir, :manager_responses_req_options, [])
+    defaults = [receive_timeout: 120_000]
 
-    Keyword.merge(List.wrap(configured), env_options)
+    defaults
+    |> Keyword.merge(List.wrap(configured))
+    |> Keyword.merge(env_options)
   end
 end

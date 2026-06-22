@@ -50,6 +50,9 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
           "local_relay" ->
             run_local_relay(agent, scope, prompt, run_id, owner_pid)
 
+          "llm_tool_runner" ->
+            run_manager(agent, scope, prompt, run_id, owner_pid)
+
           _ ->
             run_codex(agent, scope, prompt, run_id, owner_pid)
         end
@@ -60,7 +63,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
 
   defp resolved_runner_kind(%{agent_id: agent_id, workspace_id: workspace_id})
        when is_binary(agent_id) and is_binary(workspace_id) do
-    case AgentExecutionProfile.resolve(agent_id, workspace_id) do
+    case AgentExecutionProfile.resolve_route(agent_id, workspace_id) do
       {:ok, %{runner_kind: kind}} when is_binary(kind) ->
         kind
 
