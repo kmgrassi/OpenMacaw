@@ -208,6 +208,9 @@ async function openAgent(page, agentName, options) {
   await page.waitForURL((url) => url.pathname.startsWith("/dashboard/"), {
     timeout: options.timeoutMs,
   });
+  await page
+    .getByRole("heading", { name: agentName })
+    .waitFor({ state: "visible", timeout: options.timeoutMs });
 }
 
 async function assertAgentReply(page, agentName, options) {
