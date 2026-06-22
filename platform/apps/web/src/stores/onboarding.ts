@@ -58,6 +58,7 @@ type OnboardingState = {
   setLocalRepositoryPath: (localRepositoryPath: string) => void;
   setSaving: (saving: boolean) => void;
   setError: (error: string | null) => void;
+  resumeIncompleteStep: () => void;
   reset: () => void;
 };
 
@@ -98,6 +99,31 @@ export function sanitizePersistedOnboardingEnvelope(parsed: {
       currentCard: normalizePersistedOnboardingCard(state.currentCard),
     },
   };
+}
+
+/**
+ * The first configuration step for a chosen path — i.e. the card a user must
+ * complete before the launch card becomes valid. Used to resume the flow when
+ * a user reaches launch but onboarding is still incomplete.
+ */
+export function configStepForPath(path: OnboardingPath): OnboardingCard {
+  if (path === "cloud") return "cloud-key";
+  if (path === "local") return "local-runtime-relay";
+  return "choose-path";
+}
+
+/**
+ * Build a human-readable message from the server's onboarding blocker reasons
+ * (`${role}_missing_${item}`), e.g. "planning missing model, coding missing
+ * credential". Surfaced when a save succeeds at the HTTP layer but the agents
+ * are still not fully configured.
+ */
+export function summarizeOnboardingBlockers(reasons: string[]): string {
+  if (reasons.length === 0) {
+    return "Your agents still need configuration before you can continue.";
+  }
+  const detail = reasons.map((reason) => reason.replace(/_/g, " ")).join(", ");
+  return `Your agents still need configuration before you can continue: ${detail}.`;
 }
 
 function cardOrderForPath(path: OnboardingPath): OnboardingCard[] {
@@ -193,6 +219,11 @@ export const useOnboardingStore = create<OnboardingState>()(
         set({ localRepositoryPath, error: null }),
       setSaving: (saving) => set({ saving }),
       setError: (error) => set({ error }),
+      resumeIncompleteStep: () =>
+        set((state) => ({
+          currentCard: configStepForPath(state.path),
+          error: null,
+        })),
       reset: () => set(INITIAL_STATE),
     }),
     {

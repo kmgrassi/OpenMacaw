@@ -6,7 +6,10 @@ import {
 } from "../../hooks/useServerStateQueries";
 import { cn } from "../../lib/cn";
 import { useAuthStore } from "../../stores/auth";
-import { useOnboardingStore } from "../../stores/onboarding";
+import {
+  summarizeOnboardingBlockers,
+  useOnboardingStore,
+} from "../../stores/onboarding";
 import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { Input } from "../ui/Input";
@@ -178,6 +181,12 @@ export function LocalRuntimeRelayCard({ onBack, onContinue, onSkip }: Props) {
       }
       auth.applyAuthState(authState.data);
       setSelectedAgentIds(agentIds);
+      if (authState.data.onboarding.required) {
+        setError(
+          summarizeOnboardingBlockers(authState.data.onboarding.reasons),
+        );
+        return;
+      }
       onContinue();
     } catch (caught) {
       setError((caught as Error).message);

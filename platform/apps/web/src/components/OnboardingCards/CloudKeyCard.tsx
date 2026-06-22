@@ -6,6 +6,7 @@ import {
   DEFAULT_MODEL_BY_PROVIDER,
   KEY_NAME_BY_PROVIDER,
   ONBOARDING_CLOUD_PROVIDERS,
+  summarizeOnboardingBlockers,
   useOnboardingStore,
   type OnboardingCloudProvider,
 } from "../../stores/onboarding";
@@ -88,6 +89,10 @@ export function CloudKeyCard({ onBack, onContinue }: Props) {
       });
       auth.applyAuthState(authState);
       setSelectedAgentIds(agentIds);
+      if (authState.onboarding.required) {
+        setError(summarizeOnboardingBlockers(authState.onboarding.reasons));
+        return;
+      }
       onContinue();
     } catch (caught) {
       setError((caught as Error).message);
