@@ -101,20 +101,16 @@ defmodule SymphonyElixir.Launcher.ServerAgentStartTest do
     assert {:ok, 1} = Server.workspace_active_agents_count("workspace-1", exclude_pid: runtime_one.pid)
   end
 
-  test "start_agent returns structured error details when tracker.kind is missing" do
+  test "start_agent defaults to a database tracker when none is configured" do
     Application.put_env(:symphony_elixir, :agent_launch_template, %{})
 
     Application.put_env(:symphony_elixir, :test_agent_inventory_agents, [
       %Agent{id: "agent-1", name: "Builder", workspace_id: "workspace-1"}
     ])
 
-    assert {:error,
-            {:invalid_agent_config, "agent launch config tracker.kind is required",
-             %{
-               error_code: "missing_tracker_kind",
-               required_config: ["tracker.kind"],
-               resolution_hint: "Create a gateway_config with tracker settings for this agent"
-             }}} = Server.start_agent("agent-1")
+    # tracker.kind is sourced from workspace_settings (default "database"), so a
+    # missing tracker no longer blocks the launch.
+    assert {:ok, _runtime} = Server.start_agent("agent-1")
   end
 
   test "start_agent returns structured error details when explicit execution profile is invalid" do
