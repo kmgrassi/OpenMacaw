@@ -252,21 +252,8 @@ func (r *Runner) chat(ctx context.Context, input runner.ChatCompletionInput, str
 		return parseProviderError(resp)
 	}
 
-	// Capture the exact response body (completion text + emitted tool calls) when
-	// raw model-I/O logging is enabled, without disturbing streaming: tee what the
-	// parser reads into a buffer and log it once parsing finishes.
-	body := io.Reader(resp.Body)
-	if rawModelIOLoggingEnabled() {
-		var captured bytes.Buffer
-		body = io.TeeReader(resp.Body, &captured)
-		defer func() {
-			r.cfg.Logger.Info("local model response",
-				"model", input.Model,
-				"stream", stream,
-				"body", captured.String(),
-			)
-		}()
-	}
+	body, logResponse := r.rawModelResponseBody(input, stream, resp.Body)
+	defer logResponse()
 
 	if stream {
 		if !isEventStream(resp.Header.Get("Content-Type")) {
@@ -275,6 +262,21 @@ func (r *Runner) chat(ctx context.Context, input runner.ChatCompletionInput, str
 		return parseStream(ctx, body, definitionsByName, emit)
 	}
 	return parseCompletion(body, definitionsByName, emit)
+}
+
+func (r *Runner) rawModelResponseBody(input runner.ChatCompletionInput, stream bool, body io.Reader) (io.Reader, func()) {
+	if !rawModelIOLoggingEnabled() {
+		return body, func() {}
+	}
+
+	var captured bytes.Buffer
+	return io.TeeReader(body, &captured), func() {
+		r.cfg.Logger.Info("local model response",
+			"model", input.Model,
+			"stream", stream,
+			"body", captured.String(),
+		)
+	}
 }
 
 func (r *Runner) doChat(ctx context.Context, input runner.ChatCompletionInput, stream bool) (*http.Response, error) {
