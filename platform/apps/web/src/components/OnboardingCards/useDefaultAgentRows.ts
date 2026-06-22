@@ -2,7 +2,7 @@ import { useMemo } from "react";
 
 import { useAuthStore } from "../../stores/auth";
 
-export type DefaultAgentKey = "planning" | "coding" | "manager";
+export type DefaultAgentKey = "planning" | "coding" | "manager" | "learning" | "router";
 
 export type DefaultAgentRow = {
   role: string;
@@ -32,10 +32,22 @@ export const DEFAULT_AGENT_DESCRIPTIONS: Array<
     description:
       "Works in the background to coordinate work across your agents.",
   },
+  {
+    role: "Learning agent",
+    key: "learning",
+    description:
+      "Reviews recent runs and suggests durable memory or operating improvements.",
+  },
+  {
+    role: "Router agent",
+    key: "router",
+    description:
+      "Reviews routing performance and keeps model routing rules current.",
+  },
 ];
 
 export function useDefaultAgentRows(): DefaultAgentRow[] {
-  const { defaultAgents, managerAgent } = useAuthStore();
+  const { defaultAgents, existingAgents, managerAgent } = useAuthStore();
   return useMemo(
     () =>
       DEFAULT_AGENT_DESCRIPTIONS.map((agent) => ({
@@ -43,8 +55,10 @@ export function useDefaultAgentRows(): DefaultAgentRow[] {
         agentId:
           agent.key === "manager"
             ? managerAgent.agentId
-            : defaultAgents[agent.key].agentId,
+            : agent.key === "learning" || agent.key === "router"
+              ? (existingAgents.find((row) => row.type === agent.key)?.id ?? null)
+              : defaultAgents[agent.key].agentId,
       })),
-    [defaultAgents, managerAgent.agentId],
+    [defaultAgents, existingAgents, managerAgent.agentId],
   );
 }

@@ -530,6 +530,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
     case config_value(config, "tool_bundle") || agent_type(config) do
       "manager" -> :manager
       "learning" -> :learning
+      "router" -> :router
       "planning" -> :planner
       "planner" -> :planner
       value when is_atom(value) -> value

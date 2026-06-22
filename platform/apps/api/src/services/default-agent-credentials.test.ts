@@ -8,7 +8,7 @@ import {
 } from "./setup.js";
 import { getServiceRoleSupabase, getSupabaseForAccessToken, getUserScopedSupabase } from "../supabase-client.js";
 import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
-import { DEFAULT_MANAGER_TOOL_SLUGS } from "./tool-bundles.js";
+import { DEFAULT_LEARNING_TOOL_SLUGS, DEFAULT_MANAGER_TOOL_SLUGS, ROUTER_TOOL_SLUGS } from "./tool-bundles.js";
 
 vi.mock("../supabase-client.js", () => ({
   executeLoggedSupabaseRows: vi.fn(
@@ -35,32 +35,44 @@ const planningAgentId = "33333333-3333-4333-8333-333333333333";
 const codingAgentId = "44444444-4444-4444-8444-444444444444";
 const foreignAgentId = "55555555-5555-4555-8555-555555555555";
 const managerAgentId = "66666666-6666-4666-8666-666666666666";
+const learningAgentId = "88888888-8888-4888-8888-888888888888";
+const routerAgentId = "99999999-9999-4999-8999-999999999999";
 const managerTemplateId = "77777777-7777-4777-8777-777777777777";
+const learningTemplateId = "77777777-7777-4777-8777-777777777778";
+const routerTemplateId = "77777777-7777-4777-8777-777777777779";
 
 function toolId(slug: string) {
   return `tool-${slug.replaceAll(".", "-")}`;
 }
 
-function managerToolCatalog() {
+function toolCatalog() {
+  const templates = [
+    { id: managerTemplateId, slug: "manager", tools: DEFAULT_MANAGER_TOOL_SLUGS },
+    { id: learningTemplateId, slug: "learning", tools: DEFAULT_LEARNING_TOOL_SLUGS },
+    { id: routerTemplateId, slug: "router", tools: ROUTER_TOOL_SLUGS },
+  ];
+  const toolSlugs = Array.from(new Set(templates.flatMap((template) => template.tools)));
+  const templateBySlug = new Map(templates.map((template) => [template.slug, template]));
+
   return {
-    tool: DEFAULT_MANAGER_TOOL_SLUGS.map((slug) => ({
+    tool: toolSlugs.map((slug) => ({
       id: toolId(slug),
       workspace_id: null,
       slug,
       enabled: true,
     })),
-    tool_policy_template: [
-      {
-        id: managerTemplateId,
-        workspace_id: null,
-        slug: "manager",
-        enabled: true,
-      },
-    ],
-    tool_policy_template_tool: DEFAULT_MANAGER_TOOL_SLUGS.map((slug) => ({
-      template_id: managerTemplateId,
-      tool_id: toolId(slug),
+    tool_policy_template: templates.map((template) => ({
+      id: template.id,
+      workspace_id: null,
+      slug: template.slug,
+      enabled: true,
     })),
+    tool_policy_template_tool: templates.flatMap((template) =>
+      template.tools.map((slug) => ({
+        template_id: templateBySlug.get(template.slug)?.id ?? template.id,
+        tool_id: toolId(slug),
+      })),
+    ),
     agent_tool_grant: [] as Array<Record<string, unknown>>,
   };
 }
@@ -133,7 +145,8 @@ function setupMockDatabase() {
     routing_rule_match: [] as Array<Record<string, unknown>>,
     gateway_config: [] as Array<Record<string, unknown>>,
     gateway_config_versions: [] as Array<Record<string, unknown>>,
-    ...managerToolCatalog(),
+    scheduled_task: [] as Array<Record<string, unknown>>,
+    ...toolCatalog(),
   };
 
   const supabaseClient = createMockSupabaseClient(db);
@@ -142,6 +155,44 @@ function setupMockDatabase() {
   vi.mocked(getUserScopedSupabase).mockReturnValue(supabaseClient as never);
 
   return db;
+}
+
+function addWorkspaceToolAgents(db: ReturnType<typeof setupMockDatabase>) {
+  db.agent.push(
+    {
+      id: managerAgentId,
+      workspace_id: workspaceId,
+      name: "Manager Agent",
+      status: "active",
+      type: "manager",
+      model_settings: {},
+      tool_policy: {},
+      created_by_user_id: userId,
+      updated_at: "2026-04-25T00:00:00.000Z",
+    },
+    {
+      id: learningAgentId,
+      workspace_id: workspaceId,
+      name: "Learning Agent",
+      status: "active",
+      type: "learning",
+      model_settings: {},
+      tool_policy: {},
+      created_by_user_id: userId,
+      updated_at: "2026-04-25T00:00:00.000Z",
+    },
+    {
+      id: routerAgentId,
+      workspace_id: workspaceId,
+      name: "Router Agent",
+      status: "active",
+      type: "router",
+      model_settings: {},
+      tool_policy: {},
+      created_by_user_id: userId,
+      updated_at: "2026-04-25T00:00:00.000Z",
+    },
+  );
 }
 
 describe("applyDefaultAgentCredentials", () => {
@@ -193,23 +244,13 @@ describe("applyDefaultAgentCredentials", () => {
     );
   });
 
-  it("wires a routing_rule per agent pointing at the new credential", async () => {
+  it("wires a routing_rule per standardized agent pointing at the new credential", async () => {
     // Without this, the per-agent credential row exists but the runtime
     // looks up `routing_rule` to find which credential to use, so the
     // dashboard reports "no credential reference" and gets stuck in a
     // start-loop. See PR fixing onboarding cred → routing-rule binding.
     const db = setupMockDatabase();
-    db.agent.push({
-      id: managerAgentId,
-      workspace_id: workspaceId,
-      name: "Manager Agent",
-      status: "active",
-      type: "manager",
-      model_settings: {},
-      tool_policy: {},
-      created_by_user_id: userId,
-      updated_at: "2026-04-25T00:00:00.000Z",
-    });
+    addWorkspaceToolAgents(db);
 
     await applyDefaultAgentCredentials("token", userId, {
       workspaceId,
@@ -217,10 +258,10 @@ describe("applyDefaultAgentCredentials", () => {
       model: "openai/gpt-5.2",
       keyName: "OPENAI_API_KEY",
       secret: "sk-test-secret",
-      agentIds: [planningAgentId, codingAgentId, managerAgentId],
+      agentIds: [planningAgentId, codingAgentId, managerAgentId, learningAgentId, routerAgentId],
     });
 
-    expect(db.routing_rule).toHaveLength(3);
+    expect(db.routing_rule).toHaveLength(5);
     // routing_rule rows don't carry agent_id directly; the linkage is
     // encoded in the rule's name (`agent:<agentId>:execution-profile`)
     // and in routing_rule_match rows. Index by name to verify each
@@ -233,7 +274,7 @@ describe("applyDefaultAgentCredentials", () => {
     );
     const credentialByAgent = new Map(db.credential.map((row) => [row.agent_id, row]));
 
-    for (const agentId of [planningAgentId, codingAgentId, managerAgentId]) {
+    for (const agentId of [planningAgentId, codingAgentId, managerAgentId, learningAgentId, routerAgentId]) {
       const rule = ruleByAgent.get(agentId);
       const credential = credentialByAgent.get(agentId);
       expect(rule, `expected routing_rule for agent ${agentId}`).toBeDefined();
@@ -255,21 +296,13 @@ describe("applyDefaultAgentCredentials", () => {
     expect(ruleByAgent.get(planningAgentId)?.runner_kind).toBe("planner");
     expect(ruleByAgent.get(codingAgentId)?.runner_kind).toBe("codex");
     expect(ruleByAgent.get(managerAgentId)?.runner_kind).toBe("llm_tool_runner");
+    expect(ruleByAgent.get(learningAgentId)?.runner_kind).toBe("llm_tool_runner");
+    expect(ruleByAgent.get(routerAgentId)?.runner_kind).toBe("llm_tool_runner");
   });
 
-  it("applies one submitted key to planning, coding, and manager agents", async () => {
+  it("applies one submitted key to every standardized onboarding agent", async () => {
     const db = setupMockDatabase();
-    db.agent.push({
-      id: managerAgentId,
-      workspace_id: workspaceId,
-      name: "Manager Agent",
-      status: "active",
-      type: "manager",
-      model_settings: {},
-      tool_policy: {},
-      created_by_user_id: userId,
-      updated_at: "2026-04-25T00:00:00.000Z",
-    });
+    addWorkspaceToolAgents(db);
 
     const state = await applyDefaultAgentCredentials("token", userId, {
       workspaceId,
@@ -277,18 +310,41 @@ describe("applyDefaultAgentCredentials", () => {
       model: "openai/gpt-5.2",
       keyName: "OPENAI_API_KEY",
       secret: "sk-test-secret",
-      agentIds: [planningAgentId, codingAgentId, managerAgentId],
+      agentIds: [planningAgentId, codingAgentId, managerAgentId, learningAgentId, routerAgentId],
     });
 
-    expect(db.credential).toHaveLength(3);
-    expect(db.gateway_config).toHaveLength(3);
+    expect(db.credential).toHaveLength(5);
+    expect(db.gateway_config).toHaveLength(5);
     expect(state.defaultAgents.planning?.configured).toBe(true);
     expect(state.defaultAgents.coding?.configured).toBe(true);
     expect(state.managerAgent.configured).toBe(true);
     expect(state.resolvedAgentId).toBe(planningAgentId);
     expect(db.gateway_config.find((row) => row.scope_id === managerAgentId)?.config_json).toMatchObject({
+      tracker: { kind: "database", table: "work_items" },
       runners: {
         manager: {
+          kind: "llm_tool_runner",
+          provider: "openai",
+          model: "openai/gpt-5.2",
+        },
+      },
+    });
+    expect(db.gateway_config.find((row) => row.scope_id === learningAgentId)?.config_json).toMatchObject({
+      tracker: { kind: "database", table: "work_items" },
+      workflow_template: { id: "learning-default" },
+      runners: {
+        learning: {
+          kind: "llm_tool_runner",
+          provider: "openai",
+          model: "openai/gpt-5.2",
+        },
+      },
+    });
+    expect(db.gateway_config.find((row) => row.scope_id === routerAgentId)?.config_json).toMatchObject({
+      tracker: { kind: "database", table: "work_items" },
+      workflow_template: { id: "router-default" },
+      runners: {
+        router: {
           kind: "llm_tool_runner",
           provider: "openai",
           model: "openai/gpt-5.2",

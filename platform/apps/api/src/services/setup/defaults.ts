@@ -22,7 +22,7 @@ export type SetupDefaults = {
   claimedAgentProvisioningSource: "claimed_existing";
 };
 
-export type OnboardingDefaultAgentRole = DefaultAgentRole | Extract<AgentType, "manager" | "learning">;
+export type OnboardingDefaultAgentRole = DefaultAgentRole | Extract<AgentType, "manager" | "learning" | "router">;
 
 type ProviderAgentDefaults = Record<
   OnboardingDefaultAgentRole,
@@ -44,6 +44,9 @@ const OPENAI_ONBOARDING_DEFAULTS: ProviderAgentDefaults = {
   learning: {
     model: "openai/gpt-5.2",
   },
+  router: {
+    model: "openai/gpt-5.2",
+  },
 };
 
 const ANTHROPIC_ONBOARDING_DEFAULTS: ProviderAgentDefaults = {
@@ -57,6 +60,9 @@ const ANTHROPIC_ONBOARDING_DEFAULTS: ProviderAgentDefaults = {
     model: "anthropic/claude-sonnet-4-6",
   },
   learning: {
+    model: "anthropic/claude-sonnet-4-6",
+  },
+  router: {
     model: "anthropic/claude-sonnet-4-6",
   },
 };

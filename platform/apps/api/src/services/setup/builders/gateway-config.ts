@@ -150,6 +150,25 @@ export function repairManagerGatewayConfig(input: {
   cadenceMs?: number;
   executionProfile?: ResolvedExecutionProfileBlock | null;
 }) {
+  return repairLlmToolGatewayConfig({
+    ...input,
+    agentType: "manager",
+    runnerKey: "manager",
+    workflowTemplateId: "manager-default",
+  });
+}
+
+export function repairLlmToolGatewayConfig(input: {
+  configJson: unknown;
+  provider: string;
+  model: string;
+  runnerKind: RunnerKind;
+  agentType: "manager" | "learning" | "router";
+  runnerKey?: string;
+  workflowTemplateId?: string;
+  cadenceMs?: number;
+  executionProfile?: ResolvedExecutionProfileBlock | null;
+}) {
   const config =
     input.configJson && typeof input.configJson === "object" && !Array.isArray(input.configJson)
       ? { ...(input.configJson as Record<string, unknown>) }
@@ -159,8 +178,10 @@ export function repairManagerGatewayConfig(input: {
       ? { ...(config.runners as Record<string, unknown>) }
       : {};
   const manager =
-    runners.manager && typeof runners.manager === "object" && !Array.isArray(runners.manager)
-      ? { ...(runners.manager as Record<string, unknown>) }
+    runners[input.runnerKey ?? input.agentType] &&
+    typeof runners[input.runnerKey ?? input.agentType] === "object" &&
+    !Array.isArray(runners[input.runnerKey ?? input.agentType])
+      ? { ...(runners[input.runnerKey ?? input.agentType] as Record<string, unknown>) }
       : {};
 
   // Drop any stale `execution_profile` block so a missing resolution
@@ -185,7 +206,8 @@ export function repairManagerGatewayConfig(input: {
     config.workflow_template && typeof config.workflow_template === "object" && !Array.isArray(config.workflow_template)
       ? (config.workflow_template as Record<string, unknown>)
       : null;
-  const workflowTemplate = existingWorkflowTemplate ?? { id: "manager-default" };
+  const workflowTemplate = existingWorkflowTemplate ?? { id: input.workflowTemplateId ?? `${input.agentType}-default` };
+  const runnerKey = input.runnerKey ?? input.agentType;
 
   return {
     ...configWithoutProfile,
@@ -193,7 +215,7 @@ export function repairManagerGatewayConfig(input: {
     workflow_template: workflowTemplate,
     runners: {
       ...runners,
-      manager: {
+      [runnerKey]: {
         ...manager,
         kind: input.runnerKind,
         provider: input.provider,

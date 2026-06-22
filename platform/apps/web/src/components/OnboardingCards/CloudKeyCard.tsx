@@ -100,8 +100,8 @@ export function CloudKeyCard({ onBack, onContinue }: Props) {
     <Card className="border-slate-800 bg-slate-900/70 p-6">
       <div className="text-lg font-semibold text-white">Add an API key</div>
       <p className="mt-2 text-sm text-slate-400">
-        This configures your planning, coding, and manager agents with the same
-        provider for first run.
+        This configures your standardized agents with the same provider for
+        first run.
       </p>
 
       <div className="mt-6 grid gap-5">
