@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func (e *Executor) runCommand(ctx context.Context, argv []string, args map[string]any) (map[string]any, bool) {
@@ -25,7 +26,7 @@ func (e *Executor) runCommand(ctx context.Context, argv []string, args map[strin
 			"message": err.Error(),
 		}, false
 	}
-	timeout := boundedDuration(args, "timeout_ms", 1000, 600000, defaultTimeout)
+	timeout := boundedDuration(args, "timeout_ms", time.Second, 10*time.Minute, defaultTimeout)
 	outputLimit := boundedInt(args, "output_limit_bytes", 1, 1024*1024, defaultOutputLimit)
 
 	runCtx, cancel := context.WithTimeout(ctx, timeout)

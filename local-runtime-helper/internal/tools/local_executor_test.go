@@ -73,6 +73,30 @@ func TestShellExecUsesNormalizedToolPath(t *testing.T) {
 
 }
 
+func TestShellExecHonorsPositiveTimeoutMs(t *testing.T) {
+	root := t.TempDir()
+	executor, err := NewExecutor(root)
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+
+	result := executor.Execute(context.Background(), runner.ToolCallRequest{
+		ToolCallID: "call-shell-timeout",
+		Name:       "shell.exec",
+		Arguments: map[string]any{
+			"argv":       []any{"printf", "timeout-ok"},
+			"timeout_ms": 1000,
+		},
+	})
+	if !result.Success {
+		t.Fatalf("result.Success = false, output = %#v", result.Output)
+	}
+	output := result.Output.(map[string]any)
+	if output["stdout"] != "timeout-ok" {
+		t.Fatalf("stdout = %#v, want %q", output["stdout"], "timeout-ok")
+	}
+}
+
 func TestShellExecResolvesRelativeExecutableAgainstCWD(t *testing.T) {
 	t.Setenv("PATH", "/usr/bin:/bin")
 
