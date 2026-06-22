@@ -86,9 +86,7 @@ trap cleanup INT TERM EXIT
 
 project_listener_pids() {
   local port="$1"
-  local pattern="$2"
   local pid
-  local command_line
   local cwd_path
 
   for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true); do
@@ -96,13 +94,7 @@ project_listener_pids() {
     case "$cwd_path" in
       "$ROOT_DIR"|"$ROOT_DIR"/*)
         printf '%s\n' "$pid"
-        continue
         ;;
-    esac
-
-    command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
-    case "$command_line" in
-      *"$pattern"*) printf '%s\n' "$pid" ;;
     esac
   done
 }
@@ -122,20 +114,16 @@ process_env_value() {
 
 listener_env_matches_current_env() {
   local pid="$1"
-  local expected_url="${SUPABASE_URL:-}"
-  local expected_key="${SUPABASE_SERVICE_ROLE_KEY:-}"
+  local expected_url="${SUPABASE_URL-}"
+  local expected_key="${SUPABASE_SERVICE_ROLE_KEY-}"
   local actual_url
   local actual_key
 
-  if [ -n "$expected_url" ]; then
-    actual_url="$(process_env_value "$pid" SUPABASE_URL)"
-    [ "$actual_url" = "$expected_url" ] || return 1
-  fi
+  actual_url="$(process_env_value "$pid" SUPABASE_URL)"
+  [ "$actual_url" = "$expected_url" ] || return 1
 
-  if [ -n "$expected_key" ]; then
-    actual_key="$(process_env_value "$pid" SUPABASE_SERVICE_ROLE_KEY)"
-    [ "$actual_key" = "$expected_key" ] || return 1
-  fi
+  actual_key="$(process_env_value "$pid" SUPABASE_SERVICE_ROLE_KEY)"
+  [ "$actual_key" = "$expected_key" ] || return 1
 
   return 0
 }
