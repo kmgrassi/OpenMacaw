@@ -11,6 +11,45 @@ import {
 } from "../../../../contracts/routes";
 import { workspaceScopedFetch } from "./workspace-scoped-fetch";
 
+async function readErrorBody(response: Response) {
+  return response.text().catch(() => "");
+}
+
+function buildRequestError(
+  action: string,
+  response: Response,
+  body: string,
+): Error {
+  return new Error(
+    `Failed to ${action} (${response.status})${body ? `: ${body}` : ""}`,
+  );
+}
+
+async function requestLocalRuntimeJson<T>(
+  workspaceId: string,
+  path: string,
+  action: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await workspaceScopedFetch(workspaceId, path, init);
+  if (!response.ok) {
+    throw buildRequestError(action, response, await readErrorBody(response));
+  }
+  return (await response.json()) as T;
+}
+
+async function requestLocalRuntimeVoid(
+  workspaceId: string,
+  path: string,
+  action: string,
+  init?: RequestInit,
+): Promise<void> {
+  const response = await workspaceScopedFetch(workspaceId, path, init);
+  if (!response.ok) {
+    throw buildRequestError(action, response, await readErrorBody(response));
+  }
+}
+
 // ── Types ──────────────────────────────────────────────────────────────
 
 export type LocalRuntimeAgent = {
@@ -209,100 +248,80 @@ export type AssignLocalRuntimeResponse = {
 export async function listLocalRuntimes(
   workspaceId: string,
 ): Promise<LocalRuntimeListResponse> {
-  const response = await workspaceScopedFetch(workspaceId, localRuntimesRoute());
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to list local runtimes (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
-  return (await response.json()) as LocalRuntimeListResponse;
+  return requestLocalRuntimeJson(
+    workspaceId,
+    localRuntimesRoute(),
+    "list local runtimes",
+  );
 }
 
 export async function registerLocalRuntime(
   workspaceId: string,
   input: RegisterLocalRuntimeInput,
 ): Promise<RegisterLocalRuntimeResponse> {
-  const response = await workspaceScopedFetch(workspaceId, localRuntimesRoute(), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to register local runtime (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
-  return (await response.json()) as RegisterLocalRuntimeResponse;
+  return requestLocalRuntimeJson(
+    workspaceId,
+    localRuntimesRoute(),
+    "register local runtime",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function removeLocalRuntime(
   workspaceId: string,
   machineId: string,
 ): Promise<void> {
-  const response = await workspaceScopedFetch(workspaceId, localRuntimeRoute(machineId), {
-    method: "DELETE",
-  });
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to remove local runtime (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
+  await requestLocalRuntimeVoid(
+    workspaceId,
+    localRuntimeRoute(machineId),
+    "remove local runtime",
+    {
+      method: "DELETE",
+    },
+  );
 }
 
 export async function probeLocalModel(
   workspaceId: string,
   input: { endpoint: string; model: string },
 ): Promise<LocalModelProbeResponse> {
-  const response = await workspaceScopedFetch(workspaceId, localRuntimeProbeRoute(), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to probe local runtime (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
-  return (await response.json()) as LocalModelProbeResponse;
+  return requestLocalRuntimeJson(
+    workspaceId,
+    localRuntimeProbeRoute(),
+    "probe local runtime",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
 }
 
 export async function probeRegisteredLocalRuntimeRunner(
   workspaceId: string,
   runnerId: string,
 ): Promise<LocalModelProbeResponse> {
-  const response = await workspaceScopedFetch(
+  return requestLocalRuntimeJson(
     workspaceId,
     localRuntimeRunnerProbeRoute(runnerId),
+    "probe local runtime",
     { method: "POST" },
   );
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to probe local runtime (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
-  return (await response.json()) as LocalModelProbeResponse;
 }
 
 export async function getLocalRuntimeConfig(
   workspaceId: string,
   machineId: string,
 ): Promise<LocalRuntimeConfigResponse> {
-  const response = await workspaceScopedFetch(
+  return requestLocalRuntimeJson(
     workspaceId,
     localRuntimeConfigRoute(machineId),
+    "regenerate local runtime config",
   );
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to regenerate local runtime config (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
-  return (await response.json()) as LocalRuntimeConfigResponse;
 }
 
 export async function listLocalRuntimeEvents(
@@ -310,53 +329,35 @@ export async function listLocalRuntimeEvents(
   machineId: string,
   limit = 50,
 ): Promise<LocalRuntimeEventsResponse> {
-  const response = await workspaceScopedFetch(
+  return requestLocalRuntimeJson(
     workspaceId,
     localRuntimeEventsRoute(machineId, { limit }),
+    "list local runtime events",
   );
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to list local runtime events (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
-  return (await response.json()) as LocalRuntimeEventsResponse;
 }
 
 export async function testLocalRuntimeDispatch(
   workspaceId: string,
   machineId: string,
 ): Promise<LocalRuntimeTestDispatchResponse> {
-  const response = await workspaceScopedFetch(
+  return requestLocalRuntimeJson(
     workspaceId,
     localRuntimeTestDispatchRoute(machineId),
+    "test local runtime dispatch",
     { method: "POST" },
   );
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to test local runtime dispatch (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
-  return (await response.json()) as LocalRuntimeTestDispatchResponse;
 }
 
 export async function rotateLocalRuntimeToken(
   workspaceId: string,
   machineId: string,
 ): Promise<LocalRuntimeConfigResponse> {
-  const response = await workspaceScopedFetch(
+  return requestLocalRuntimeJson(
     workspaceId,
     localRuntimeRotateTokenRoute(machineId),
+    "rotate local runtime token",
     { method: "POST" },
   );
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to rotate local runtime token (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
-  return (await response.json()) as LocalRuntimeConfigResponse;
 }
 
 export async function assignLocalModelToAgent(
@@ -364,20 +365,14 @@ export async function assignLocalModelToAgent(
   agentId: string,
   input: AssignLocalModelInput,
 ): Promise<AssignLocalRuntimeResponse> {
-  const response = await workspaceScopedFetch(
+  return requestLocalRuntimeJson(
     workspaceId,
     agentAssignLocalModelRoute(agentId),
+    "assign local model",
     {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     },
   );
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Failed to assign local model (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
-  return (await response.json()) as AssignLocalRuntimeResponse;
 }
