@@ -33,8 +33,6 @@ const STORAGE_KEYS_TO_SANITIZE = [
   "parallel-agent-onboarding",
 ];
 
-const LEGACY_LOCAL_HELPER_CARD = "local-helper";
-
 type OnboardingState = {
   currentCard: OnboardingCard;
   path: OnboardingPath;
@@ -72,7 +70,6 @@ const CLOUD_CARD_ORDER: OnboardingCard[] = [
 export function normalizePersistedOnboardingCard(
   value: unknown,
 ): OnboardingCard {
-  if (value === LEGACY_LOCAL_HELPER_CARD) return "local-runtime-relay";
   if (
     value === "choose-path" ||
     value === "cloud-key" ||

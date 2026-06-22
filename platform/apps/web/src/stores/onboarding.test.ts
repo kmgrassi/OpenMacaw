@@ -6,19 +6,13 @@ import {
 } from "./onboarding";
 
 describe("onboarding state migration", () => {
-  it("maps the legacy local-helper card key to local-runtime-relay", () => {
-    expect(normalizePersistedOnboardingCard("local-helper")).toBe(
-      "local-runtime-relay",
-    );
-  });
-
   it("falls back to choose-path for unknown persisted cards", () => {
     expect(normalizePersistedOnboardingCard("something-else")).toBe(
       "choose-path",
     );
   });
 
-  it("drops persisted cloudApiKey values and normalizes currentCard", () => {
+  it("drops persisted cloudApiKey values and resets invalid currentCard values", () => {
     expect(
       sanitizePersistedOnboardingEnvelope({
         version: 1,
@@ -31,7 +25,7 @@ describe("onboarding state migration", () => {
     ).toEqual({
       version: 1,
       state: {
-        currentCard: "local-runtime-relay",
+        currentCard: "choose-path",
         path: "local",
       },
     });
