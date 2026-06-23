@@ -40,6 +40,7 @@ defmodule SymphonyElixir.MixProject do
         ]
       ],
       test_ignore_filters: [
+        "test/support/chat_runner_test_support.exs",
         "test/support/app_server_support.ex",
         "test/support/database_tools_case.ex",
         "test/support/launcher_router_support.ex",
