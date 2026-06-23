@@ -135,6 +135,9 @@ Remove or rewrite tests whose purpose is now invalid:
 - [ ] `runtime/apps/orchestrator/test/symphony_elixir/tool_registry_planner_test.exs`
 - [ ] `runtime/apps/orchestrator/test/symphony_elixir/tool_registry_local_model_coding_test.exs`
 - [ ] `runtime/apps/orchestrator/test/symphony_elixir/local_model_coding_tool_contract_test.exs`
+- [ ] `runtime/apps/orchestrator/test/symphony_elixir/dynamic_tool_test.exs`
+- [ ] `runtime/apps/orchestrator/test/symphony_elixir/runner/planner/session_test.exs`
+- [ ] `runtime/apps/orchestrator/test/symphony_elixir/runner/planner/responses_api_test.exs`
 - [ ] `platform/apps/api/src/services/local-repo-tool-executor.test.ts`
 - [ ] `local-runtime-helper/internal/tools/local_executor_test.go` repo-tool cases
 
@@ -158,8 +161,8 @@ names, but do not actually test repository behavior:
 
 ## Verification Plan
 
-- [ ] `rg -n "repo\\.(list|search|read_file|read_symbols)|repo_list|repo_search|repo_read_file|repo_read_symbols" runtime/apps/orchestrator/lib platform/apps platform/contracts platform/scripts local-runtime-helper/internal`
-  returns no active implementation references.
+- [ ] `rg -n "repo\\.(list|search|read_file|read_symbols)|repo_list|repo_search|repo_read_file|repo_read_symbols" runtime/apps/orchestrator/lib runtime/apps/orchestrator/test platform/apps platform/contracts platform/scripts local-runtime-helper/internal`
+  returns no active implementation or test expectation references.
 - [ ] Runtime focused tests pass:
   - `mix test test/symphony_elixir/runner/manager/local_relay_test.exs`
   - `mix test test/symphony_elixir/runner/local_model_coding_test.exs`
