@@ -13,7 +13,7 @@ describe("tool call parser", () => {
                 id: "call-1",
                 type: "function",
                 function: {
-                  name: "repo_read_file",
+                  name: "shell_exec",
                   arguments: '{"path":"README.md"}',
                 },
               },
@@ -28,7 +28,7 @@ describe("tool call parser", () => {
         id: "call-1",
         type: "function",
         function: {
-          name: "repo_read_file",
+          name: "shell_exec",
           arguments: '{"path":"README.md"}',
         },
       },
@@ -41,7 +41,7 @@ describe("tool call parser", () => {
       choices: [
         {
           message: {
-            content: '```json\n{"tool_call":{"name":"repo_read_file","arguments":{"path":"README.md"}}}\n```',
+            content: '```json\n{"tool_call":{"name":"shell_exec","arguments":{"path":"README.md"}}}\n```',
           },
         },
       ],
@@ -54,7 +54,7 @@ describe("tool call parser", () => {
         type: "function",
         promptBasedFallback: true,
         function: {
-          name: "repo_read_file",
+          name: "shell_exec",
           arguments: '{"path":"README.md"}',
         },
       }),

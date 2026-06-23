@@ -119,7 +119,9 @@ func (e *Executor) lookupExecutable(name, cwd string) (string, error) {
 
 func (e *Executor) resolvePathExecutable(name, cwd string) (string, error) {
 	candidate := name
-	if !filepath.IsAbs(candidate) {
+	if workspacePath, ok := e.virtualWorkspacePath(candidate); ok {
+		candidate = workspacePath
+	} else if !filepath.IsAbs(candidate) {
 		candidate = filepath.Join(cwd, candidate)
 	}
 	resolved := filepath.Clean(candidate)

@@ -3,15 +3,14 @@
 ## Problem
 
 The production tool-quality battery (`eval:local-tool-calling`) scored a local
-model 3/8. The failures all looked like the model picking the wrong tool —
-e.g. asked to "use repo.search", it called `git.run` (`git grep`). Tracing the
-gateway dispatch showed the real cause: the model was **never offered** the
-expected tools.
+model 3/8. The failures all looked like the model picking the wrong tool.
+Tracing the gateway dispatch showed the real cause: the model was **never
+offered** the expected tools.
 
 `chat_runner.ex`'s `local_relay_config` sent a hardcoded
 `ToolRegistry.bundle(:universal)` + `git.run` as the model's tool surface —
 just `{workspace_settings.manage, snooze_work_item, git.run, ...}`. It did
-**not** include the agent's actually-granted tools (`repo.*`, `shell.exec`,
+**not** include the agent's actually-granted tools (`shell.exec`,
 `scheduled_task.*`), which is what the eval (and the agent's
 `agent_tool_grant` rows) expect. The code even flagged this: *"the universal
 bundle is the default chat tool surface until agent-grant-driven tool filtering
@@ -28,8 +27,8 @@ lands."*
    Workspace-local tools that cannot execute in this path are **omitted**:
    `shell.exec` and `apply_patch` hard-require the user's `workspace_root`
    (which lives on the laptop, not the cloud orchestrator) and have no
-   no-workspace fallback (unlike `repo.*`), and the helper executor only runs
-   `git.run` today. Offering them would set the model up to call tools that
+   no-workspace fallback, and older helper executors only ran `git.run`.
+   Offering them would set the model up to call tools that
    fail with `:invalid_local_model_coding_context`. Follow-up: add helper
    execution for these (with sandbox parity for `shell.exec`) and include them.
 
@@ -45,8 +44,8 @@ lands."*
 
 - `mix compile --warnings-as-errors` clean; `tool_registry` suite 15/15.
 - Live prod check: `resolve_for_agent("<eval-agent>")` returns
-  `repo.read_file/list/search`, `git.run` (marked helper), `shell.exec`,
-  `apply_patch`, `scheduled_task.*` — the same 11 the eval resolves.
+  `git.run` (marked helper), `shell.exec`, `apply_patch`, `scheduled_task.*`
+  — the same active tool surface the eval resolves.
 - Pending after deploy: re-run `eval:local-tool-calling --run` against prod to
   measure the local model's *real* tool-selection score now that it receives
   the right tools.

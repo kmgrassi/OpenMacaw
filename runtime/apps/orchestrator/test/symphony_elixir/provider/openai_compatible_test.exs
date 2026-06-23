@@ -40,7 +40,7 @@ defmodule SymphonyElixir.Provider.OpenAICompatibleTest do
                     "id" => "call-1",
                     "type" => "function",
                     "function" => %{
-                      "name" => "repo.search",
+                      "name" => "scheduled_task.list",
                       "arguments" => Jason.encode!(%{"query" => "Provider.OpenAICompatible"})
                     }
                   }
@@ -64,7 +64,7 @@ defmodule SymphonyElixir.Provider.OpenAICompatibleTest do
 
     tools = [
       %{
-        "name" => "repo.search",
+        "name" => "scheduled_task.list",
         "description" => "Search repository files",
         "inputSchema" => %{
           "type" => "object",
@@ -80,7 +80,7 @@ defmodule SymphonyElixir.Provider.OpenAICompatibleTest do
     assert request["temperature"] == 0.2
     assert request["messages"] == [%{"role" => "user", "content" => "Inspect the repo"}]
     assert [%{"type" => "function", "function" => function}] = request["tools"]
-    assert function["name"] == "repo.search"
+    assert function["name"] == "scheduled_task.list"
     assert function["parameters"]["properties"]["query"]["type"] == "string"
 
     assert result.provider == "openai_compatible"
@@ -91,7 +91,7 @@ defmodule SymphonyElixir.Provider.OpenAICompatibleTest do
     assert Enum.map(result.tool_calls, &Map.take(&1, [:id, :name, :arguments])) == [
              %{
                id: "call-1",
-               name: "repo.search",
+               name: "scheduled_task.list",
                arguments: %{"query" => "Provider.OpenAICompatible"}
              }
            ]
@@ -100,8 +100,8 @@ defmodule SymphonyElixir.Provider.OpenAICompatibleTest do
 
     assert [
              %{event: :notification, payload: %{"method" => "message.delta", "params" => %{"textDelta" => "Need repository context."}}},
-             %{event: :tool_call_started, payload: %{"method" => "tool.started", "name" => "repo.search"}},
-             %{event: :tool_call_completed, payload: %{"method" => "tool.completed", "name" => "repo.search"}},
+             %{event: :tool_call_started, payload: %{"method" => "tool.started", "name" => "scheduled_task.list"}},
+             %{event: :tool_call_completed, payload: %{"method" => "tool.completed", "name" => "scheduled_task.list"}},
              %{event: :notification, payload: %{"method" => "usage.updated", "params" => %{"usage" => %{"total_tokens" => 14}}}},
              %{event: :turn_completed, payload: %{"method" => "run.completed"}}
            ] = result.events
@@ -193,7 +193,7 @@ defmodule SymphonyElixir.Provider.OpenAICompatibleTest do
                   "index" => 0,
                   "id" => "call-1",
                   "type" => "function",
-                  "function" => %{"name" => "repo.search", "arguments" => "{\"query\""}
+                  "function" => %{"name" => "scheduled_task.list", "arguments" => "{\"query\""}
                 }
               ]
             }
@@ -230,7 +230,7 @@ defmodule SymphonyElixir.Provider.OpenAICompatibleTest do
     assert result.usage == %{"prompt_tokens" => 8, "completion_tokens" => 6, "total_tokens" => 14}
 
     assert Enum.map(result.tool_calls, &Map.take(&1, [:id, :name, :arguments])) == [
-             %{id: "call-1", name: "repo.search", arguments: %{"query" => "Provider"}}
+             %{id: "call-1", name: "scheduled_task.list", arguments: %{"query" => "Provider"}}
            ]
 
     assert [
@@ -276,7 +276,7 @@ defmodule SymphonyElixir.Provider.OpenAICompatibleTest do
                       "index" => 0,
                       "id" => "call-1",
                       "function" => %{
-                        "name" => "repo.search",
+                        "name" => "scheduled_task.list",
                         "arguments" => %{"query" => "Provider.OpenAICompatible"}
                       }
                     }
@@ -291,7 +291,7 @@ defmodule SymphonyElixir.Provider.OpenAICompatibleTest do
       )
 
     assert Enum.map(result.tool_calls, &Map.take(&1, [:id, :name, :arguments])) == [
-             %{id: "call-1", name: "repo.search", arguments: %{"query" => "Provider.OpenAICompatible"}}
+             %{id: "call-1", name: "scheduled_task.list", arguments: %{"query" => "Provider.OpenAICompatible"}}
            ]
 
     assert Enum.any?(result.events, fn
@@ -317,7 +317,7 @@ defmodule SymphonyElixir.Provider.OpenAICompatibleTest do
                     %{
                       "index" => 0,
                       "id" => "call-1",
-                      "function" => %{"name" => "repo.search", "arguments" => "{\"query\":\"runtime\"}"}
+                      "function" => %{"name" => "scheduled_task.list", "arguments" => "{\"query\":\"runtime\"}"}
                     }
                   ]
                 }
@@ -340,7 +340,7 @@ defmodule SymphonyElixir.Provider.OpenAICompatibleTest do
     assert result.finish_reason == "stop"
 
     assert Enum.map(result.tool_calls, &Map.take(&1, [:id, :name, :arguments])) == [
-             %{id: "call-1", name: "repo.search", arguments: %{"query" => "runtime"}}
+             %{id: "call-1", name: "scheduled_task.list", arguments: %{"query" => "runtime"}}
            ]
 
     assert [

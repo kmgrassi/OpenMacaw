@@ -298,7 +298,7 @@ defmodule SymphonyElixir.Launcher.ServerGatewayConfigTest do
           id: "agent-1",
           name: "Builder",
           workspace_id: "workspace-1",
-          tool_policy: %{"allowed_tools" => ["git.run", "repo.read_file"]}
+          tool_policy: %{"allowed_tools" => ["git.run", "shell.exec"]}
         }
       ])
 
@@ -325,7 +325,7 @@ defmodule SymphonyElixir.Launcher.ServerGatewayConfigTest do
       assert second.port == first.port
       assert second.reused == false
       assert second.restart_count == 1
-      assert get_in(second.config, ["stored_agent", "tool_policy", "allowed_tools"]) == ["git.run", "repo.read_file"]
+      assert get_in(second.config, ["stored_agent", "tool_policy", "allowed_tools"]) == ["git.run", "shell.exec"]
 
       assert_receive {:gateway_config_state, "agent", "agent-1", :ok, second_opts}
       assert Keyword.get(second_opts, :last_applied_hash) == "hash-2"

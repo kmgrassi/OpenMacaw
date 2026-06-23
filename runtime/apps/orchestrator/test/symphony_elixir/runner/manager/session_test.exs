@@ -57,7 +57,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionTest do
     assert :ok = Manager.stop_session(session)
   end
 
-  test "local relay coding fallback keeps repo tools while excluding broad git execution" do
+  test "local relay coding fallback keeps helper tools while excluding broad git execution" do
     assert {:ok, session} =
              Manager.start_session(
                %{
@@ -70,17 +70,15 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionTest do
              )
 
     assert session.model_client == ModelClient.LocalRelay
-    assert "repo.list" in session.allowed_tools
-    assert "repo.read_file" in session.allowed_tools
-    assert "repo.search" in session.allowed_tools
+    assert "shell.exec" in session.allowed_tools
+    assert "apply_patch" in session.allowed_tools
+    refute "scheduled_task.read" in session.allowed_tools
+    assert "scheduled_task.list" in session.allowed_tools
     refute "git.run" in session.allowed_tools
 
-    repo_list = Enum.find(session.tool_specs, &(&1["name"] == "repo.list"))
-    assert repo_list["execution_kind"] == "helper"
-    refute Map.has_key?(repo_list["inputSchema"]["properties"], "workspace_id")
-    refute Map.has_key?(repo_list["inputSchema"]["properties"], "repo_id")
-    assert Map.has_key?(repo_list["inputSchema"]["properties"], "path")
-    assert Map.has_key?(repo_list["inputSchema"]["properties"], "repository_path")
+    shell_exec = Enum.find(session.tool_specs, &(&1["name"] == "shell.exec"))
+    assert shell_exec["execution_kind"] == "helper"
+    assert Map.has_key?(shell_exec["inputSchema"]["properties"], "argv")
 
     assert :ok = Manager.stop_session(session)
   end

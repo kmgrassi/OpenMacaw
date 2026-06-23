@@ -82,9 +82,6 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
     assert Enum.map(tools, & &1["name"]) == [
              "skill_create",
              "scheduled_task_list",
-             "repo_list",
-             "repo_read_file",
-             "repo_search",
              "shell_exec",
              "apply_patch",
              "git_run"
@@ -249,29 +246,26 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
     assert_receive {:runner_event, %{event: :command_completed}}
   end
 
-  test "uses the workspace-scoped local executor for repository search when no executor is injected" do
+  test "uses the workspace-scoped local executor for shell commands when no executor is injected" do
     workspace =
       Path.join(
         System.tmp_dir!(),
-        "local-model-coding-search-runner-#{System.unique_integer([:positive])}"
+        "local-model-coding-shell-runner-#{System.unique_integer([:positive])}"
       )
 
     File.mkdir_p!(workspace)
     File.write!(Path.join(workspace, "README.md"), "hello world\n")
-    rg = write_fake_rg!(workspace)
 
     on_exit(fn -> File.rm_rf(workspace) end)
 
     Application.put_env(:symphony_elixir, :local_model_coding_turns, [
       provider_turn("", [
-        %{id: "call-search", name: "repo_search", arguments: %{"query" => "hello"}}
+        %{id: "call-shell", name: "shell_exec", arguments: %{"argv" => ["cat", "README.md"]}}
       ]),
       provider_turn("Found it.", [])
     ])
 
-    runner_config = config(metadata: %{"rg_path" => rg})
-
-    assert {:ok, session} = LocalModelCoding.start_session(runner_config, workspace)
+    assert {:ok, session} = LocalModelCoding.start_session(config(), workspace)
     assert {:ok, result} = LocalModelCoding.run_turn(session, "Search the repo", work_item())
 
     assert result["output_text"] == "Found it."
@@ -280,8 +274,8 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
 
     assert Enum.any?(continuation_messages, fn message ->
              message["role"] == "tool" and
-               message["tool_call_id"] == "call-search" and
-               String.contains?(message["content"], "README.md")
+               message["tool_call_id"] == "call-shell" and
+               String.contains?(message["content"], "hello world")
            end)
   end
 
@@ -304,9 +298,6 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
                     [
                       %{"name" => "skill_create"},
                       %{"name" => "scheduled_task_list"},
-                      %{"name" => "repo_list"},
-                      %{"name" => "repo_read_file"},
-                      %{"name" => "repo_search"},
                       %{"name" => "shell_exec"},
                       %{"name" => "apply_patch"},
                       %{"name" => "git_run"}
@@ -355,14 +346,14 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
                     }}
   end
 
-  test "maps provider-safe repository tool names back to canonical runtime slugs" do
+  test "maps provider-safe tool names back to canonical runtime slugs" do
     workspace = workspace_fixture()
     File.write!(Path.join(workspace, "README.md"), "hello world\n")
     rg = write_fake_rg!(workspace)
 
     Application.put_env(:symphony_elixir, :local_model_coding_turns, [
       provider_turn("", [
-        %{id: "call-search", name: "repo_search", arguments: %{"query" => "hello"}}
+        %{id: "call-search", name: "scheduled_task_list", arguments: %{"query" => "hello"}}
       ]),
       provider_turn("Done.", [])
     ])
@@ -593,11 +584,11 @@ defmodule SymphonyElixir.Runner.LocalModelCodingTest do
       provider_turn("Second done.", [])
     ])
 
-    first_config = Map.put(config(), "tool_definitions", ToolRegistry.definitions(["repo.list"]))
+    first_config = Map.put(config(), "tool_definitions", ToolRegistry.definitions(["scheduled_task.list"]))
     assert {:ok, first_session} = LocalModelCoding.start_session(first_config, workspace)
     assert {:ok, _result} = LocalModelCoding.run_turn(first_session, "Use current grants", work_item())
     assert_receive {:provider_turn, _profile, _messages, first_tools}
-    assert Enum.map(first_tools, & &1["name"]) == ["repo_list"]
+    assert Enum.map(first_tools, & &1["name"]) == ["scheduled_task_list"]
 
     second_config = Map.put(config(), "tool_definitions", ToolRegistry.definitions(["shell.exec"]))
     assert {:ok, second_session} = LocalModelCoding.start_session(second_config, workspace)

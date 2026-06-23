@@ -359,8 +359,8 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert %{"type" => "function", "function" => %{"name" => "git_run"}} =
              Enum.find(request["tools"], &(get_in(&1, ["function", "name"]) == "git_run"))
 
-    assert %{"type" => "function", "function" => %{"name" => "repo_list"}} =
-             Enum.find(request["tools"], &(get_in(&1, ["function", "name"]) == "repo_list"))
+    assert %{"type" => "function", "function" => %{"name" => "shell_exec"}} =
+             Enum.find(request["tools"], &(get_in(&1, ["function", "name"]) == "shell_exec"))
 
     assert_receive {:gateway_runner_complete, "agent:manager-1:main", "run-manager-profile", {:ok, result}}
 
@@ -536,15 +536,11 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert %{"function" => %{"name" => "git_run"}} =
              Enum.find(frame["provider_tool_specs"], &(get_in(&1, ["function", "name"]) == "git_run"))
 
-    assert %{"function" => %{"parameters" => repo_list_schema}} =
-             Enum.find(frame["provider_tool_specs"], &(get_in(&1, ["function", "name"]) == "repo_list"))
+    assert %{"function" => %{"parameters" => shell_exec_schema}} =
+             Enum.find(frame["provider_tool_specs"], &(get_in(&1, ["function", "name"]) == "shell_exec"))
 
-    refute Map.has_key?(repo_list_schema["properties"], "workspace_id")
-    refute Map.has_key?(repo_list_schema["properties"], "repo_id")
-    refute "workspace_id" in Map.get(repo_list_schema, "required", [])
-    refute "repo_id" in Map.get(repo_list_schema, "required", [])
-    assert Map.has_key?(repo_list_schema["properties"], "path")
-    assert Map.has_key?(repo_list_schema["properties"], "repository_path")
+    assert Map.has_key?(shell_exec_schema["properties"], "argv")
+    assert "argv" in Map.get(shell_exec_schema, "required", [])
 
     assert_receive {:gateway_runner_complete, "agent:manager-1:main", "run-manager-local", {:ok, result}}
 

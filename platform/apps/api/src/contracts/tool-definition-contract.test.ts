@@ -114,7 +114,7 @@ describe("tool definition contract", () => {
     const parsed = ResolvedAgentToolSchema.parse({
       id: toolId,
       workspaceId,
-      slug: "repo.read_file",
+      slug: "shell.exec",
       name: "Read File",
       description: "Read a file within the workspace.",
       parameters: {},

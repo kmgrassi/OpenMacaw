@@ -13,9 +13,9 @@ import {
 
 const tool: ToolDefinition = {
   id: "tool-1",
-  slug: "repo.read_file",
+  slug: "shell.exec",
   name: "Read file",
-  functionName: "repo_read_file",
+  functionName: "shell_exec",
   description: "Read a file from the workspace",
   parameters: {
     type: "object",
@@ -34,7 +34,7 @@ describe("tool spec translator", () => {
     expect(toOpenAIToolSpec(tool)).toEqual({
       type: "function",
       function: {
-        name: "repo_read_file",
+        name: "shell_exec",
         description: "Read a file from the workspace",
         parameters: tool.parameters,
       },
@@ -43,12 +43,12 @@ describe("tool spec translator", () => {
 
   it("translates model-agnostic definitions to Anthropic and generic specs", () => {
     expect(toAnthropicToolSpec(tool)).toEqual({
-      name: "repo_read_file",
+      name: "shell_exec",
       description: "Read a file from the workspace",
       input_schema: tool.parameters,
     });
     expect(toGenericToolSpec(tool)).toEqual({
-      name: "repo_read_file",
+      name: "shell_exec",
       description: "Read a file from the workspace",
       parameters: tool.parameters,
     });
@@ -108,7 +108,7 @@ describe("tool spec translator", () => {
 
   it("builds a prompt fallback with tool schema details", () => {
     const prompt = buildToolUseSystemPrompt([tool]);
-    expect(prompt).toContain("repo_read_file");
+    expect(prompt).toContain("shell_exec");
     expect(prompt).toContain('"tool_call"');
     expect(prompt).toContain('"path"');
   });

@@ -3,7 +3,6 @@ import { ApiRouteError } from "../http.js";
 import type { RuntimeExecutionTarget } from "../../../../contracts/execution-profile.js";
 import { loadToolExecutionConfig } from "../config.js";
 import { executeDatabaseTool, isDatabaseTool } from "./database-tool-executor.js";
-import { executeLocalRepoTool, isLocalRepoToolSlug } from "./local-repo-tool-executor.js";
 import type { ToolDefinition } from "./tool-spec-translator.js";
 import type { ParsedToolCall } from "./tool-call-parser.js";
 
@@ -135,20 +134,6 @@ export async function executeToolCall(
   try {
     const parsedArguments = parseToolArguments(toolCall.function.arguments);
     const scopedArguments = injectToolExecutionContext(parsedArguments, tool, context);
-    if (isLocalRepoToolSlug(tool.slug)) {
-      const result = await executeLocalRepoTool({
-        toolSlug: tool.slug,
-        argumentsValue: scopedArguments,
-        workspaceRoot: context.workspaceRoot,
-      });
-      return {
-        ok: true,
-        status: result.status,
-        durationMs: Date.now() - startedAt,
-        output: result.output,
-      };
-    }
-
     if (isDatabaseTool(tool)) {
       const result = await executeDatabaseTool(tool, scopedArguments, context);
       return {

@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTestSupport do
   alias SymphonyElixir.AgentInventory.Agent
   alias SymphonyElixir.AgentInventory.StoredCredential
   alias SymphonyElixir.LocalRelay.Registry
+  alias SymphonyElixir.TestSupport
   alias SymphonyElixir.WorkItem
 
   defmodule TestAgentInventory do
@@ -143,16 +144,14 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTestSupport do
              }
            },
            %{
-             "name" => "repo.list",
-             "description" => "List repository files",
+             "name" => "shell.exec",
+             "description" => "Run a shell command",
              "inputSchema" => %{
                "type" => "object",
                "properties" => %{
-                 "workspace_id" => %{"type" => "string"},
-                 "repo_id" => %{"type" => "string"},
-                 "path" => %{"type" => "string"}
+                 "argv" => %{"type" => "array", "items" => %{"type" => "string"}}
                },
-               "required" => ["workspace_id", "repo_id", "path"]
+               "required" => ["argv"]
              }
            }
          ]
@@ -170,10 +169,10 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTestSupport do
   def setup_local_relay_routing(req_module, rule_overrides \\ %{}) do
     Registry.reset!()
 
-    put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
-    put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, req_module})
+    TestSupport.put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
+    TestSupport.put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, req_module})
 
-    put_system_envs([
+    TestSupport.put_system_envs([
       {"SUPABASE_URL", "https://test.supabase.co"},
       {"SUPABASE_SERVICE_ROLE_KEY", "test-api-key"}
     ])
@@ -235,10 +234,10 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTestSupport do
   def setup_manager_profile_routing(req_module, rule_overrides) do
     Registry.reset!()
 
-    put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
-    put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, req_module})
+    TestSupport.put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
+    TestSupport.put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, req_module})
 
-    put_system_envs([
+    TestSupport.put_system_envs([
       {"SUPABASE_URL", "https://test.supabase.co"},
       {"SUPABASE_SERVICE_ROLE_KEY", "test-api-key"}
     ])
@@ -413,11 +412,5 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTestSupport do
       user_id: "user-1",
       session_key: "agent:coding-1:main"
     }
-  end
-
-  defp put_app_env(app, key, value), do: Application.put_env(app, key, value)
-
-  defp put_system_envs(pairs) do
-    Enum.each(pairs, fn {key, value} -> System.put_env(key, value) end)
   end
 end

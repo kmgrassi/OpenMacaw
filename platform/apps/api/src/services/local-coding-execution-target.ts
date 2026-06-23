@@ -46,7 +46,7 @@ export function assertLocalCodingToolsUseRuntimeTarget(tools: ToolExecutionTarge
         throw new ApiRouteError(
           422,
           "invalid_local_coding_tool_execution_target",
-          "Repository tools for local coding must not execute through Platform database handlers",
+          "Local coding tools must not execute through Platform database handlers",
           {
             tool_id: tool.id,
             tool_slug: tool.slug,

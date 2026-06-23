@@ -579,7 +579,7 @@ defmodule SymphonyElixir.Planner.ModelClient.OpenAIResponses do
 
   @spec default_instructions(map() | struct(), map() | struct(), term(), [String.t()] | nil) ::
           String.t()
-  def default_instructions(settings, agent, planning_profile, tool_names \\ nil) do
+  def default_instructions(settings, agent, planning_profile, _tool_names \\ nil) do
     context = agent_context(agent)
     profile_instructions = PlanningProfile.render_instructions(planning_profile)
 
@@ -606,8 +606,7 @@ defmodule SymphonyElixir.Planner.ModelClient.OpenAIResponses do
     - task.create accepts optional top-level repository and runner_kind fields. Use repository when the user names a repository or the request spans multiple repositories. Use runner_kind only when the user, agent context, or repository routing explicitly names a backend.
     - delegate and task.create return validation_feedback when the runtime applied a smart default and dispatch.eligible/reason to summarize whether the created row is ready for orchestrator polling. Treat this as advisory feedback; the orchestrator re-checks policy at poll time.
     - If a tool failure includes validation_feedback with recoverable true and ask_user false, retry once with the suggested_default. If ask_user is true, ask exactly one concise question before retrying.
-    #{repository_routing_guidance(tool_names)}
-    - Set repository to the stable repository identifier visible in the user request, agent context, or repository tool results. Do not invent aliases.
+    - Set repository to the stable repository identifier visible in the user request or agent context. Do not invent aliases.
     - Use only canonical runtime runner_kind values: #{Enum.join(ExecutionProfile.supported_runner_kinds(), ", ")}.
     - Prefer routing.intent over runner_kind. Use runner_kind "codex" for normal cloud coding work, "local_model_coding" when the user asks for a local model/local workspace coding runner, "manager" for follow-up orchestration or polling work, "planner" for additional planning work, "computer_use" for browser/desktop UI work, "openclaw" for OpenClaw work, and "local_relay" only when the requested backend is specifically the relay adapter.
     - If the correct repository or runner is unclear, create the plan and ask a concise clarifying question before creating routed work items.
@@ -615,21 +614,6 @@ defmodule SymphonyElixir.Planner.ModelClient.OpenAIResponses do
     Stored agent type: #{settings.stored_agent.type || "planning"}
     #{if context, do: "\nAgent context:\n#{context}", else: ""}
     """
-  end
-
-  defp repository_routing_guidance(tool_names) do
-    available_repo_tools =
-      tool_names
-      |> List.wrap()
-      |> Enum.filter(&(&1 in ["repo.list", "repo.search", "repo.read_file", "repo.read_symbols"]))
-
-    case available_repo_tools do
-      [] ->
-        "- If repository is not explicit and repository inspection tools are not available in this session, leave repository unset and ask a concise clarifying question before creating repo-scoped tasks."
-
-      tools ->
-        "- If repository is not explicit, inspect available repository context with #{Enum.join(tools, ", ")} before creating repo-scoped tasks. Leave repository unset only when the task is intentionally workspace-wide or the available context is ambiguous."
-    end
   end
 
   defp agent_model(agent) do

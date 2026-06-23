@@ -131,6 +131,76 @@ func TestShellExecResolvesRelativeExecutableAgainstCWD(t *testing.T) {
 	}
 }
 
+func TestShellExecTreatsWorkspaceCWDAsWorkspaceRoot(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	root := t.TempDir()
+	scripts := filepath.Join(root, "platform", "scripts")
+	if err := os.MkdirAll(scripts, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(scripts, "manager-tool-call-battery.mjs"), []byte(""), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	executor, err := NewExecutor(root)
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+
+	result := executor.Execute(context.Background(), runner.ToolCallRequest{
+		ToolCallID: "call-shell-workspace",
+		Name:       "shell.exec",
+		Arguments: map[string]any{
+			"argv": []any{"ls", "platform/scripts"},
+			"cwd":  "/workspace",
+		},
+	})
+	if !result.Success {
+		t.Fatalf("result.Success = false, output = %#v", result.Output)
+	}
+	output := result.Output.(map[string]any)
+	if output["cwd"] != executor.workspaceRoot {
+		t.Fatalf("cwd = %#v, want %q", output["cwd"], executor.workspaceRoot)
+	}
+	if !strings.Contains(output["stdout"].(string), "manager-tool-call-battery.mjs") {
+		t.Fatalf("stdout = %#v, want listed manager-tool-call-battery.mjs", output["stdout"])
+	}
+}
+
+func TestShellExecTreatsWorkspaceExecutableAsWorkspaceRootPath(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	root := t.TempDir()
+	script := filepath.Join(root, "bin", "tool.sh")
+	if err := os.MkdirAll(filepath.Dir(script), 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf workspace-exec\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	executor, err := NewExecutor(root)
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+
+	result := executor.Execute(context.Background(), runner.ToolCallRequest{
+		ToolCallID: "call-shell-workspace-exec",
+		Name:       "shell.exec",
+		Arguments: map[string]any{
+			"argv": []any{"/workspace/bin/tool.sh"},
+		},
+	})
+	if !result.Success {
+		t.Fatalf("result.Success = false, output = %#v", result.Output)
+	}
+	output := result.Output.(map[string]any)
+	if output["stdout"] != "workspace-exec" {
+		t.Fatalf("stdout = %#v, want workspace-exec", output["stdout"])
+	}
+}
+
 func TestNormalizedToolPathAddsLocalToolDirectories(t *testing.T) {
 	path := normalizedToolPath("/usr/bin:/bin")
 	entries := filepath.SplitList(path)
@@ -168,139 +238,6 @@ func containsEntry(entries []string, want string) bool {
 		}
 	}
 	return false
-}
-
-func TestRepoReadFileUsesRoutedWorkspaceRoot(t *testing.T) {
-	root := t.TempDir()
-	repo := filepath.Join(root, "openmacaw")
-	if err := os.Mkdir(repo, 0o755); err != nil {
-		t.Fatalf("Mkdir() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# OpenMacaw\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	executor, err := NewExecutor(root)
-	if err != nil {
-		t.Fatalf("NewExecutor() error = %v", err)
-	}
-
-	result := executor.Execute(context.Background(), runner.ToolCallRequest{
-		ToolCallID: "call-repo-read",
-		Name:       "repo.read_file",
-		Arguments: map[string]any{
-			"path":         "README.md",
-			"workspace_id": "workspace-1",
-		},
-		Context: runner.ToolExecutionContext{
-			"workspace_root": repo,
-		},
-	})
-	if !result.Success {
-		t.Fatalf("result.Success = false, output = %#v", result.Output)
-	}
-	output := result.Output.(map[string]any)
-	if output["path"] != "README.md" {
-		t.Fatalf("path = %#v, want README.md", output["path"])
-	}
-	if output["content"] != "# OpenMacaw\n" {
-		t.Fatalf("content = %#v, want README heading", output["content"])
-	}
-}
-
-func TestRepoReadFileRejectsRoutedWorkspaceOutsideRoot(t *testing.T) {
-	executor, err := NewExecutor(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewExecutor() error = %v", err)
-	}
-
-	result := executor.Execute(context.Background(), runner.ToolCallRequest{
-		ToolCallID: "call-repo-escape",
-		Name:       "repo.read_file",
-		Arguments:  map[string]any{"path": "README.md"},
-		Context: runner.ToolExecutionContext{
-			"workspace_root": t.TempDir(),
-		},
-	})
-	if result.Success {
-		t.Fatalf("result.Success = true, want false for route outside helper workspace root")
-	}
-}
-
-func TestRepoReadFileAllowsRepositoryPathInsideWorkspaceRoot(t *testing.T) {
-	root := t.TempDir()
-	repo := filepath.Join(root, "openmacaw")
-	if err := os.Mkdir(repo, 0o755); err != nil {
-		t.Fatalf("Mkdir() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# Routed\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	executor, err := NewExecutor(root)
-	if err != nil {
-		t.Fatalf("NewExecutor() error = %v", err)
-	}
-
-	result := executor.Execute(context.Background(), runner.ToolCallRequest{
-		ToolCallID: "call-repo-read",
-		Name:       "repo.read_file",
-		Arguments: map[string]any{
-			"path":            "README.md",
-			"repository_path": repo,
-		},
-		Context: runner.ToolExecutionContext{
-			"workspace_root": root,
-		},
-	})
-	if !result.Success {
-		t.Fatalf("result.Success = false, output = %#v", result.Output)
-	}
-	output := result.Output.(map[string]any)
-	if output["content"] != "# Routed\n" {
-		t.Fatalf("content = %#v, want routed repository content", output["content"])
-	}
-}
-
-func TestRepoReadFileTruncatesAtUTF8Boundary(t *testing.T) {
-	root := t.TempDir()
-	repo := filepath.Join(root, "openmacaw")
-	if err := os.Mkdir(repo, 0o755); err != nil {
-		t.Fatalf("Mkdir() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("ab€z\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	executor, err := NewExecutor(root)
-	if err != nil {
-		t.Fatalf("NewExecutor() error = %v", err)
-	}
-
-	result := executor.Execute(context.Background(), runner.ToolCallRequest{
-		ToolCallID: "call-repo-read",
-		Name:       "repo.read_file",
-		Arguments: map[string]any{
-			"path":       "README.md",
-			"byte_limit": 4,
-		},
-		Context: runner.ToolExecutionContext{
-			"workspace_root": repo,
-		},
-	})
-	if !result.Success {
-		t.Fatalf("result.Success = false, output = %#v", result.Output)
-	}
-	output := result.Output.(map[string]any)
-	if output["content"] != "ab" {
-		t.Fatalf("content = %#v, want UTF-8 boundary prefix", output["content"])
-	}
-	if output["bytes_read"] != 2 {
-		t.Fatalf("bytes_read = %#v, want 2", output["bytes_read"])
-	}
-	if output["truncated"] != true {
-		t.Fatalf("truncated = %#v, want true", output["truncated"])
-	}
 }
 
 func TestGitRunExecutesInsideWorkspaceRoot(t *testing.T) {
