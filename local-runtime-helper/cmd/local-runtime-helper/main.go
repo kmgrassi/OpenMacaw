@@ -21,8 +21,10 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/kmgrassi/local-runtime-helper/internal/config"
+	"github.com/kmgrassi/local-runtime-helper/internal/localapi"
 	"github.com/kmgrassi/local-runtime-helper/internal/protocol"
 	"github.com/kmgrassi/local-runtime-helper/internal/relay"
 	"github.com/kmgrassi/local-runtime-helper/internal/runner"
@@ -177,6 +179,7 @@ Flags:`)
 func cmdStart(args []string) {
 	fs := flag.NewFlagSet("start", flag.ExitOnError)
 	configPath := fs.String("config", "", "config path (default ~/.config/openmacaw/runtime.toml)")
+	localAPIAddr := fs.String("local-api-addr", localapi.DefaultAddr, "localhost address for browser helper endpoints")
 	maxConcurrent := fs.Int("max-concurrent", relay.DefaultMaxConcurrentDispatches, "maximum simultaneous dispatches")
 	logLevel := fs.String("log-level", "info", "log level (debug, info, warn, error)")
 	if err := fs.Parse(args); err != nil {
@@ -260,6 +263,19 @@ func cmdStart(args []string) {
 	// Run until interrupted.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	localAPIServer := localapi.NewServer(strings.TrimSpace(*localAPIAddr), logger)
+	if err := localAPIServer.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "start: local helper api: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := localAPIServer.Shutdown(shutdownCtx); err != nil {
+			logger.Warn("local helper api shutdown failed", "error", err)
+		}
+	}()
 
 	logger.Info("starting relay client", "endpoint", cfg.Cloud.Endpoint)
 	if err := client.Run(ctx); err != nil && ctx.Err() == nil {
