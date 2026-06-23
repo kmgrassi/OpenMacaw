@@ -27,6 +27,7 @@ export function BindingPanel({
   agents,
   assignedRunnerByAgent,
   bindingAgentId,
+  bindingPending,
   bindingRunnerId,
   runtime,
   onBindAgentToRunner,
@@ -34,6 +35,7 @@ export function BindingPanel({
   agents: Agent[];
   assignedRunnerByAgent: Map<string, LocalRuntimeRunnerAssignment>;
   bindingAgentId: string | null;
+  bindingPending: boolean;
   bindingRunnerId: string | null;
   runtime: LocalRuntime;
   onBindAgentToRunner: (input: {
@@ -44,13 +46,6 @@ export function BindingPanel({
 }) {
   const runners = runtime.runners;
   const canBind = runtime.localExecution.helperOnline;
-  const boundAgentIds = new Set<string>();
-  for (const runner of runners) {
-    for (const agent of runner.agents) {
-      boundAgentIds.add(agent.agentId);
-    }
-  }
-  const unboundAgents = agents.filter((agent) => !boundAgentIds.has(agent.id));
 
   return (
     <Card className="space-y-4">
@@ -99,12 +94,12 @@ export function BindingPanel({
         ))}
       </div>
 
-      {unboundAgents.length > 0 && (
+      {agents.length > 0 && (
         <div className="space-y-2">
           <div className="text-xs font-medium text-slate-400">
-            Available agents
+            Agents
           </div>
-          {unboundAgents.map((agent) => {
+          {agents.map((agent) => {
             const assignedElsewhere = assignedRunnerByAgent.get(agent.id);
             return (
               <div
@@ -123,7 +118,11 @@ export function BindingPanel({
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
                   {runners.map((runner) => {
+                    const alreadyBoundHere =
+                      assignedElsewhere?.runtime.id === runtime.id &&
+                      assignedElsewhere.runner.id === runner.id;
                     const isBinding =
+                      bindingPending &&
                       bindingAgentId === agent.id &&
                       bindingRunnerId === runner.id;
                     return (
@@ -132,7 +131,7 @@ export function BindingPanel({
                         size="sm"
                         variant="secondary"
                         loading={isBinding}
-                        disabled={!canBind}
+                        disabled={!canBind || alreadyBoundHere}
                         onClick={() =>
                           onBindAgentToRunner({
                             agentId: agent.id,
@@ -141,11 +140,13 @@ export function BindingPanel({
                           })
                         }
                       >
-                        {runners.length === 1
-                          ? assignedElsewhere
-                            ? "Move binding here"
-                            : "Bind to this agent"
-                          : `Bind to ${runner.model || runner.provider}`}
+                        {alreadyBoundHere
+                          ? "Bound here"
+                          : runners.length === 1
+                            ? assignedElsewhere
+                              ? "Move binding here"
+                              : "Bind to this agent"
+                            : `Bind to ${runner.model || runner.provider}`}
                       </Button>
                     );
                   })}

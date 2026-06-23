@@ -24,6 +24,7 @@ export function LocalRuntimesSection() {
     loading,
     runnerProbes,
     bindingAgentId,
+    bindingPending,
     bindingRunnerId,
     probingRunnerId,
     registration,
@@ -146,6 +147,7 @@ export function LocalRuntimesSection() {
             agents={agents}
             assignedRunnerByAgent={assignedRunnerByAgent}
             bindingAgentId={bindingAgentId}
+            bindingPending={bindingPending}
             bindingRunnerId={bindingRunnerId}
             runtime={currentRuntime}
             onBindAgentToRunner={handleBindAgentToRunner}

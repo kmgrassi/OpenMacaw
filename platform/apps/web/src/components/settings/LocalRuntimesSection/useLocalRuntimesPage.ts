@@ -171,8 +171,13 @@ export function useLocalRuntimesPage() {
     testDispatchResults,
     testingMachineId: mutations.testDispatch.variables ?? null,
     probingRunnerId: mutations.probeRegistered.variables ?? null,
-    bindingAgentId: mutations.assignLocalModel.variables?.agentId ?? null,
-    bindingRunnerId: mutations.assignLocalModel.variables?.localRuntimeId ?? null,
+    bindingPending: mutations.assignLocalModel.isPending,
+    bindingAgentId: mutations.assignLocalModel.isPending
+      ? (mutations.assignLocalModel.variables?.agentId ?? null)
+      : null,
+    bindingRunnerId: mutations.assignLocalModel.isPending
+      ? (mutations.assignLocalModel.variables?.localRuntimeId ?? null)
+      : null,
     registration,
     removingId: mutations.remove.variables ?? null,
     wizardState,
