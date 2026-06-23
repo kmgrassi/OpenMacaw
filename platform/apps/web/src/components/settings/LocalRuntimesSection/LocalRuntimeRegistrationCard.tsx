@@ -110,8 +110,9 @@ export function LocalRuntimeRegistrationCard({
                 </div>
               </div>
               <p className="text-xs text-slate-500">
-                Paste an absolute path or choose a directory. The local agent
-                can read and write under this root.
+                Paste an absolute path or choose a directory through the local
+                runtime helper. The local agent can read and write under this
+                root.
               </p>
             </div>
             <Select

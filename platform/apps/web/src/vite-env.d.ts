@@ -13,6 +13,7 @@ interface ImportMetaEnv {
   readonly VITE_PROD_LOGIN_EMAIL?: string;
   readonly VITE_PROD_LOGIN_PASSWORD?: string;
   readonly VITE_BROKER_BASE?: string;
+  readonly VITE_LOCAL_RUNTIME_HELPER_BASE?: string;
   readonly VITE_OPENMACAW_APP_BASE_URL?: string;
   readonly VITE_WORKER_BRIDGE_DEFAULT_CWD?: string;
   readonly VITE_DEV_OPENAI_API_KEY?: string;
