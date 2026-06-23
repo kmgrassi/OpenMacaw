@@ -46,9 +46,7 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [resizingSidebar, setResizingSidebar] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(true);
-  const [settingsOpen, setSettingsOpen] = useState(
-    location.pathname.startsWith("/settings"),
-  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const inAgentSettings = location.pathname.startsWith("/settings/agents");
 
   const chatTarget = useMemo(() => {
