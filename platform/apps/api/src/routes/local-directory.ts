@@ -14,7 +14,7 @@ import path from "node:path";
 
 import type { Express, Request, Response } from "express";
 
-import { getUserScopedSupabase, getServiceRoleSupabase } from "../supabase-client.js";
+import { getServiceRoleSupabase } from "../supabase-client.js";
 import { assertSupabaseNoError, assertSupabaseSuccess } from "../lib/supabase-errors.js";
 import {
   ApiRouteError,
@@ -25,6 +25,7 @@ import {
   requireVerifiedUser,
 } from "../http.js";
 import { assertDevRouteAccess } from "./dev-route-guard.js";
+import { requireStoredAgent } from "./stored-agent-credentials/authz.js";
 
 type ValidateResult =
   | { ok: true; path: string }
@@ -156,10 +157,20 @@ export function registerLocalDirectoryRoutes(app: Express) {
     try {
       assertDevRouteAccess(req, { localhostOnly: true });
       const accessToken = requireAccessToken(req);
-      requireVerifiedUser(req);
+      const userId = requireVerifiedUser(req);
       const agentId = requireRouteParam(req, "agentId");
-      const supabase = getUserScopedSupabase(accessToken);
-      const fetched = await supabase.from("agent").select("id,tool_policy").eq("id", agentId).maybeSingle();
+      const agent = await requireStoredAgent({ accessToken, userId, agentId });
+      const workspaceId = agent.workspaceId?.trim();
+      if (!workspaceId) {
+        throw new ApiRouteError(409, "agent_workspace_missing", "Agent is missing a workspace binding");
+      }
+      const service = getServiceRoleSupabase();
+      const fetched = await service
+        .from("agent")
+        .select("id,tool_policy")
+        .eq("id", agentId)
+        .eq("workspace_id", workspaceId)
+        .maybeSingle();
       assertSupabaseNoError("agent fetch", fetched.error);
       if (!fetched.data) {
         throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
@@ -186,6 +197,24 @@ export function registerLocalDirectoryRoutes(app: Express) {
       const userId = requireVerifiedUser(req);
       const agentId = requireRouteParam(req, "agentId");
       const body = (req.body ?? {}) as { path?: unknown };
+      const agent = await requireStoredAgent({ accessToken, userId, agentId });
+      const workspaceId = agent.workspaceId?.trim();
+      if (!workspaceId) {
+        throw new ApiRouteError(409, "agent_workspace_missing", "Agent is missing a workspace binding");
+      }
+
+      const service = getServiceRoleSupabase();
+      const fetched = await service
+        .from("agent")
+        .select("id,workspace_id,tool_policy")
+        .eq("id", agentId)
+        .eq("workspace_id", workspaceId)
+        .maybeSingle();
+      assertSupabaseNoError("agent fetch", fetched.error);
+      const existing = fetched.data;
+      if (!existing) {
+        throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
+      }
 
       // Validate first so the UI gets a structured error instead of a
       // raw 422 from the DB layer when the path is bogus.
@@ -204,21 +233,8 @@ export function registerLocalDirectoryRoutes(app: Express) {
         resolvedPath = result.path;
       }
 
-      const supabase = getUserScopedSupabase(accessToken);
-      const fetched = await supabase
-        .from("agent")
-        .select("id,workspace_id,tool_policy")
-        .eq("id", agentId)
-        .maybeSingle();
-      assertSupabaseNoError("agent fetch", fetched.error);
-      const existing = fetched.data;
-      if (!existing) {
-        throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
-      }
-
       const nextToolPolicy = mergeWorkspaceRoot(existing.tool_policy, resolvedPath);
 
-      const service = getServiceRoleSupabase();
       const updated = await service
         .from("agent")
         .update({
@@ -226,6 +242,7 @@ export function registerLocalDirectoryRoutes(app: Express) {
           updated_at: new Date().toISOString(),
         })
         .eq("id", agentId)
+        .eq("workspace_id", workspaceId)
         .select("id,tool_policy")
         .maybeSingle();
       assertSupabaseSuccess("agent update", updated.data, updated.error);
