@@ -479,6 +479,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
       workspace_id: session.workspace_id,
       user_id: Map.get(session, :user_id),
       session_id: Map.get(session, :session_id) || work_item_session_id(work_item),
+      run_id: work_item_run_id(work_item),
       workspace_root: Map.get(session, :workspace_root)
     })
   end

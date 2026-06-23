@@ -670,6 +670,11 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   defp add_repo_route_properties(schema) do
     properties = Map.get(schema, "properties") || Map.get(schema, :properties) || %{}
 
+    required =
+      schema
+      |> Map.get("required", [])
+      |> Enum.reject(&(&1 in ["workspace_id", "repo_id", "repository_id"]))
+
     route_properties = %{
       "repository_path" => %{
         "type" => ["string", "null"],
@@ -681,8 +686,13 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       }
     }
 
-    Map.put(schema, "properties", Map.merge(route_properties, properties))
+    schema
+    |> Map.put("properties", properties |> Map.drop(["workspace_id", "repo_id", "repository_id"]) |> Map.merge(route_properties))
+    |> maybe_put_required(required)
   end
+
+  defp maybe_put_required(schema, []), do: Map.delete(schema, "required")
+  defp maybe_put_required(schema, required), do: Map.put(schema, "required", required)
 
   defp local_workspace_root(profile) do
     profile

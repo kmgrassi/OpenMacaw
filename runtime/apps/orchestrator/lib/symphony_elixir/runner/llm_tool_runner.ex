@@ -23,7 +23,8 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   # CLI tools the relay helper executes on the user's machine (with local
   # git/gh auth) instead of the orchestrator. Only relevant for local-relay
   # managers, where a helper is present to delegate to.
-  @local_helper_cli_tools ["git.run"]
+  @local_helper_tools ["git.run", "repo.list", "repo.read_file", "repo.search"]
+  @local_relay_fallback_excluded_tools ["git.run"]
 
   @impl true
   def start_session(config, workspace) when is_map(config) do
@@ -256,7 +257,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   defp fallback_tool_names(config, ModelClient.LocalRelay) do
     tool_bundle(config)
     |> ToolRegistry.bundle()
-    |> Enum.reject(&(&1 in @local_helper_cli_tools))
+    |> Enum.reject(&(&1 in @local_relay_fallback_excluded_tools))
   end
 
   defp fallback_tool_names(config, _model_client) do
@@ -269,8 +270,10 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   # Non-relay managers keep the registry execution_kind and execute in-process.
   defp mark_helper_cli_tools(tool_specs, ModelClient.LocalRelay) when is_list(tool_specs) do
     Enum.map(tool_specs, fn spec ->
-      if is_map(spec) and tool_spec_name(spec) in @local_helper_cli_tools do
-        Map.put(spec, "execution_kind", "helper")
+      if is_map(spec) and tool_spec_name(spec) in @local_helper_tools do
+        spec
+        |> Map.put("execution_kind", "helper")
+        |> maybe_strip_local_repo_scope()
       else
         spec
       end
@@ -278,6 +281,56 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   end
 
   defp mark_helper_cli_tools(tool_specs, _model_client), do: tool_specs
+
+  defp maybe_strip_local_repo_scope(spec) do
+    if tool_spec_name(spec) in ["repo.list", "repo.read_file", "repo.search"] do
+      spec
+      |> update_tool_schema("parameters_schema")
+      |> update_tool_schema("inputSchema")
+      |> update_tool_schema("parameters")
+    else
+      spec
+    end
+  end
+
+  defp update_tool_schema(spec, schema_key) do
+    case Map.get(spec, schema_key) || Map.get(spec, String.to_atom(schema_key)) do
+      schema when is_map(schema) ->
+        Map.put(spec, schema_key, strip_repository_scope(schema))
+
+      _ ->
+        spec
+    end
+  end
+
+  defp strip_repository_scope(%{"properties" => properties} = schema) when is_map(properties) do
+    required =
+      schema
+      |> Map.get("required", [])
+      |> Enum.reject(&(&1 in ["workspace_id", "repo_id", "repository_id"]))
+
+    schema
+    |> Map.put("properties", properties |> Map.drop(["workspace_id", "repo_id", "repository_id"]) |> Map.merge(local_repo_route_properties()))
+    |> maybe_put_required(required)
+  end
+
+  defp strip_repository_scope(schema), do: schema
+
+  defp local_repo_route_properties do
+    %{
+      "repository_path" => %{
+        "type" => ["string", "null"],
+        "description" => "Optional absolute local repository checkout path. If omitted, the helper's configured workspace root is used."
+      },
+      "cwd" => %{
+        "type" => ["string", "null"],
+        "description" => "Optional alias for repository_path."
+      }
+    }
+  end
+
+  defp maybe_put_required(schema, []), do: Map.delete(schema, "required")
+  defp maybe_put_required(schema, required), do: Map.put(schema, "required", required)
 
   # Tools whose execution_kind is "helper" run on the relay helper (the user's
   # machine, with local git/gh auth) rather than in the orchestrator. Requires
