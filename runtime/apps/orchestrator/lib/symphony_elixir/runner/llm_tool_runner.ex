@@ -23,7 +23,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   # CLI tools the relay helper executes on the user's machine (with local
   # git/gh auth) instead of the orchestrator. Only relevant for local-relay
   # managers, where a helper is present to delegate to.
-  @local_helper_tools ["git.run", "repo.list", "repo.read_file", "repo.search"]
+  @local_helper_tools ["git.run", "shell.exec", "repo.list", "repo.read_file", "repo.search"]
   @local_relay_fallback_excluded_tools ["git.run"]
 
   @impl true
