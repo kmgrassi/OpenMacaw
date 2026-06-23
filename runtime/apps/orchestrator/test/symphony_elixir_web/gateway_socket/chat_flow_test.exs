@@ -94,18 +94,29 @@ defmodule SymphonyElixirWeb.GatewaySocket.ChatFlowTest do
     assert delta["payload"]["state"] == "delta"
     assert delta["payload"]["message"] == "hello Stub Agent"
 
+    context_snapshot = %{
+      "text" => "Use repo.list with path .",
+      "chars" => 25,
+      "sha256" => "context-hash"
+    }
+
     {:push, [{:text, final_json}], _state} =
-      GatewaySocket.handle_info({:gateway_runner_complete, session_key, "run-123", :ok}, state)
+      GatewaySocket.handle_info(
+        {:gateway_runner_complete, session_key, "run-123", {:ok, %{"agent_context_snapshot" => context_snapshot}}},
+        state
+      )
 
     final = Jason.decode!(final_json)
     assert final["event"] == "chat"
     assert final["payload"]["state"] == "final"
+    assert final["payload"]["message"]["metadata"]["agent_context_snapshot"] == context_snapshot
 
     assert_received {:message_log_assistant_message, %{user_id: "33333333-3333-4333-8333-333333333333"}, "thread-1", "hello Stub Agent", "run-123", metadata, _opts}
 
     assert metadata.input_tokens == 0
     assert metadata.output_tokens == 0
     assert metadata.total_tokens == 0
+    assert metadata.agent_context_snapshot == context_snapshot
 
     messages = SessionStore.get_messages(session_key)
 

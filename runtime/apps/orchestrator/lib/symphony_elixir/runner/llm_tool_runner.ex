@@ -57,6 +57,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
            model_tier_floor: model_tier_floor(config),
            fallbacks: fallback_links(config),
            prompt: runtime_prompt(config),
+           agent_context: config_value(config, "agent_context"),
            state: state,
            tool_specs: tool_specs,
            allowed_tools: allowed_tools,

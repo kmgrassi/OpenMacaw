@@ -116,6 +116,7 @@ defmodule SymphonyElixirWeb.GatewaySocket do
   def handle_info({:gateway_runner_complete, session_key, run_id, {:ok, result}}, state) do
     handle_runner_complete(session_key, run_id, state,
       assistant_fallback: Map.get(result, "output_text"),
+      agent_context_snapshot: Map.get(result, "agent_context_snapshot"),
       model: Map.get(result, "model"),
       provider: Map.get(result, "provider"),
       usage: Map.get(result, "usage") || %{}
@@ -219,13 +220,9 @@ defmodule SymphonyElixirWeb.GatewaySocket do
         {:push, [Frame.event("chat", payload)], drop_tool_calls(state, run_id)}
 
       {:ok, session} ->
-        record_assistant_message(state, latest_assistant_content(session), run_id, %{
-          input_tokens: session.input_tokens,
-          output_tokens: session.output_tokens,
-          total_tokens: session.total_tokens,
-          model: Keyword.get(opts, :model) || Map.get(session, :model),
-          provider: Keyword.get(opts, :provider)
-        })
+        metadata = assistant_message_metadata(session, opts)
+
+        record_assistant_message(state, latest_assistant_content(session), run_id, metadata)
 
         payload = %{
           runId: run_id,
@@ -233,12 +230,26 @@ defmodule SymphonyElixirWeb.GatewaySocket do
           state: "final",
           message: %{
             role: "assistant",
-            content: latest_assistant_content(session)
+            content: latest_assistant_content(session),
+            metadata: metadata
           }
         }
 
         {:push, [Frame.event("chat", payload)], drop_tool_calls(state, run_id)}
     end
+  end
+
+  defp assistant_message_metadata(session, opts) do
+    %{
+      input_tokens: session.input_tokens,
+      output_tokens: session.output_tokens,
+      total_tokens: session.total_tokens,
+      model: Keyword.get(opts, :model) || Map.get(session, :model),
+      provider: Keyword.get(opts, :provider),
+      agent_context_snapshot: Keyword.get(opts, :agent_context_snapshot)
+    }
+    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.new()
   end
 
   @impl true
