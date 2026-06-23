@@ -237,8 +237,8 @@ export function ChatMessage({
         )}
         {time && (
           <div
-            className={`mt-1.5 text-right text-[10px] leading-none opacity-0 transition-opacity group-hover:opacity-100 ${
-              isUser ? "text-blue-200/65" : "text-slate-600"
+            className={`mt-1.5 text-right text-[10px] leading-none opacity-70 transition-opacity group-hover:opacity-100 ${
+              isUser ? "text-blue-100/75" : "text-slate-400"
             }`}
           >
             {time}

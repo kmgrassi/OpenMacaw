@@ -40,8 +40,6 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
     error,
     refetch: refetchAgents,
   } = useAgentsQuery();
-  const debugMode = useUiStore((state) => state.debugMode);
-  const toggleDebugMode = useUiStore((state) => state.toggleDebugMode);
   const storedSidebarWidth = useUiStore((state) => state.sidebarWidth);
   const setStoredSidebarWidth = useUiStore((state) => state.setSidebarWidth);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -216,65 +214,44 @@ export function AppShell({ children, focusMode = false }: AppShellProps) {
             onNavigate={closeMobile}
             onRetry={() => void refetchAgents()}
           />
-
-          <NavSection
-            label="Settings"
-            collapsed={collapsed}
-            open={settingsOpen}
-            onToggle={() => {
-              const willOpen = !settingsOpen;
-              setSettingsOpen(willOpen);
-              if (willOpen && !location.pathname.startsWith("/settings")) {
-                navigate("/settings/agents");
-                closeMobile();
-              }
-            }}
-          >
-            <div className="space-y-3">
-              {SETTINGS_GROUPS.map((group) => (
-                <div key={group.label} className="space-y-0.5">
-                  {!collapsed && (
-                    <div className="px-2.5 pb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
-                      {group.label}
-                    </div>
-                  )}
-                  {group.sections.map((section) => (
-                    <NavItem
-                      key={section.path}
-                      to={section.path}
-                      label={section.label}
-                      collapsed={collapsed}
-                      onNavigate={closeMobile}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-          </NavSection>
         </div>
       </div>
 
       <div className="space-y-1 border-t border-border p-3">
-        <button
-          type="button"
-          onClick={toggleDebugMode}
-          className={cn(
-            "flex min-h-9 w-full items-center rounded-md px-2.5 py-2 text-[0.9375rem] transition-colors",
-            collapsed ? "justify-center" : "justify-between gap-3",
-            debugMode
-              ? "bg-blue-950/50 text-blue-200"
-              : "text-slate-300 hover:bg-surface-raised hover:text-slate-100",
-          )}
-          aria-pressed={debugMode}
-          title="Toggle debug mode"
+        <NavSection
+          label="Settings"
+          collapsed={collapsed}
+          open={settingsOpen}
+          onToggle={() => {
+            const willOpen = !settingsOpen;
+            setSettingsOpen(willOpen);
+            if (willOpen && !location.pathname.startsWith("/settings")) {
+              navigate("/settings/agents");
+              closeMobile();
+            }
+          }}
         >
-          <span className={cn(collapsed && "sr-only")}>Debug mode</span>
-          {collapsed ? (
-            <span aria-hidden>D</span>
-          ) : (
-            <span className="text-xs">{debugMode ? "On" : "Off"}</span>
-          )}
-        </button>
+          <div className="max-h-[45dvh] space-y-3 overflow-y-auto pr-1">
+            {SETTINGS_GROUPS.map((group) => (
+              <div key={group.label} className="space-y-0.5">
+                {!collapsed && (
+                  <div className="px-2.5 pb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+                    {group.label}
+                  </div>
+                )}
+                {group.sections.map((section) => (
+                  <NavItem
+                    key={section.path}
+                    to={section.path}
+                    label={section.label}
+                    collapsed={collapsed}
+                    onNavigate={closeMobile}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </NavSection>
         <button
           type="button"
           onClick={() => void signOut()}
