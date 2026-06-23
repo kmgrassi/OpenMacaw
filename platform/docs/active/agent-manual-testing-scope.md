@@ -215,13 +215,13 @@ Suggested command:
 pnpm run smoke:agent-tool-call -- \
   --agent-id <agent-id> \
   --workspace-id <workspace-id> \
-  --tool repo.read_file \
+  --tool shell.exec \
   --path package.json
 ```
 
 End-to-end checks:
 
-- Confirm `repo.read_file` is assigned/granted before the run starts.
+- Confirm `shell.exec` is assigned/granted before the run starts.
 - Trigger a real agent message.
 - Watch for assistant tool-call event, tool-result event, and final assistant
   message.
@@ -430,8 +430,8 @@ A local run is considered meaningfully end to end when one command can prove:
 - Should dev-only endpoints be compiled into production builds but guarded by
   config, or registered only in local/dev mode?
 - What is the canonical disposable-agent marker for reset helpers?
-- Which tool should be the default harmless end-to-end tool: `repo.read_file`,
-  `repo.list`, or a purpose-built diagnostic tool?
+- Which tool should be the default harmless end-to-end tool: `shell.exec` or a
+  purpose-built diagnostic tool?
 - Should smoke commands write message/tool-call rows in the real Supabase
   project, or should local development use a dedicated test workspace by
   convention?

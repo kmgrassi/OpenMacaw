@@ -62,17 +62,17 @@ already-applied migrations changes migration history.
 
 ## Runtime Removal Checklist
 
-- [ ] Remove `SymphonyElixir.Planner.Tools.RepoList`,
+- [x] Remove `SymphonyElixir.Planner.Tools.RepoList`,
   `RepoSearch`, `RepoReadFile`, and `RepoReadSymbols` from
   `ToolRegistry.@planner_tools`.
-- [ ] Remove `repo_read_tool_names/0` and stop prepending repo tools to planner
+- [x] Remove `repo_read_tool_names/0` and stop prepending repo tools to planner
   dynamic tools.
-- [ ] Remove or repurpose `repository_tool_specs/0`; no public helper should
+- [x] Remove or repurpose `repository_tool_specs/0`; no public helper should
   return `repo.*` specs.
-- [ ] Delete wrapped Codex modules in
+- [x] Delete wrapped Codex modules in
   `runtime/apps/orchestrator/lib/symphony_elixir/tools/codex.ex` for
   `RepoList`, `RepoSearch`, `RepoReadFile`, and `RepoReadSymbols`.
-- [ ] Delete planner repo tool modules:
+- [x] Delete planner repo tool modules:
   - `planner/repository_tools.ex`
   - `planner/repository_read_tools.ex`
   - `planner/tools/repository_tool.ex`
@@ -80,98 +80,100 @@ already-applied migrations changes migration history.
   - `planner/tools/repo_search.ex`
   - `planner/tools/repo_read_file.ex`
   - `planner/tools/repo_read_symbols.ex`
-- [ ] Remove `SymphonyElixir.Planner.RepositoryIndex` from the application
+- [x] Remove `SymphonyElixir.Planner.RepositoryIndex` from the application
   supervision tree if it is only used by `repo.read_symbols`.
-- [ ] Delete `planner/repository_index.ex` if no non-tool runtime code still
+- [x] Delete `planner/repository_index.ex` if no non-tool runtime code still
   needs it.
-- [ ] Remove repo-tool-specific prompt text from planner/local coding runners.
-- [ ] Remove repo-tool workspace-id injection branches from planner/local
+- [x] Remove repo-tool-specific prompt text from planner/local coding runners.
+- [x] Remove repo-tool workspace-id injection branches from planner/local
   coding tool executors.
-- [ ] Remove `repo.*` from local-relay helper tool lists and schema-stripping
+- [x] Remove `repo.*` from local-relay helper tool lists and schema-stripping
   branches in:
   - `gateway/chat_runner.ex`
   - `runner/llm_tool_runner.ex`
-- [ ] Keep or add `shell.exec` helper execution for local-relay managers.
-- [ ] Ensure stale `repo.*` tool calls normalize to unsupported/unknown tool,
+- [x] Keep or add `shell.exec` helper execution for local-relay managers.
+- [x] Ensure stale `repo.*` tool calls normalize to unsupported/unknown tool,
   not fallback execution.
 
 ## Local Runtime Helper Checklist
 
-- [ ] Remove `repo.list`, `repo.read_file`, and `repo.search` dispatch cases
+- [x] Remove `repo.list`, `repo.read_file`, and `repo.search` dispatch cases
   from `local-runtime-helper/internal/tools/local_executor.go`.
-- [ ] Delete local helper repo executor implementation if it is only used by
+- [x] Delete local helper repo executor implementation if it is only used by
   those dispatch cases.
-- [ ] Remove helper tests that exercise repo tool execution.
-- [ ] Keep tests for `shell.exec` directory listing, file reading, and search
+- [x] Remove helper tests that exercise repo tool execution.
+- [x] Keep tests for `shell.exec` directory listing, file reading, and search
   commands through the CLI.
-- [ ] Keep runtime-managed/tool-call parsing tests generic by using non-repo
+- [x] Keep runtime-managed/tool-call parsing tests generic by using non-repo
   tool examples.
 
 ## Platform Checklist
 
-- [ ] Remove `repo.*` from `platform/apps/api/src/services/tool-bundles.ts`.
-- [ ] Remove default grants/policies in
+- [x] Remove `repo.*` from `platform/apps/api/src/services/tool-bundles.ts`.
+- [x] Remove default grants/policies in
   `platform/apps/api/src/services/setup/builders/tool-policy.ts`.
-- [ ] Delete or replace `local-repo-tool-executor.ts`; no dev endpoint should
+- [x] Delete or replace `local-repo-tool-executor.ts`; no dev endpoint should
   execute `repo.*`.
-- [ ] Remove `repo.*` routing from `dev-tool-invocation.ts`.
-- [ ] Update `platform/contracts/local-model-coding.ts` to remove repo tool
+- [x] Remove `repo.*` routing from `dev-tool-invocation.ts`.
+- [x] Update `platform/contracts/local-model-coding.ts` to remove repo tool
   discriminated union members and schemas.
-- [ ] Update smoke scripts and manual eval defaults to use `shell.exec`:
+- [x] Update smoke scripts and manual eval defaults to use `shell.exec`:
   - `platform/scripts/smoke-agent-tool-call.mjs`
   - `platform/apps/api/scripts/agent-test-state.ts`
   - local tool-call eval catalog rows
-- [ ] Update agent/default-tool tests so manager/coding/planner defaults do not
+- [x] Update agent/default-tool tests so manager/coding/planner defaults do not
   include `repo.*`.
-- [ ] Update UI examples/placeholders that mention `repo.read_file`.
+- [x] Update UI examples/placeholders that mention `repo.read_file`.
 
 ## Test Cleanup Checklist
 
 Remove or rewrite tests whose purpose is now invalid:
 
-- [ ] `runtime/apps/orchestrator/test/symphony_elixir/planner/repository_tools_test.exs`
-- [ ] `runtime/apps/orchestrator/test/symphony_elixir/planner/repository_read_tools_test.exs`
-- [ ] `runtime/apps/orchestrator/test/symphony_elixir/planner/repository_index_test.exs`
-- [ ] `runtime/apps/orchestrator/test/symphony_elixir/tool_registry_planner_test.exs`
-- [ ] `runtime/apps/orchestrator/test/symphony_elixir/tool_registry_local_model_coding_test.exs`
-- [ ] `runtime/apps/orchestrator/test/symphony_elixir/local_model_coding_tool_contract_test.exs`
-- [ ] `runtime/apps/orchestrator/test/symphony_elixir/dynamic_tool_test.exs`
-- [ ] `runtime/apps/orchestrator/test/symphony_elixir/runner/planner/session_test.exs`
-- [ ] `runtime/apps/orchestrator/test/symphony_elixir/runner/planner/responses_api_test.exs`
-- [ ] `platform/apps/api/src/services/local-repo-tool-executor.test.ts`
-- [ ] `local-runtime-helper/internal/tools/local_executor_test.go` repo-tool cases
+- [x] `runtime/apps/orchestrator/test/symphony_elixir/planner/repository_tools_test.exs`
+- [x] `runtime/apps/orchestrator/test/symphony_elixir/planner/repository_read_tools_test.exs`
+- [x] `runtime/apps/orchestrator/test/symphony_elixir/planner/repository_index_test.exs`
+- [x] `runtime/apps/orchestrator/test/symphony_elixir/tool_registry_planner_test.exs`
+- [x] `runtime/apps/orchestrator/test/symphony_elixir/tool_registry_local_model_coding_test.exs`
+- [x] `runtime/apps/orchestrator/test/symphony_elixir/local_model_coding_tool_contract_test.exs`
+- [x] `runtime/apps/orchestrator/test/symphony_elixir/dynamic_tool_test.exs`
+- [x] `runtime/apps/orchestrator/test/symphony_elixir/runner/planner/session_test.exs`
+- [x] `runtime/apps/orchestrator/test/symphony_elixir/runner/planner/responses_api_test.exs`
+- [x] `platform/apps/api/src/services/local-repo-tool-executor.test.ts`
+- [x] `local-runtime-helper/internal/tools/local_executor_test.go` repo-tool cases
 
 Rewrite generic parser/provider tests that currently use repo tools as sample
 names, but do not actually test repository behavior:
 
-- [ ] `tool_adapter_test.exs`
-- [ ] `provider/openai_compatible_test.exs`
-- [ ] `tool-call-parser.test.ts`
-- [ ] `tool-spec-translator.test.ts`
-- [ ] `dispatch_runtime_managed_test.go`
-- [ ] `dispatch_helper_managed_test.go`
+- [x] `tool_adapter_test.exs`
+- [x] `provider/openai_compatible_test.exs`
+- [x] `tool-call-parser.test.ts`
+- [x] `tool-spec-translator.test.ts`
+- [x] `dispatch_runtime_managed_test.go`
+- [x] `dispatch_helper_managed_test.go`
 
 ## Documentation Checklist
 
-- [ ] Update active docs that instruct users/agents to call `repo.*`.
+- [x] Update active docs that instruct users/agents to call `repo.*`.
 - [ ] Move repo-tool architecture docs to superseded or update them with a
   retirement note.
-- [ ] Update local model/manual testing docs to show `shell.exec` examples.
-- [ ] Keep historical context only where clearly marked superseded.
+- [x] Update local model/manual testing docs to show `shell.exec` examples.
+- [x] Keep historical context only where clearly marked superseded.
 
 ## Verification Plan
 
-- [ ] `rg -n "repo\\.(list|search|read_file|read_symbols)|repo_list|repo_search|repo_read_file|repo_read_symbols" runtime/apps/orchestrator/lib runtime/apps/orchestrator/test platform/apps platform/contracts platform/scripts local-runtime-helper/internal`
+- [x] `rg -n "repo\\.(list|search|read_file|read_symbols)|repo_list|repo_search|repo_read_file|repo_read_symbols" runtime/apps/orchestrator/lib runtime/apps/orchestrator/test platform/apps platform/contracts platform/scripts local-runtime-helper/internal`
   returns no active implementation or test expectation references.
-- [ ] Runtime focused tests pass:
-  - `mix test test/symphony_elixir/runner/manager/local_relay_test.exs`
+- [x] Runtime focused tests pass:
+  - `mix test test/symphony_elixir/runner/manager/session_test.exs`
   - `mix test test/symphony_elixir/runner/local_model_coding_test.exs`
-  - `mix test test/symphony_elixir/tool_registry_test.exs`
-- [ ] Platform focused tests pass:
+  - `mix test test/symphony_elixir/runner/planner/session_test.exs`
+  - `mix test test/symphony_elixir/gateway/chat_runner_test.exs`
+- [x] Platform focused tests pass:
   - `pnpm -C platform test -- --run` or targeted service/contract tests if the
     full suite is too large for the turn.
-- [ ] Helper tests pass:
-  - `go test ./...` in `local-runtime-helper`
+- [x] Helper tests pass:
+  - `go test ./internal/tools ./internal/runner/openai_compatible` in
+    `local-runtime-helper`
 - [ ] Local live manual test passes:
   - Manager attached to local model uses `shell.exec` to list a directory.
   - Manager uses `shell.exec` + `rg` to search files.

@@ -103,7 +103,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
             "priority" => nullable_string_schema("Optional task priority."),
             "intent" => nullable_string_schema("Optional intent such as implement, review, test, browse, or remediate."),
             "depends_on" => %{"type" => ["array", "null"], "items" => %{"type" => "string"}},
-            "repository" => nullable_string_schema("Optional repository identifier using the same shape as repository tools and RepositoryIndex."),
+            "repository" => nullable_string_schema("Optional stable repository identifier."),
             "when" => %{
               "type" => ["string", "null"],
               "description" => "Use now for immediate manager pickup, an ISO-8601 timestamp for scheduled pickup, or omit/null for plan-only todo work."
@@ -149,9 +149,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
                 "Optional dispatch intent such as implement, review, test, plan, browse, remediate, or manage. When runner_kind is omitted, the orchestrator resolves a canonical runner kind from this intent."
               ),
             "repository" =>
-              nullable_string_schema(
-                "Optional repository identifier for this work item, using the same shape as repository tools and RepositoryIndex. Stored in work_items.repository and mirrored into metadata.repository for routing context."
-              ),
+              nullable_string_schema("Optional stable repository identifier for this work item. Stored in work_items.repository and mirrored into metadata.repository for routing context."),
             "routing" => routing_hint_schema(),
             "when" => task_when_schema(),
             "metadata" => metadata_schema("Optional task metadata. Use routing for dispatch guidance instead of inventing ad hoc routing keys here."),

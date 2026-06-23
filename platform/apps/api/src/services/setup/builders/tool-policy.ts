@@ -51,9 +51,6 @@ export function codingToolPolicyDefaults(): ToolPolicy {
   return ToolPolicySchema.parse({
     coding: {
       tools: [
-        "repo.read_file",
-        "repo.list",
-        "repo.search",
         GIT_COMMAND_TOOL_SLUG,
         "shell.exec",
         "apply_patch",

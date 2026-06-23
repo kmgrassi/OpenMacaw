@@ -63,11 +63,7 @@ defmodule SymphonyElixir.ToolRegistry do
     SymphonyElixir.ScheduledTask.Tools.Update,
     SymphonyElixir.ScheduledTask.Tools.List,
     SymphonyElixir.ScheduledTask.Tools.Delete,
-    SymphonyElixir.Planner.Tools.SnoozeWorkItem,
-    SymphonyElixir.Planner.Tools.RepoList,
-    SymphonyElixir.Planner.Tools.RepoReadFile,
-    SymphonyElixir.Planner.Tools.RepoSearch,
-    SymphonyElixir.Planner.Tools.RepoReadSymbols
+    SymphonyElixir.Planner.Tools.SnoozeWorkItem
   ]
 
   @codex_tools [
@@ -348,10 +344,6 @@ defmodule SymphonyElixir.ToolRegistry do
   @spec planner_tool_specs() :: [map()]
   def planner_tool_specs, do: specs(planner_tool_names())
 
-  @doc "Codex repository read dynamic tool specs."
-  @spec repository_tool_specs() :: [map()]
-  def repository_tool_specs, do: specs(repo_read_tool_names())
-
   @doc "Codex agent communication dynamic tool specs."
   @spec agent_communication_tool_specs() :: [map()]
   def agent_communication_tool_specs, do: specs(agent_communication_tool_names())
@@ -447,8 +439,7 @@ defmodule SymphonyElixir.ToolRegistry do
   defp coding_tool_names, do: ["linear_graphql", "snooze_work_item"]
 
   defp planner_tool_names do
-    repo_read_tool_names() ++
-      @planner_database_tools ++
+    @planner_database_tools ++
       [
         "planning_profile.create_update",
         "planning_profile.delete",
@@ -457,9 +448,6 @@ defmodule SymphonyElixir.ToolRegistry do
         "snooze_work_item"
       ]
   end
-
-  defp repo_read_tool_names,
-    do: ["repo.list", "repo.search", "repo.read_file", "repo.read_symbols"]
 
   defp agent_communication_tool_names, do: ["agent.message", "agent.remediate"]
 

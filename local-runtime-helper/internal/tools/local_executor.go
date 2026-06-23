@@ -11,14 +11,6 @@ import (
 const (
 	defaultTimeout     = 120 * time.Second
 	defaultOutputLimit = 64 * 1024
-	defaultFileLimit   = 64 * 1024
-	maxFileLimit       = 256 * 1024
-	defaultListLimit   = 50
-	maxListLimit       = 200
-	defaultListDepth   = 2
-	maxListDepth       = 8
-	defaultSnippet     = 240
-	maxSnippet         = 1000
 )
 
 type Executor struct {
@@ -53,12 +45,6 @@ func (e *Executor) execute(ctx context.Context, req runner.ToolCallRequest) (map
 		return e.gitRun(ctx, req.Arguments)
 	case "shell.exec":
 		return e.shellExec(ctx, req.Arguments)
-	case "repo.list":
-		return e.repoList(req.Arguments, req.Context)
-	case "repo.read_file":
-		return e.repoReadFile(req.Arguments, req.Context)
-	case "repo.search":
-		return e.repoSearch(ctx, req.Arguments, req.Context)
 	default:
 		return map[string]any{
 			"ok":    false,
