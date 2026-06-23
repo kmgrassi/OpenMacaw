@@ -109,6 +109,11 @@ const RuntimeSection = lazy(async () => {
   return { default: module.RuntimeSection };
 });
 
+const DebugSection = lazy(async () => {
+  const module = await import("./components/settings/DebugSection");
+  return { default: module.DebugSection };
+});
+
 const LocalRuntimesSection = lazy(async () => {
   const module = await import("./components/settings/LocalRuntimesSection");
   return { default: module.LocalRuntimesSection };
@@ -296,6 +301,7 @@ function AppRoutes() {
           <Route path="usage" element={<UsageSection />} />
           <Route path="config" element={<ConfigSection />} />
           <Route path="runtime" element={<RuntimeSection />} />
+          <Route path="debug" element={<DebugSection />} />
           <Route path="local-runtimes" element={<LocalRuntimesSection />} />
           <Route path="workspace" element={<WorkspaceSection />} />
         </Route>

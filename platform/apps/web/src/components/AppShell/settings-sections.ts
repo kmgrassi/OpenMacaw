@@ -34,6 +34,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
         label: "Sessions",
         autoConnectGateway: true,
       },
+      { path: "/settings/debug", label: "Debug mode" },
     ],
   },
   {
