@@ -4,6 +4,7 @@ import type {
   LocalRuntimeRunner,
 } from "../../../api/local-runtime";
 import type { Agent } from "../../../types/agents";
+import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
 import type { LocalRuntimeRunnerAssignment } from "./useLocalRuntimesPage";
 
@@ -25,13 +26,24 @@ function runnerLabel(runner: LocalRuntimeRunner) {
 export function BindingPanel({
   agents,
   assignedRunnerByAgent,
+  bindingAgentId,
+  bindingRunnerId,
   runtime,
+  onBindAgentToRunner,
 }: {
   agents: Agent[];
   assignedRunnerByAgent: Map<string, LocalRuntimeRunnerAssignment>;
+  bindingAgentId: string | null;
+  bindingRunnerId: string | null;
   runtime: LocalRuntime;
+  onBindAgentToRunner: (input: {
+    agentId: string;
+    runtime: LocalRuntime;
+    runner: LocalRuntimeRunner;
+  }) => void;
 }) {
   const runners = runtime.runners;
+  const canBind = runtime.localExecution.helperOnline;
   const boundAgentIds = new Set<string>();
   for (const runner of runners) {
     for (const agent of runner.agents) {
@@ -45,8 +57,8 @@ export function BindingPanel({
       <div>
         <h3 className="text-sm font-semibold text-slate-200">Agent bindings</h3>
         <p className="mt-1 text-xs text-slate-500">
-          Bindings are managed from each agent's runtime settings. This fleet
-          view shows which agents currently use this helper.
+          Bind agents to the local runner they should dispatch to from this
+          machine.
         </p>
       </div>
 
@@ -105,11 +117,39 @@ export function BindingPanel({
                   </div>
                   <div className="mt-1 text-xs text-slate-500">
                     {assignedElsewhere
-                      ? `Currently bound to ${runnerLabel(assignedElsewhere.runner)}`
-                      : "Hosted/default until configured from the agent page."}
+                      ? `Currently bound to ${runnerLabel(assignedElsewhere.runner)}.`
+                      : "Hosted/default until bound to a local runner."}
                   </div>
                 </div>
-                <AgentLink agentId={agent.id} label="Open agent" />
+                <div className="flex flex-wrap justify-end gap-2">
+                  {runners.map((runner) => {
+                    const isBinding =
+                      bindingAgentId === agent.id &&
+                      bindingRunnerId === runner.id;
+                    return (
+                      <Button
+                        key={runner.id}
+                        size="sm"
+                        variant="secondary"
+                        loading={isBinding}
+                        disabled={!canBind}
+                        onClick={() =>
+                          onBindAgentToRunner({
+                            agentId: agent.id,
+                            runtime,
+                            runner,
+                          })
+                        }
+                      >
+                        {runners.length === 1
+                          ? assignedElsewhere
+                            ? "Move binding here"
+                            : "Bind to this agent"
+                          : `Bind to ${runner.model || runner.provider}`}
+                      </Button>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}

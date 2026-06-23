@@ -23,12 +23,15 @@ export function LocalRuntimesSection() {
     heartbeatIntervalMs,
     loading,
     runnerProbes,
+    bindingAgentId,
+    bindingRunnerId,
     probingRunnerId,
     registration,
     removingId,
     testDispatchResults,
     testingMachineId,
     wizardState,
+    handleBindAgentToRunner,
     handleConfigAction,
     handleProbeRunner,
     handleTestDispatch,
@@ -142,7 +145,10 @@ export function LocalRuntimesSection() {
           <BindingPanel
             agents={agents}
             assignedRunnerByAgent={assignedRunnerByAgent}
+            bindingAgentId={bindingAgentId}
+            bindingRunnerId={bindingRunnerId}
             runtime={currentRuntime}
+            onBindAgentToRunner={handleBindAgentToRunner}
           />
         )}
 

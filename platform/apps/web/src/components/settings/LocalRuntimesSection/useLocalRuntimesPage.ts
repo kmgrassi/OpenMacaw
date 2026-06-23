@@ -119,6 +119,24 @@ export function useLocalRuntimesPage() {
     }
   };
 
+  const handleBindAgentToRunner = async (input: {
+    agentId: string;
+    runtime: LocalRuntime;
+    runner: LocalRuntimeRunner;
+  }) => {
+    setError(null);
+    try {
+      await mutations.assignLocalModel.mutateAsync({
+        agentId: input.agentId,
+        machineId: input.runtime.id,
+        localRuntimeId: input.runner.id,
+      });
+      await localRuntimesQuery.refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const handleConfigAction = async (
     machineId: string,
     action: "regenerate" | "rotate",
@@ -153,9 +171,12 @@ export function useLocalRuntimesPage() {
     testDispatchResults,
     testingMachineId: mutations.testDispatch.variables ?? null,
     probingRunnerId: mutations.probeRegistered.variables ?? null,
+    bindingAgentId: mutations.assignLocalModel.variables?.agentId ?? null,
+    bindingRunnerId: mutations.assignLocalModel.variables?.localRuntimeId ?? null,
     registration,
     removingId: mutations.remove.variables ?? null,
     wizardState,
+    handleBindAgentToRunner,
     handleConfigAction,
     handleProbeRunner,
     handleTestDispatch,
