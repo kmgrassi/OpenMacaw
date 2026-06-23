@@ -22,9 +22,7 @@ defmodule SymphonyElixir.Planner.PlannerToolExecutorTest do
              "workspace_id" => "workspace-1"
            }
 
-    assert PlannerToolExecutor.maybe_put_workspace_id(%{"query" => "hi"}, "repo.search", session) == %{
-             "query" => "hi"
-           }
+    assert PlannerToolExecutor.maybe_put_workspace_id(%{"command" => "pwd"}, "shell.exec", session) == %{"command" => "pwd"}
   end
 
   test "returns dynamic-tool shaped output for registry execution" do

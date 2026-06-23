@@ -24,26 +24,32 @@ const EMPTY_PARAMETERS = `{
 
 const TOOL_TEMPLATES: ToolTemplate[] = [
   {
-    key: "read_file",
-    label: "read_file",
+    key: "shell_exec",
+    label: "shell_exec",
     input: {
-      slug: "repo.read_file",
-      name: "Read file",
-      description: "Read a file from the current repository.",
-      functionName: "read_file",
-      type: "repository",
-      executionKind: "filesystem",
-      runnerKind: "codex",
+      slug: "shell.exec",
+      name: "Run shell command",
+      description: "Run a command in the configured workspace.",
+      functionName: "shell_exec",
+      type: "shell",
+      executionKind: "shell",
+      runnerKind: "local_model_coding",
       enabled: true,
       parameters: {
         type: "object",
         properties: {
-          path: {
+          argv: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 1,
+            description: "Command and arguments to run.",
+          },
+          cwd: {
             type: "string",
-            description: "Repository-relative file path.",
+            description: "Optional working directory, such as /workspace.",
           },
         },
-        required: ["path"],
+        required: ["argv"],
         additionalProperties: false,
       },
     },
@@ -316,7 +322,7 @@ export function ToolDefinitionEditor({
             label="Slug"
             value={slug}
             onChange={(event) => setSlug(toSlug(event.target.value))}
-            placeholder="repo.read_file"
+            placeholder="shell.exec"
           />
           <Input
             label="Function name"

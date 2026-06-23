@@ -2,10 +2,6 @@ import type { ToolProfile } from "../../../../contracts/execution-profile.js";
 import type { RunnerKind } from "../../../../contracts/runner-kinds.js";
 
 export const DEFAULT_PLANNING_TOOL_SLUGS = [
-  "repo.read_file",
-  "repo.list",
-  "repo.search",
-  "repo.read_symbols",
   "plan.create",
   "task.create",
   "task.update",
@@ -51,16 +47,13 @@ export const DEFAULT_PLANNER_REMEDIATION_TOOL_SLUGS = [
   ...AGENT_TOOL_GRANT_TOOL_SLUGS,
 ] as const;
 
-export const DEFAULT_CODING_TOOL_SLUGS = [...DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS] as const;
+export const DEFAULT_CODING_TOOL_SLUGS = [...DEFAULT_SCHEDULED_AGENT_TOOL_SLUGS, "shell.exec"] as const;
 
 export const DEFAULT_MANAGER_TOOL_SLUGS = [GIT_COMMAND_TOOL_SLUG, ...DEFAULT_CODING_TOOL_SLUGS] as const;
 
 export const DEFAULT_LEARNING_TOOL_SLUGS = ["agent_run.read", "scheduled_task.create"] as const;
 
 export const LOCAL_MODEL_CODING_TOOL_SLUGS = [
-  "repo.read_file",
-  "repo.list",
-  "repo.search",
   GIT_COMMAND_TOOL_SLUG,
   "shell.exec",
   "apply_patch",

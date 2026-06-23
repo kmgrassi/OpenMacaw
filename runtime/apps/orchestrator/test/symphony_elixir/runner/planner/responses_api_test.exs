@@ -45,7 +45,7 @@ defmodule SymphonyElixir.Runner.Planner.ResponsesApiTest do
                     %{
                       "type" => "function_call",
                       "call_id" => "call-1",
-                      "name" => "repo_list",
+                      "name" => "scheduled_task_read",
                       "arguments" => Jason.encode!(%{})
                     }
                   ]
@@ -142,7 +142,7 @@ defmodule SymphonyElixir.Runner.Planner.ResponsesApiTest do
     assert_received {:planner_event,
                      %{
                        event: :tool_call_failed,
-                       payload: %{"params" => %{"tool" => "repo.list"}}
+                       payload: %{"params" => %{"tool" => "scheduled_task.read"}}
                      }}
 
     assert_received {:planner_event,
@@ -226,7 +226,7 @@ defmodule SymphonyElixir.Runner.Planner.ResponsesApiTest do
                     %{
                       "type" => "function_call",
                       "call_id" => "call-bad",
-                      "name" => "repo_list",
+                      "name" => "scheduled_task_read",
                       "arguments" => "{\"path\""
                     }
                   ]

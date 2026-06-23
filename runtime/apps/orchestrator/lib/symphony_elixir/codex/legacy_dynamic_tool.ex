@@ -7,14 +7,12 @@ defmodule SymphonyElixir.Codex.LegacyDynamicTool do
   alias SymphonyElixir.Linear.Client
   alias SymphonyElixir.PlanningProfile
   alias SymphonyElixir.Planner.DatabaseTools
-  alias SymphonyElixir.Planner.RepositoryTools
 
   @linear_graphql_tool "linear_graphql"
   @snooze_work_item_tool "snooze_work_item"
   @agent_communication_tool_names AgentCommunicationTools.tool_names()
   @planner_tool_names DatabaseTools.tool_names()
   @planning_profile_tool_names PlanningProfile.tool_names()
-  @repository_tool_names RepositoryTools.tool_names()
   @linear_graphql_description """
   Execute a raw GraphQL query or mutation against Linear using Symphony's configured auth.
   """
@@ -60,9 +58,6 @@ defmodule SymphonyElixir.Codex.LegacyDynamicTool do
       planning_profile_tool when planning_profile_tool in @planning_profile_tool_names ->
         execute_planning_profile_tool(planning_profile_tool, arguments, opts)
 
-      repository_tool when repository_tool in @repository_tool_names ->
-        execute_repository_tool(repository_tool, arguments, opts)
-
       agent_communication_tool when agent_communication_tool in @agent_communication_tool_names ->
         execute_agent_communication_tool(agent_communication_tool, arguments, opts)
 
@@ -103,22 +98,10 @@ defmodule SymphonyElixir.Codex.LegacyDynamicTool do
 
   @spec planner_tool_specs() :: [map()]
   def planner_tool_specs,
-    do:
-      RepositoryTools.tool_specs() ++
-        DatabaseTools.tool_specs() ++ PlanningProfile.tool_specs() ++ universal_tool_specs()
+    do: DatabaseTools.tool_specs() ++ PlanningProfile.tool_specs() ++ universal_tool_specs()
 
   @spec agent_communication_tool_specs() :: [map()]
   def agent_communication_tool_specs, do: AgentCommunicationTools.tool_specs()
-
-  @spec repository_tool_specs() :: [map()]
-  def repository_tool_specs, do: RepositoryTools.tool_specs()
-
-  defp execute_repository_tool(tool, arguments, opts) do
-    case RepositoryTools.execute(tool, arguments, opts) do
-      {:ok, response} -> dynamic_tool_response(true, encode_payload(response))
-      {:error, reason} -> failure_response(repository_tool_error_payload(tool, reason))
-    end
-  end
 
   defp execute_agent_communication_tool(tool, arguments, opts) do
     case AgentCommunicationTools.execute(tool, arguments, opts) do
@@ -235,7 +218,7 @@ defmodule SymphonyElixir.Codex.LegacyDynamicTool do
       @linear_graphql_tool
       | @planner_tool_names ++
           @planning_profile_tool_names ++
-          @repository_tool_names ++ @agent_communication_tool_names ++ [@snooze_work_item_tool]
+          @agent_communication_tool_names ++ [@snooze_work_item_tool]
     ]
   end
 
@@ -333,15 +316,6 @@ defmodule SymphonyElixir.Codex.LegacyDynamicTool do
   end
 
   defp planner_database_tool_error_payload(tool, reason) do
-    %{
-      "error" => %{
-        "message" => "#{tool} failed.",
-        "reason" => inspect(reason)
-      }
-    }
-  end
-
-  defp repository_tool_error_payload(tool, reason) do
     %{
       "error" => %{
         "message" => "#{tool} failed.",

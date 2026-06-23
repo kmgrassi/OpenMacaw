@@ -188,7 +188,7 @@ implementation of that scenario:
 | `plain-message` | API/UI can submit and display a message | Gateway accepts `chat.send` and reaches terminal state |
 | `planning-agent-readonly` | Planner agent is configured and visible as read-only | Planner receives read-only tools and cannot execute write tools |
 | `planner-work-item-create` | Work item appears through platform APIs/UI | Planner tool call creates the expected runtime/database record |
-| `coding-agent-filesystem-read` | Granted filesystem-read tool is visible and observed | Runtime executes `repo.read_file` and returns a tool result |
+| `coding-agent-filesystem-read` | Granted shell tool is visible and observed | Runtime executes `shell.exec` and returns a tool result |
 | `coding-agent-apply-patch` | Platform observes patch attempt/result | Runtime enforces workspace path safety and patch execution result |
 | `manager-due-work-item` | Platform shows due item and manager status | Manager scheduler picks the due item and calls the expected tool |
 | `local-relay-tool-round-trip` | Agent routes to local runtime and diagnostics show helper readiness | Relay dispatch, tool request, continuation, and terminal frame succeed |

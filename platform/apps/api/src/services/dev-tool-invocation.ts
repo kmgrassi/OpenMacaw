@@ -75,12 +75,9 @@ function toolFromRow(row: GrantResolverToolRow): ToolDefinition {
 
 function commandActionsForTool(toolSlug: string): DevToolInvocationObservation["commandActions"] {
   switch (toolSlug) {
-    case "repo.read_file":
-      return ["read"];
-    case "repo.list":
-      return ["list_files"];
-    case "repo.search":
-      return ["search"];
+    case "shell.exec":
+    case "git.run":
+      return ["unknown"];
     default:
       return ["unknown"];
   }
