@@ -2,6 +2,10 @@ import { StoredAgentAuthStateSchema } from "../../../../contracts/agents";
 import { SetupAuthStateSchema } from "../../../../contracts/setup";
 import type { SetupAuthState } from "../../../../contracts/setup";
 import {
+  deriveProviderFromModel,
+  extractPrimaryModel,
+} from "../../../../contracts/agent-helpers";
+import {
   API_PATHS,
   asRecord,
   asStringList,
@@ -123,29 +127,18 @@ export async function fetchAuthState(): Promise<AuthStateResponse> {
     const parsed = SetupAuthStateSchema.parse(agentsResult.body);
     const resolvedAgentId = resolveSetupAgentId(parsed);
     const agents = parsed.agents.map(
-      (agent: (typeof parsed.agents)[number], index: number) => ({
-        id: agent.id,
-        name: agent.name?.trim() || agent.id,
-        model:
-          typeof agent.modelSettings === "object" &&
-          agent.modelSettings &&
-          "primary" in agent.modelSettings
-            ? String(
-                (agent.modelSettings as { primary?: unknown }).primary ?? "",
-              ) || null
-            : null,
-        provider:
-          typeof agent.modelSettings === "object" &&
-          agent.modelSettings &&
-          "primary" in agent.modelSettings
-            ? String(
-                (agent.modelSettings as { primary?: unknown }).primary ?? "",
-              ).split("/", 1)[0] || null
-            : null,
-        hasCredentials: true,
-        isResolved:
-          agent.id === resolvedAgentId || (!resolvedAgentId && index === 0),
-      }),
+      (agent: (typeof parsed.agents)[number], index: number) => {
+        const model = extractPrimaryModel(agent.modelSettings);
+        return {
+          id: agent.id,
+          name: agent.name?.trim() || agent.id,
+          model,
+          provider: deriveProviderFromModel(model),
+          hasCredentials: true,
+          isResolved:
+            agent.id === resolvedAgentId || (!resolvedAgentId && index === 0),
+        };
+      },
     );
     return {
       readyToPrepare: Boolean(resolvedAgentId && parsed.workspaceId),
