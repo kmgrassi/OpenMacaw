@@ -1,9 +1,11 @@
+import { DEFAULT_RUNNER_KIND_BY_AGENT_TYPE } from "../../../../../../contracts/agent-runner-defaults.js";
 import { normalizeAgentType } from "../../../../../../contracts/agents.js";
 import { getCredentialProviderMetadata, normalizeCredentialProvider } from "../../../../../../contracts/credentials.js";
 import type { AgentCredentialConfigurationRequest } from "../../../../../../contracts/setup.js";
 import { ApiRouteError } from "../../../http.js";
 import { findSetupAgentById } from "../../../repositories/agents.js";
 import { createAgentCredential, getCredentialRowByIdForWorkspace } from "../../../repositories/credentials.js";
+import { upsertAgentCredentialReferenceRule } from "../../../repositories/routing-rules.js";
 import { buildCredentialJson } from "../builders.js";
 import { updateAgentModelSettings } from "../gateway-config.js";
 import { requireCurrentUser } from "../identity.js";
@@ -50,10 +52,27 @@ export async function configureSetupAgentCredentialsImpl(
   await updateAgentModelSettings(accessToken, agent.id, input.model);
 
   if (input.credentialId) {
-    // Reuse a stored workspace credential. Runtime resolution matches by
-    // (provider, workspace) so no new credential row is needed — we only
-    // verify the selected credential exists and matches the chosen provider.
-    await requireWorkspaceCredentialForProvider(input.credentialId, input.workspaceId, input.provider);
+    // Reuse a stored workspace credential — no new credential row is needed.
+    // A stored key is shared across the workspace, so we must pin the agent's
+    // routing rule to the selected credential id; otherwise runtime resolution
+    // falls back to the newest workspace credential for the provider and the
+    // user's choice is ignored. `DEFAULT_RUNNER_KIND_BY_AGENT_TYPE[role]`
+    // matches the runner that `writeGatewayConfigForDefaultAgent` writes next,
+    // keeping the routing rule and gateway config in agreement (mirrors the
+    // default-agent and manager activation paths).
+    const credentialId = await requireWorkspaceCredentialForProvider(
+      input.credentialId,
+      input.workspaceId,
+      input.provider,
+    );
+    await upsertAgentCredentialReferenceRule({
+      agentId: agent.id,
+      workspaceId: input.workspaceId,
+      runnerKind: DEFAULT_RUNNER_KIND_BY_AGENT_TYPE[role],
+      provider: input.provider,
+      model: input.model,
+      credentialRef: { type: "credential_id", value: credentialId },
+    });
   } else if (input.secret) {
     await createAgentCredential({
       agentId: agent.id,
