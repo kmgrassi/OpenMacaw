@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 
+import { extractPrimaryModel } from "../../../../../contracts/agent-helpers";
 import { type CredentialProvider } from "../../../../../contracts/credentials";
 import type { SetupResponse } from "../../../../../contracts/setup";
 import {
@@ -33,14 +34,7 @@ const PROVIDER_ORDER: CredentialProvider[] = [
 ];
 
 function primaryModel(setup: SetupResponse) {
-  if (
-    !setup.agent.modelSettings ||
-    typeof setup.agent.modelSettings !== "object"
-  ) {
-    return "";
-  }
-  const primary = (setup.agent.modelSettings as { primary?: unknown }).primary;
-  return typeof primary === "string" ? primary.trim() : "";
+  return extractPrimaryModel(setup.agent.modelSettings) ?? "";
 }
 
 export function InlineCredentialForm({
