@@ -1,6 +1,5 @@
-import { useState } from "react";
-
 import { getClaudeCodeSmoke } from "../../api/claude-code-smoke";
+import { useAsyncTask } from "../../hooks/useAsyncTask";
 import type { ClaudeCodeSmokeResponse } from "../../../../../contracts/claude-code-smoke";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -47,21 +46,8 @@ function RuntimeProfile({ smoke }: { smoke: ClaudeCodeSmokeResponse }) {
 }
 
 export function ClaudeCodeSmokePanel() {
-  const [smoke, setSmoke] = useState<ClaudeCodeSmokeResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleLoad() {
-    setLoading(true);
-    setError(null);
-    try {
-      setSmoke(await getClaudeCodeSmoke());
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const smokeTask = useAsyncTask<ClaudeCodeSmokeResponse>(getClaudeCodeSmoke);
+  const smoke = smokeTask.data;
 
   return (
     <Card>
@@ -78,14 +64,16 @@ export function ClaudeCodeSmokePanel() {
         <Button
           size="sm"
           variant="secondary"
-          loading={loading}
-          onClick={() => void handleLoad()}
+          loading={smokeTask.loading}
+          onClick={() => void smokeTask.run()}
         >
           Load fixture
         </Button>
       </div>
 
-      {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+      {smokeTask.error && (
+        <p className="mt-3 text-xs text-red-400">{smokeTask.error}</p>
+      )}
 
       {smoke && (
         <div className="mt-4 space-y-3">

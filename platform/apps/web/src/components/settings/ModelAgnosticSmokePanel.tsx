@@ -1,6 +1,5 @@
-import { useState } from "react";
-
 import { getModelAgnosticSmoke } from "../../api/model-agnostic-smoke";
+import { useAsyncTask } from "../../hooks/useAsyncTask";
 import type { ModelAgnosticSmokeResponse } from "../../../../../contracts/model-agnostic-smoke";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -46,21 +45,10 @@ function ProfileBlock({
 }
 
 export function ModelAgnosticSmokePanel() {
-  const [smoke, setSmoke] = useState<ModelAgnosticSmokeResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleLoad() {
-    setLoading(true);
-    setError(null);
-    try {
-      setSmoke(await getModelAgnosticSmoke());
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const smokeTask = useAsyncTask<ModelAgnosticSmokeResponse>(
+    getModelAgnosticSmoke,
+  );
+  const smoke = smokeTask.data;
 
   return (
     <Card>
@@ -77,14 +65,16 @@ export function ModelAgnosticSmokePanel() {
         <Button
           size="sm"
           variant="secondary"
-          loading={loading}
-          onClick={() => void handleLoad()}
+          loading={smokeTask.loading}
+          onClick={() => void smokeTask.run()}
         >
           Load fixture
         </Button>
       </div>
 
-      {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+      {smokeTask.error && (
+        <p className="mt-3 text-xs text-red-400">{smokeTask.error}</p>
+      )}
 
       {smoke && (
         <div className="mt-4 space-y-3">
