@@ -157,10 +157,7 @@ export async function prepareAuthenticatedWebSocketSession(request: IncomingMess
   request.url = `${requestUrl.pathname}${requestUrl.search}`;
 
   return {
-    headers: internalServiceRoleHeaders({
-      ...contextHeaders(),
-      ...(request.headers.cookie ? { cookie: String(request.headers.cookie) } : {}),
-    }),
+    headers: internalServiceRoleHeaders(contextHeaders()),
     authUserId: auth.userId,
     userId: appUser.id,
   };
