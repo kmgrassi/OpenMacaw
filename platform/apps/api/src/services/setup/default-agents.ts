@@ -41,6 +41,7 @@ import {
 import { mapDefaultAgentStatus, mapSetupAgent, mapWorkspace } from "./mappers.js";
 import { DEFAULT_AGENT_ROLES, onboardingAgentDefaults, type OnboardingDefaultAgentRole } from "./defaults.js";
 import type { AgentRow, DefaultAgentStatus } from "./types.js";
+import { requireWorkspaceCredentialForProvider } from "./orchestration/configure-credentials.js";
 
 async function buildDefaultAgentStatus(
   accessToken: string,
@@ -357,12 +358,21 @@ export async function applyDefaultAgentCredentials(
     );
   }
 
-  const credential = {
-    provider: input.provider,
-    label: input.label,
-    keyName: input.keyName ?? getCredentialProviderMetadata(input.provider).envVar,
-    secret: input.secret,
-  };
+  // Either reuse a stored workspace credential (credentialId) or save the
+  // pasted secret as a new credential per agent. Credentials are shared by
+  // (provider, workspace), so a reused credential satisfies every selected
+  // agent without duplicating the key.
+  const reusedCredentialId = input.credentialId
+    ? await requireWorkspaceCredentialForProvider(input.credentialId, input.workspaceId, input.provider)
+    : null;
+  const credential = input.secret
+    ? {
+        provider: input.provider,
+        label: input.label,
+        keyName: input.keyName ?? getCredentialProviderMetadata(input.provider).envVar,
+        secret: input.secret,
+      }
+    : null;
 
   for (const agentId of agentIds) {
     const role = roleByAgentId.get(agentId);
@@ -390,13 +400,18 @@ export async function applyDefaultAgentCredentials(
 
     await updateAgentRuntimeDefaults(accessToken, agent.id, defaults.model, toolPolicy);
 
-    const savedCredential = await createAgentCredential({
-      agentId: agent.id,
-      workspaceId: input.workspaceId,
-      userId,
-      credentialKey: buildCredentialJson(credential),
-      accessToken,
-    });
+    const credentialId =
+      reusedCredentialId ??
+      (
+        await createAgentCredential({
+          agentId: agent.id,
+          workspaceId: input.workspaceId,
+          userId,
+          credentialKey: buildCredentialJson(credential!),
+          accessToken,
+        })
+      )?.id ??
+      null;
     // The credential row only points to the agent; runtime resolution
     // reads `routing_rule` to find which credential to use. Without a
     // matching routing rule, the platform API reports "no credential
@@ -408,14 +423,14 @@ export async function applyDefaultAgentCredentials(
     // comes from the canonical `DEFAULT_RUNNER_KIND_BY_AGENT_TYPE`
     // map, so the rule we write here agrees with the gateway_config
     // that `writeGatewayConfigForDefaultAgent` writes next.
-    if (savedCredential?.id) {
+    if (credentialId) {
       await upsertAgentCredentialReferenceRule({
         agentId: agent.id,
         workspaceId: input.workspaceId,
         runnerKind: defaults.runnerKind,
         provider: input.provider,
         model: defaults.model,
-        credentialRef: { type: "credential_id", value: savedCredential.id },
+        credentialRef: { type: "credential_id", value: credentialId },
       });
     }
 
