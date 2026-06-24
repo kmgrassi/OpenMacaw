@@ -450,6 +450,7 @@ describe("launcher runtime proxy integration", () => {
         ["platform.v1", `bearer.${accessToken}`],
         {
           headers: {
+            cookie: "sb-access-token=test-cookie; other=value",
             "x-trace-id": "trc-ws-integration",
             "x-request-id": "req-ws-integration",
           },
@@ -490,6 +491,7 @@ describe("launcher runtime proxy integration", () => {
         "x-trace-id": "trc-ws-integration",
         "x-request-id": "req-ws-integration",
       });
+      expect((launcherWsHeaders as IncomingMessage["headers"] | null)?.cookie).toBeUndefined();
 
       const wsLogs = capturedLogs.filter((entry) => typeof entry.event === "string" && entry.connection_id);
       const connectionIds = new Set(wsLogs.map((entry) => entry.connection_id));
