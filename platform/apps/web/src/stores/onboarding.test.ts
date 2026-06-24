@@ -33,6 +33,31 @@ describe("onboarding state migration", () => {
       },
     });
   });
+
+  it("keeps only persisted fields that match the onboarding store types", () => {
+    expect(
+      sanitizePersistedOnboardingEnvelope({
+        version: 1,
+        state: {
+          currentCard: "launch",
+          path: "elsewhere",
+          provider: "openai",
+          selectedAgentIds: ["planning-agent", 7],
+          localEndpoint: "http://127.0.0.1:11434/v1",
+          localModel: 12,
+          localRepositoryPath: "/tmp/openmacaw",
+        },
+      }),
+    ).toEqual({
+      version: 1,
+      state: {
+        currentCard: "launch",
+        provider: "openai",
+        localEndpoint: "http://127.0.0.1:11434/v1",
+        localRepositoryPath: "/tmp/openmacaw",
+      },
+    });
+  });
 });
 
 describe("configStepForPath", () => {
