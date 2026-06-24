@@ -334,6 +334,8 @@ async function mintGitHubInstallationTokenImpl(input: {
 }
 
 const REPO_SLUG_PATTERN = /^[^/\s]+\/[^/\s]+$/;
+const GITHUB_PULLS_PER_PAGE = 100;
+const GITHUB_PULLS_MAX_PAGES = 20;
 
 const GitHubPullRequestApiEntrySchema = z.object({
   number: z.number().int(),
@@ -397,49 +399,32 @@ async function listInstallationPullRequestsImpl(input: {
     nowMs: input.nowMs,
   });
 
-  const response = await fetchFn(
-    `${minted.apiBaseUrl}/repos/${repo}/pulls?state=${encodeURIComponent(state)}&per_page=50`,
-    {
-      method: "GET",
-      headers: {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${minted.tokenValue}`,
-        "x-github-api-version": "2022-11-28",
+  // Follow pagination to exhaustion so a cloud agent inspecting repo state
+  // never silently misses PRs beyond the first page. PER_PAGE is GitHub's max;
+  // MAX_PAGES is a runaway backstop far above any realistic open-PR count.
+  const entries: Array<z.infer<typeof GitHubPullRequestApiEntrySchema>> = [];
+  for (let page = 1; page <= GITHUB_PULLS_MAX_PAGES; page += 1) {
+    const response = await fetchFn(
+      `${minted.apiBaseUrl}/repos/${repo}/pulls?state=${encodeURIComponent(state)}&per_page=${GITHUB_PULLS_PER_PAGE}&page=${page}`,
+      {
+        method: "GET",
+        headers: {
+          accept: "application/vnd.github+json",
+          authorization: `Bearer ${minted.tokenValue}`,
+          "x-github-api-version": "2022-11-28",
+        },
       },
-    },
-  );
-
-  if (!response.ok) {
-    if (response.status === 404) {
-      // The installation token minted (App is installed) but the repo isn't
-      // visible to it — not selected for the installation, or wrong name.
-      throw new GitHubAppCredentialError(
-        "github_app_repo_not_accessible",
-        `The GitHub App cannot access ${repo} (it is not part of the installation, or the name is wrong)`,
-        {
-          status: 422,
-          remediation: `Add ${repo} to the GitHub App installation (or verify the owner/name): ${installationsSettingsUrl(minted.webBaseUrl)}`,
-        },
-      );
-    }
-    if (response.status === 403) {
-      throw new GitHubAppCredentialError(
-        "github_app_forbidden",
-        `The GitHub App lacks permission to read pull requests on ${repo}`,
-        {
-          status: 403,
-          remediation:
-            "Grant the GitHub App the 'Pull requests: Read' repository permission, then re-approve the installation.",
-        },
-      );
-    }
-    throw new GitHubAppCredentialError(
-      "github_app_pull_request_list_failed",
-      `GitHub rejected pull request listing with status ${response.status}`,
     );
+
+    if (!response.ok) {
+      throw pullRequestListError(response.status, repo, minted.webBaseUrl);
+    }
+
+    const pageEntries = GitHubPullRequestApiListSchema.parse(await response.json());
+    entries.push(...pageEntries);
+    if (pageEntries.length < GITHUB_PULLS_PER_PAGE) break;
   }
 
-  const entries = GitHubPullRequestApiListSchema.parse(await response.json());
   return GitHubAppPullRequestListResponseSchema.parse({
     repo,
     state,
@@ -453,6 +438,36 @@ async function listInstallationPullRequestsImpl(input: {
       updatedAt: entry.updated_at,
     })),
   });
+}
+
+function pullRequestListError(status: number, repo: string, webBaseUrl: string): GitHubAppCredentialError {
+  if (status === 404) {
+    // The installation token minted (App is installed) but the repo isn't
+    // visible to it — not selected for the installation, or wrong name.
+    return new GitHubAppCredentialError(
+      "github_app_repo_not_accessible",
+      `The GitHub App cannot access ${repo} (it is not part of the installation, or the name is wrong)`,
+      {
+        status: 422,
+        remediation: `Add ${repo} to the GitHub App installation (or verify the owner/name): ${installationsSettingsUrl(webBaseUrl)}`,
+      },
+    );
+  }
+  if (status === 403) {
+    return new GitHubAppCredentialError(
+      "github_app_forbidden",
+      `The GitHub App lacks permission to read pull requests on ${repo}`,
+      {
+        status: 403,
+        remediation:
+          "Grant the GitHub App the 'Pull requests: Read' repository permission, then re-approve the installation.",
+      },
+    );
+  }
+  return new GitHubAppCredentialError(
+    "github_app_pull_request_list_failed",
+    `GitHub rejected pull request listing with status ${status}`,
+  );
 }
 
 export const resourceCredentialInternalsForTests = {

@@ -74,10 +74,14 @@ export function registerResourceCredentialRoutes(app: Express) {
         const workspaceId = requireQueryParam(req, "workspaceId");
         const repo = requireQueryParam(req, "repo");
         const stateParam = req.query.state;
-        const state =
-          typeof stateParam === "string" && stateParam.trim().length > 0
-            ? GitHubPullRequestStateSchema.parse(stateParam.trim())
-            : undefined;
+        let state: ReturnType<typeof GitHubPullRequestStateSchema.parse> | undefined;
+        if (typeof stateParam === "string" && stateParam.trim().length > 0) {
+          const parsedState = GitHubPullRequestStateSchema.safeParse(stateParam.trim());
+          if (!parsedState.success) {
+            throw new ApiRouteError(400, "invalid_pull_request_state", "state must be one of: open, closed, all");
+          }
+          state = parsedState.data;
+        }
 
         await requireWorkspaceAccess(userId, workspaceId);
         const result = await listInstallationPullRequests({
