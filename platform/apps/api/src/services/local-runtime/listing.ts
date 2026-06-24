@@ -18,6 +18,7 @@ import {
 import {
   LOCAL_RUNTIME_REGISTRATION_RULE_NAME_PREFIX,
   matchValue,
+  requireMatchValue,
   registrationKindForRule,
   REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS,
 } from "./routing-metadata.js";
@@ -107,7 +108,12 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
   const parsedLiveModels = parseSupabaseRows("list local runtime live models", LocalRuntimeModelRowSchema, liveModels);
 
   const agentIds = Array.from(
-    new Set(ruleMatches.filter((match) => match.kind === "agent_id").map((match) => match.value)),
+    new Set(
+      ruleMatches
+        .filter((match) => match.kind === "agent_id")
+        .map((match) => match.value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
   );
   const { data: agents, error: agentsError } =
     agentIds.length > 0
@@ -135,12 +141,17 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
     if (!machineId) continue;
     if (!machinesById.has(machineId)) continue;
     const ruleMatchesForRule = matchesByRule.get(rule.id) ?? [];
-    const endpoint = matchValue(ruleMatchesForRule, "local_endpoint", "url");
-    if (!endpoint) continue;
+    const endpoint = requireMatchValue(
+      ruleMatchesForRule,
+      "local_endpoint",
+      "url",
+      "list local runtime routing metadata",
+    );
     const registrationKind = registrationKindForRule(rule);
     const assignedAgentIds = ruleMatchesForRule
       .filter((match) => match.kind === "agent_id")
-      .map((match) => match.value);
+      .map((match) => match.value?.trim())
+      .filter((value): value is string => Boolean(value));
     const workspaceRoot = matchValue(ruleMatchesForRule, "local_workspace_root", "path");
     if (workspaceRoot && !workspaceRootByMachine.has(machineId)) {
       workspaceRootByMachine.set(machineId, workspaceRoot);

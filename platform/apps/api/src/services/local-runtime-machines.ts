@@ -1,10 +1,10 @@
-import type { PostgrestError } from "@supabase/supabase-js";
 import type { LocalRuntimeRegistrationRequest } from "../../../../contracts/local-runtime.js";
 import {
   LocalRuntimeEventsResponseSchema,
   LocalRuntimeTestDispatchResponseSchema,
 } from "../../../../contracts/local-runtime.js";
 import { ApiRouteError } from "../http.js";
+import { narrowSupabase } from "../lib/narrow-supabase.js";
 import { parseNullableSupabaseRow, parseSupabaseRows } from "../lib/supabase-row-parsers.js";
 import { assertSupabaseSuccess } from "../lib/supabase-errors.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
@@ -32,6 +32,8 @@ import {
   LocalRuntimeModelRowSchema,
   RoutingRuleIdRowSchema,
   RoutingRuleMatchRowSchema,
+  type LocalRuntimeEventRowRecord,
+  type LocalRuntimeModelRowRecord,
 } from "./local-runtime/row-schemas.js";
 import {
   localOrchestratorRuntimeTarget,
@@ -56,22 +58,6 @@ type RegisterLocalRuntimeInput = {
   workspaceId: string;
   userId: string;
   request: LocalRuntimeRegistrationRequest;
-};
-
-type LocalRuntimeTableQuery = {
-  select(columns: string): LocalRuntimeTableQuery;
-  eq(column: string, value: string): LocalRuntimeTableQuery;
-  order(column: string, options: { ascending: boolean }): LocalRuntimeTableQuery;
-  limit(limit: number): Promise<{ data: unknown[] | null; error: PostgrestError | null }>;
-  then<TResult1 = { data: unknown[] | null; error: PostgrestError | null }>(
-    onfulfilled?:
-      | ((value: { data: unknown[] | null; error: PostgrestError | null }) => TResult1 | PromiseLike<TResult1>)
-      | null,
-  ): Promise<TResult1>;
-};
-
-type LocalRuntimeUntypedSupabase = {
-  from(table: "local_runtime_event" | "local_runtime_model"): LocalRuntimeTableQuery;
 };
 
 export async function registerLocalRuntimeForWorkspace({ workspaceId, userId, request }: RegisterLocalRuntimeInput) {
@@ -182,6 +168,7 @@ export async function listLocalRuntimesForWorkspace(workspaceId: string) {
 export async function listLocalRuntimeEventsForWorkspace(workspaceId: string, machineId: string, limit: number) {
   const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
   const supabase = getServiceRoleSupabase();
+  const narrowedSupabase = narrowSupabase(supabase);
 
   const { data: machine, error: machineError } = await supabase
     .from("local_runtime_machine")
@@ -195,8 +182,8 @@ export async function listLocalRuntimeEventsForWorkspace(workspaceId: string, ma
     throw new ApiRouteError(404, "local_runtime_machine_not_found", "Local runtime machine was not found");
   }
 
-  const { data: events, error: eventsError } = await (supabase as never as LocalRuntimeUntypedSupabase)
-    .from("local_runtime_event")
+  const { data: events, error: eventsError } = await narrowedSupabase
+    .from<LocalRuntimeEventRowRecord>("local_runtime_event")
     .select("id, machine_id, workspace_id, kind, detail, created_at")
     .eq("workspace_id", workspaceId)
     .eq("machine_id", machineId)
@@ -208,7 +195,11 @@ export async function listLocalRuntimeEventsForWorkspace(workspaceId: string, ma
   }
 
   return LocalRuntimeEventsResponseSchema.parse({
-    events: parseSupabaseRows("list local runtime events", LocalRuntimeEventRowSchema, events).map((event) => ({
+    events: parseSupabaseRows(
+      "list local runtime events",
+      LocalRuntimeEventRowSchema,
+      Array.isArray(events) ? events : events ? [events] : null,
+    ).map((event) => ({
       id: event.id,
       machineId: event.machine_id,
       workspaceId: event.workspace_id,
@@ -225,6 +216,7 @@ export async function testLocalRuntimeDispatchForWorkspace(
   launcherRequest: LauncherRequest,
 ) {
   const supabase = getServiceRoleSupabase();
+  const narrowedSupabase = narrowSupabase(supabase);
   const details = await getLocalRuntimeMachineDetails(workspaceId, machineId);
   const runner = details.runners.find((candidate) => candidate.kind === "openai_compatible") ?? details.runners[0];
   if (!runner) {
@@ -249,8 +241,8 @@ export async function testLocalRuntimeDispatchForWorkspace(
   );
   const helperConnected = helperOnline(parsedMachine?.last_seen_at);
 
-  const { data: models, error: modelsError } = await (supabase as never as LocalRuntimeUntypedSupabase)
-    .from("local_runtime_model")
+  const { data: models, error: modelsError } = await narrowedSupabase
+    .from<LocalRuntimeModelRowRecord>("local_runtime_model")
     .select("id, machine_id, runner_kind, model, provider, capabilities, last_advertised_at")
     .eq("machine_id", machineId);
 
@@ -261,7 +253,7 @@ export async function testLocalRuntimeDispatchForWorkspace(
   const advertisedModels = parseSupabaseRows(
     "list local runtime models for test dispatch",
     LocalRuntimeModelRowSchema,
-    models,
+    Array.isArray(models) ? models : models ? [models] : null,
   );
   const modelAdvertised = advertisedModels.some(
     (model) =>
@@ -318,7 +310,10 @@ async function agentIdAssignedToMachineRules(workspaceId: string, ruleIds: strin
     RoutingRuleMatchRowSchema,
     matches,
   );
-  return parsed.map((match) => match.value.trim()).find((value) => value.length > 0) ?? null;
+  return (
+    parsed.map((match) => match.value?.trim()).find((value): value is string => Boolean(value && value.length > 0)) ??
+    null
+  );
 }
 
 function diagnosticsFailure(machineId: string, code: string, message: string, detail: Record<string, unknown> | null) {
