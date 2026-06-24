@@ -125,6 +125,10 @@ export const ROUTES = {
   openaiCodexOAuthPoll: "/api/credentials/openai-codex/oauth/poll",
   openaiCodexOAuthImport: "/api/credentials/openai-codex/oauth/import",
 
+  githubAppInstallations: "/api/resource-credentials/github-app-installations",
+  githubAppInstallationPulls: (credentialId: string) =>
+    `/api/resource-credentials/github-app-installations/${encodeURIComponent(credentialId)}/pulls`,
+
   /** Manual work-item ingest into canonical task/work_items */
   workItems: WORK_ITEMS_PREFIX,
   workspaceWorkItems: (workspaceId: string) =>

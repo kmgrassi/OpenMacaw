@@ -16,6 +16,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { path: "/settings/agents", label: "Agents" },
       { path: "/settings/manager", label: "Manager Agent" },
       { path: "/settings/models", label: "Models & providers" },
+      { path: "/settings/connections", label: "Connections" },
       {
         path: "/settings/channels",
         label: "Channels",

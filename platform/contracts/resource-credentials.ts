@@ -43,6 +43,10 @@ export const GitHubAppInstallationCredentialResponseSchema = z.object({
   credential: GitHubAppInstallationCredentialSchema,
 });
 
+export const GitHubAppInstallationCredentialListResponseSchema = z.object({
+  credentials: z.array(GitHubAppInstallationCredentialSchema),
+});
+
 export const GitHubPullRequestStateSchema = z.enum(["open", "closed", "all"]);
 
 export const GitHubPullRequestSummarySchema = z.object({
@@ -72,6 +76,9 @@ export type GitHubAppInstallationCredential = z.infer<
 >;
 export type GitHubAppInstallationCredentialResponse = z.infer<
   typeof GitHubAppInstallationCredentialResponseSchema
+>;
+export type GitHubAppInstallationCredentialListResponse = z.infer<
+  typeof GitHubAppInstallationCredentialListResponseSchema
 >;
 export type GitHubPullRequestState = z.infer<
   typeof GitHubPullRequestStateSchema

@@ -1,6 +1,7 @@
 import type { Express } from "express";
 
 import {
+  GitHubAppInstallationCredentialListResponseSchema,
   GitHubAppInstallationCredentialRequestSchema,
   GitHubAppInstallationCredentialResponseSchema,
   GitHubAppPullRequestListResponseSchema,
@@ -9,6 +10,7 @@ import {
 import { ApiRouteError, apiRoute, requireQueryParam, requireRouteParam } from "../http.js";
 import {
   GitHubAppCredentialError,
+  listGitHubAppInstallationCredentialsForWorkspace,
   listInstallationPullRequests,
   saveGitHubAppInstallationCredentialForWorkspace,
 } from "../services/resource-credentials.js";
@@ -61,6 +63,19 @@ export function registerResourceCredentialRoutes(app: Express) {
             credential,
           }),
         );
+      },
+    }),
+  );
+
+  app.get(
+    "/api/resource-credentials/github-app-installations",
+    apiRoute({
+      requireAuth: true,
+      handler: async ({ req, res, userId }) => {
+        const workspaceId = requireQueryParam(req, "workspaceId");
+        await requireWorkspaceAccess(userId, workspaceId);
+        const credentials = await listGitHubAppInstallationCredentialsForWorkspace(workspaceId);
+        return res.status(200).json(GitHubAppInstallationCredentialListResponseSchema.parse({ credentials }));
       },
     }),
   );

@@ -79,6 +79,11 @@ const ModelsSection = lazy(async () => {
   return { default: module.ModelsSection };
 });
 
+const ConnectionsSection = lazy(async () => {
+  const module = await import("./components/settings/ConnectionsSection");
+  return { default: module.ConnectionsSection };
+});
+
 const SessionsSection = lazy(async () => {
   const module = await import("./components/settings/SessionsSection");
   return { default: module.SessionsSection };
@@ -295,6 +300,7 @@ function AppRoutes() {
           <Route path="manager" element={<ManagerAgentSection />} />
           <Route path="channels" element={<ChannelsSection />} />
           <Route path="models" element={<ModelsSection />} />
+          <Route path="connections" element={<ConnectionsSection />} />
           <Route path="sessions" element={<SessionsSection />} />
           <Route path="memory" element={<MemorySection />} />
           <Route path="skills" element={<SkillsSection />} />
