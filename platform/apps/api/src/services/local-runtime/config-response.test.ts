@@ -68,6 +68,7 @@ describe("buildRegistrationConfig", () => {
     expect(
       buildRegistrationConfig({
         workspaceId: "workspace-1",
+        machineId: "machine-1",
         displayName: "qwen3-coder",
         workspaceRoot: "/tmp/workspace",
         token: "token-1",
@@ -83,6 +84,7 @@ describe("buildRegistrationConfig", () => {
         ],
       }),
     ).toMatchObject({
+      machineId: "machine-1",
       runtimeEndpoint: "ws://localhost:9999",
       workspaceId: "workspace-1",
       token: "token-1",
@@ -127,11 +129,14 @@ describe("buildLocalRuntimeConfigResponse", () => {
     expect(response.token).toBeNull();
     expect(response.tokenAvailable).toBe(false);
     expect(response.configSnippet).toContain('token = "<rotate-token-to-generate-a-new-value>"');
+    expect(response.configSnippet).toContain('id = "machine-1"');
     expect(response.configSnippet).toContain('endpoint = "ws://127.0.0.1:4000"');
     expect(response.setupCommand).toContain('GOBIN="$(go env GOBIN)"');
     expect(response.setupCommand).toContain('HELPER_BIN="${GOBIN:-$GOPATH/bin}/local-runtime-helper"');
     expect(response.setupCommand).toContain('"$HELPER_BIN"');
     expect(response.setupCommand).toContain("'register'");
+    expect(response.setupCommand).toContain("--machine-id");
+    expect(response.setupCommand).toContain("machine-1");
     expect(response.setupCommand).toContain("--openai-compatible-model");
     expect(response.setupCommand).toContain("<rotate-token-to-generate-a-new-value>");
   });

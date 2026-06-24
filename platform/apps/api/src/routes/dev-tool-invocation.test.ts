@@ -53,7 +53,7 @@ describe("dev tool invocation routes", () => {
   });
 
   it("requires auth", async () => {
-    const response = await fetch(`${baseUrl}/api/dev/tools/repo.read_file/invoke`, {
+    const response = await fetch(`${baseUrl}/api/dev/tools/shell.exec/invoke`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ agentId, workspaceId, input: { path: "package.json" } }),
@@ -66,7 +66,7 @@ describe("dev tool invocation routes", () => {
   it("is unavailable outside development", async () => {
     process.env.NODE_ENV = "production";
 
-    const response = await fetch(`${baseUrl}/api/dev/tools/repo.read_file/invoke`, {
+    const response = await fetch(`${baseUrl}/api/dev/tools/shell.exec/invoke`, {
       method: "POST",
       headers: { authorization: "Bearer test-token", "content-type": "application/json" },
       body: JSON.stringify({ agentId, workspaceId, input: { path: "package.json" } }),
@@ -82,7 +82,7 @@ describe("dev tool invocation routes", () => {
       agentId,
       workspaceId,
       toolId,
-      toolSlug: "repo.read_file",
+      toolSlug: "shell.exec",
       toolCallId: "dev-tool-call",
       executionProfile: {
         runnerKind: "local_model_coding",
@@ -95,7 +95,7 @@ describe("dev tool invocation routes", () => {
         correlationId: null,
         eventType: "dev_tool_invocation",
         messageKind: "tool_result",
-        toolSlug: "repo.read_file",
+        toolSlug: "shell.exec",
         status: "completed",
         approvalState: "not_required",
         commandActions: ["read"],
@@ -110,7 +110,7 @@ describe("dev tool invocation routes", () => {
       },
     });
 
-    const response = await fetch(`${baseUrl}/api/dev/tools/repo.read_file/invoke`, {
+    const response = await fetch(`${baseUrl}/api/dev/tools/shell.exec/invoke`, {
       method: "POST",
       headers: { authorization: "Bearer test-token", "content-type": "application/json" },
       body: JSON.stringify({ agentId, workspaceId, input: { path: "package.json" } }),
@@ -120,7 +120,7 @@ describe("dev tool invocation routes", () => {
     await expect(response.json()).resolves.toMatchObject({
       agentId,
       workspaceId,
-      toolSlug: "repo.read_file",
+      toolSlug: "shell.exec",
       observation: {
         status: "completed",
         commandActions: ["read"],
@@ -129,7 +129,7 @@ describe("dev tool invocation routes", () => {
     expect(invokeDevTool).toHaveBeenCalledWith({
       accessToken: "test-token",
       userId,
-      toolSlug: "repo.read_file",
+      toolSlug: "shell.exec",
       request: {
         agentId,
         workspaceId,

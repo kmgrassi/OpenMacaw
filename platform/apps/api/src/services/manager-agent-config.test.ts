@@ -41,6 +41,7 @@ describe("manager agent config service", () => {
       name: "Manager",
       workspace_id: workspaceId,
       type: "manager",
+      context: null,
       model_settings: {},
       tool_policy: {},
     });

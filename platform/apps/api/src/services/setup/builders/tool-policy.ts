@@ -4,6 +4,7 @@ import {
   DEFAULT_PLANNING_TOOL_SLUGS,
   AGENT_TOOL_GRANT_TOOL_SLUGS,
   DEFAULT_MANAGER_TOOL_SLUGS,
+  DEFAULT_LEARNING_TOOL_SLUGS,
   GIT_COMMAND_TOOL_SLUG,
   ROUTER_TOOL_SLUGS,
   SCHEDULED_TASK_TOOL_SLUGS,
@@ -36,13 +37,20 @@ export function routerToolPolicyDefaults(): ToolPolicy {
   });
 }
 
+export function learningToolPolicyDefaults(): ToolPolicy {
+  return ToolPolicySchema.parse({
+    learning: {
+      cadence: "daily",
+      sampler: "random_recent_window",
+      tools: DEFAULT_LEARNING_TOOL_SLUGS,
+    },
+  });
+}
+
 export function codingToolPolicyDefaults(): ToolPolicy {
   return ToolPolicySchema.parse({
     coding: {
       tools: [
-        "repo.read_file",
-        "repo.list",
-        "repo.search",
         GIT_COMMAND_TOOL_SLUG,
         "shell.exec",
         "apply_patch",
@@ -91,10 +99,12 @@ export function buildToolPolicy(input: SetupRequest | SetupUpdateRequest, type =
       ? plannerToolPolicyDefaults()
       : type === "manager"
         ? managerToolPolicyDefaults()
-        : type === "router"
-          ? routerToolPolicyDefaults()
-          : type === "custom"
-            ? customToolPolicyDefaults()
-            : {};
+        : type === "learning"
+          ? learningToolPolicyDefaults()
+          : type === "router"
+            ? routerToolPolicyDefaults()
+            : type === "custom"
+              ? customToolPolicyDefaults()
+              : {};
   return ToolPolicySchema.parse(mergeRecords(defaults, input.toolPolicy));
 }

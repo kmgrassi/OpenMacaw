@@ -68,6 +68,7 @@ type SetupTestDatabase = {
   gatewayConfigs: Array<Record<string, unknown>>;
   gatewayConfigVersions: Array<Record<string, unknown>>;
   gatewayConfigStates: Array<Record<string, unknown>>;
+  skills: Array<Record<string, unknown>>;
   engineInstances: EngineRow[];
 };
 
@@ -200,6 +201,7 @@ function createTestDatabase(): SetupTestDatabase {
     gatewayConfigs: [],
     gatewayConfigVersions: [],
     gatewayConfigStates: [],
+    skills: [],
     engineInstances: [],
   };
 }
@@ -301,6 +303,18 @@ async function startSupabaseServer(db: SetupTestDatabase): Promise<ServerBundle>
       const agentId = url.searchParams.get("agent_id")?.replace(/^eq\./, "");
       const rows = agentId ? db.credentials.filter((credential) => credential.agent_id === agentId) : db.credentials;
       postgrestJson(req, res, 200, rows);
+      return;
+    }
+
+    if (url.pathname === "/rest/v1/skill" && req.method === "GET") {
+      const agentId = parseEqFilter(url.searchParams.get("agent_id"));
+      const workspaceId = parseEqFilter(url.searchParams.get("workspace_id"));
+      const status = parseEqFilter(url.searchParams.get("status"));
+      let rows = db.skills;
+      if (agentId) rows = rows.filter((skill) => skill.agent_id === agentId);
+      if (workspaceId) rows = rows.filter((skill) => skill.workspace_id === workspaceId);
+      if (status) rows = rows.filter((skill) => skill.status === status);
+      postgrestJson(req, res, 200, applyLimit(sortByName(rows, url), url));
       return;
     }
 
@@ -888,6 +902,11 @@ function sortByCreatedAt<T extends Record<string, unknown>>(rows: T[], url: URL)
 function sortByPosition<T extends Record<string, unknown>>(rows: T[], url: URL) {
   if (url.searchParams.get("order") !== "position.asc") return rows;
   return [...rows].sort((left, right) => Number(left.position ?? 0) - Number(right.position ?? 0));
+}
+
+function sortByName<T extends Record<string, unknown>>(rows: T[], url: URL) {
+  if (url.searchParams.get("order") !== "name.asc") return rows;
+  return [...rows].sort((left, right) => String(left.name ?? "").localeCompare(String(right.name ?? "")));
 }
 
 function restoreEnv(previousEnv: Record<string, string | undefined>) {

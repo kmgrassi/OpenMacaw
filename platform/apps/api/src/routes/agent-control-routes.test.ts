@@ -56,6 +56,10 @@ vi.mock("../services/runtime-dispatch-context.js", () => ({
   buildRuntimeDispatchContext: vi.fn(),
 }));
 
+vi.mock("../repositories/skills.js", () => ({
+  resolveApprovedSkillsSnapshot: vi.fn(),
+}));
+
 vi.mock("../services/agent-tools/access.js", () => ({
   assertAgentAccess: vi.fn(),
 }));
@@ -75,6 +79,7 @@ const { assertRuntimePrepareSupported } = vi.mocked(await import("../services/ru
 const { attachRuntimeDispatchContext, buildRuntimeDispatchContext } = vi.mocked(
   await import("../services/runtime-dispatch-context.js"),
 );
+const { resolveApprovedSkillsSnapshot } = vi.mocked(await import("../repositories/skills.js"));
 const { assertAgentAccess } = vi.mocked(await import("../services/agent-tools/access.js"));
 const { assertCredentialReferenceBelongsToWorkspace } = vi.mocked(await import("./stored-agent-credentials/authz.js"));
 
@@ -197,6 +202,20 @@ describe("agent control routes", () => {
         tool_assignments: dispatchContext.toolAssignments,
       };
     });
+    resolveApprovedSkillsSnapshot.mockResolvedValue({
+      version: 1,
+      agentId: targetAgentId,
+      workspaceId,
+      skills: [
+        {
+          id: "77777777-7777-4777-8777-777777777777",
+          name: "api-debugging",
+          description: "Debug API failures",
+          body: "Inspect logs before editing.",
+          updatedAt: "2026-06-20T00:00:00.000Z",
+        },
+      ],
+    });
     assertAgentAccess.mockResolvedValue({ agent: { id: targetAgentId }, workspaceId } as never);
     assertCredentialReferenceBelongsToWorkspace.mockResolvedValue("credential-1");
     launcherClient.startAgent = vi.fn();
@@ -243,6 +262,35 @@ describe("agent control routes", () => {
       },
     });
     expect(createAgentControlMessage).toHaveBeenCalledWith(expect.objectContaining({ targetAgentId, observerAgentId }));
+  });
+
+  it("starts launcher-managed agents with approved skills snapshot", async () => {
+    launcherClient.startAgent = vi.fn().mockResolvedValue({
+      status: 202,
+      data: { data: orchestratorRow({ id: "orch-started" }) },
+    });
+
+    const response = await fetch(`${baseUrl}/api/agents/${targetAgentId}/start`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ trace_id: "trace-1" }),
+    });
+
+    expect(response.status).toBe(202);
+    expect(resolveApprovedSkillsSnapshot).toHaveBeenCalledWith({ agentId: targetAgentId, workspaceId });
+    expect(launcherClient.startAgent).toHaveBeenCalledWith(
+      targetAgentId,
+      expect.objectContaining({
+        trace_id: "trace-1",
+        skills_snapshot: expect.objectContaining({
+          version: 1,
+          skills: [expect.objectContaining({ name: "api-debugging" })],
+        }),
+      }),
+    );
   });
 
   it("queues non-restart remediation requests without launcher dispatch", async () => {
@@ -547,5 +595,30 @@ describe("agent control routes", () => {
       workspaceId,
       credentialRef: { type: "credential_id", value: "credential-1" },
     });
+  });
+
+  it("rejects identity-scoped worker bridge launches that try to override cwd", async () => {
+    launcherClient.createWorkerBridgeSession = vi.fn();
+
+    const response = await fetch(`${baseUrl}/api/worker-bridge/sessions`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        kind: "codex",
+        agent_id: targetAgentId,
+        workspace_id: workspaceId,
+        credential_id: "credential-1",
+        cwd: "/tmp/other-workspace",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "worker_bridge_identity_workspace_forbidden" },
+    });
+    expect(launcherClient.createWorkerBridgeSession).not.toHaveBeenCalled();
   });
 });

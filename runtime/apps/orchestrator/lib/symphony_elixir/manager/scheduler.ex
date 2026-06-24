@@ -614,6 +614,7 @@ defmodule SymphonyElixir.Manager.Scheduler do
       :credential_id,
       :provider,
       :model,
+      :agent_context,
       :tool_definitions_hash,
       :config_hash,
       :config_version
@@ -718,6 +719,7 @@ defmodule SymphonyElixir.Manager.Scheduler do
       "user_id" => Map.get(profile, :user_id),
       "agent_type" => "manager",
       "tool_bundle" => "manager",
+      "agent_context" => Map.get(profile, :context),
       "base_url" => default_base_url(profile),
       "trace_id" => Process.get(:symphony_trace_id)
     }
@@ -775,6 +777,7 @@ defmodule SymphonyElixir.Manager.Scheduler do
       credential_alias: Map.get(profile, :credential_alias),
       provider: profile.provider,
       model: profile.model,
+      agent_context: Map.get(profile, :context),
       tool_definitions_hash: tool_definitions_hash(manager_tool_definitions(profile)),
       routing_rule_id: get_in(profile, [:source_metadata, "routing_rule_id"])
     }

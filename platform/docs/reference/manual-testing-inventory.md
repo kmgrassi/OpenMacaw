@@ -17,16 +17,16 @@ Use this alongside:
 
 Run the critical path in every environment under test:
 
-| Area | Local full stack | Hosted/staging | Production smoke |
-| --- | --- | --- | --- |
-| Process health | Required | Required | Required |
-| Auth and onboarding | Required | Required | Required |
-| Agent dashboard and chat | Required | Required | Required |
-| Settings read/write | Required | Required | Sampled |
-| Plans and work items | Required | Required | Sampled |
-| Manager scheduled work | Required when changed | Required when changed | Smoke only |
-| Local runtime helper | Required when changed | N/A unless relay target exists | N/A |
-| Deployment checks | N/A | Required | Required |
+| Area                     | Local full stack      | Hosted/staging                 | Production smoke |
+| ------------------------ | --------------------- | ------------------------------ | ---------------- |
+| Process health           | Required              | Required                       | Required         |
+| Auth and onboarding      | Required              | Required                       | Required         |
+| Agent dashboard and chat | Required              | Required                       | Required         |
+| Settings read/write      | Required              | Required                       | Sampled          |
+| Plans and work items     | Required              | Required                       | Sampled          |
+| Manager scheduled work   | Required when changed | Required when changed          | Smoke only       |
+| Local runtime helper     | Required when changed | N/A unless relay target exists | N/A              |
+| Deployment checks        | N/A                   | Required                       | Required         |
 
 For browser passes, test desktop and a narrow viewport. Verify there are no
 console errors, no request loops, no blank screens, and no overlapping or
@@ -135,6 +135,52 @@ Pass criteria:
 - Cloud and local paths both have clear progress, back, continue, and error
   states.
 - Completed onboarding routes the user to `/dashboard/:agentId`.
+
+### Onboarding resume and partial completion
+
+The app stores no `onboarding_completed` flag — `onboarding.required` is
+re-derived on every auth bootstrap from the planning/coding agents' resolved
+configuration. The client persists only the current step (`currentCard`,
+`path`, provider/local fields — never the API key) in `localStorage`
+(`harper-onboarding-flow`). These cases exercise what happens when the two
+layers disagree.
+
+Steps:
+
+1. Mid-step reload (cloud): choose the cloud path, land on the cloud-key card,
+   reload the tab before saving. Confirm you return to the cloud-key card with
+   the path preserved, and re-enter the (intentionally unpersisted) key.
+2. Mid-step reload (local): choose the local path, land on the relay card,
+   reload before connecting. Confirm you return to the relay card with the
+   endpoint/model fields preserved.
+3. Reload at launch after success: complete the cloud (or local) step so the
+   launch card appears, then reload. Confirm you return to the launch card and
+   are not bounced back to step 1.
+4. Partial completion: complete onboarding far enough that the planning/coding
+   agents are configured but launch is never clicked, then reopen `/`. Confirm
+   it routes straight to `/dashboard/:agentId` (launch is a runtime warm-up,
+   not a completion gate) and never duplicates agents on repeat loads.
+5. Completed re-entry: as a fully onboarded user, manually open `/onboarding`.
+   Confirm you are redirected to the dashboard rather than restarting setup.
+6. Resume nudge: while onboarding is still required, use the dashboard "Resume
+   setup" banner and confirm it returns you to the correct step.
+
+Pass criteria:
+
+- Reloading at any step resumes that step with prior selections intact (the
+  API key is the only field intentionally dropped).
+- Reaching the launch card and reloading does not discard progress or snap the
+  user back to "Choose path".
+- A user whose planning/coding agents are configured is treated as onboarded
+  on the next load, even if launch was never clicked.
+- Repeated auth bootstraps never create duplicate planning/coding/manager
+  agents.
+- A completed user cannot land back on `/onboarding`; the flow redirects to
+  the dashboard.
+- If a "Save key and continue" / "Connect relay and continue" action succeeds
+  at the HTTP layer but onboarding is still incomplete, the user sees an
+  explanatory error on the same step — not a silent reset to step 1. (See the
+  known launch-card reset defect tracked alongside this inventory.)
 
 ## App Navigation And Shell
 

@@ -24,6 +24,7 @@ defmodule SymphonyElixir.ExecutionProfileTest do
       assert profile["model"] == "claude-sonnet-test"
 
       assert ExecutionProfile.runner_config(profile, %{}) == %{
+               "agent_type" => "coding",
                "command" => "codex app-server",
                "credential_ref" => "credential-alias:anthropic",
                "model" => "claude-sonnet-test",
@@ -172,18 +173,27 @@ defmodule SymphonyElixir.ExecutionProfileTest do
                ExecutionProfile.runner_module(profile)
     end
 
-    test "rejects llm_tool_runner as a concrete coding runner" do
+    test "accepts llm_tool_runner as a concrete coding runner" do
       work_item =
         build_work_item(%{
           "execution_profile" => %{
             "role" => "coding",
             "runner_kind" => "llm_tool_runner",
-            "provider" => "openai"
+            "provider" => "openai",
+            "model" => "gpt-5.2"
           }
         })
 
-      assert {:error, {:unsupported_runner_kind, "llm_tool_runner"}} =
-               ExecutionProfile.resolve_coding(work_item, %{})
+      assert {:ok, profile} = ExecutionProfile.resolve_coding(work_item, %{})
+      assert profile["runner_kind"] == "llm_tool_runner"
+      assert {:ok, SymphonyElixir.Runner.LlmToolRunner} = ExecutionProfile.runner_module(profile)
+
+      assert ExecutionProfile.runner_config(profile, %{}) == %{
+               "agent_type" => "coding",
+               "model" => "gpt-5.2",
+               "model_provider" => "openai",
+               "provider" => "openai"
+             }
     end
 
     test "accepts claude_code execution profiles" do
@@ -364,6 +374,18 @@ defmodule SymphonyElixir.ExecutionProfileTest do
 
       assert planner["runner_kind"] == "planner"
       assert {:ok, SymphonyElixir.Runner.Planner} = ExecutionProfile.runner_module(planner)
+
+      assert {:ok, router} =
+               ExecutionProfile.normalize_from_config(%{
+                 "execution_profile" => %{
+                   "role" => "router",
+                   "runner_kind" => "llm_tool_runner",
+                   "provider" => "openai"
+                 }
+               })
+
+      assert router["runner_kind"] == "router"
+      assert {:ok, SymphonyElixir.Runner.LlmToolRunner} = ExecutionProfile.runner_module(router)
     end
 
     test "normalizes explicit claude_code profiles from config" do
@@ -434,6 +456,19 @@ defmodule SymphonyElixir.ExecutionProfileTest do
       assert profile["runner_kind"] == "manager"
     end
 
+    test "normalizes llm_tool_runner with learning role to manager" do
+      assert {:ok, profile} =
+               ExecutionProfile.normalize_from_config(%{
+                 "execution_profile" => %{
+                   "runner_kind" => "llm_tool_runner",
+                   "role" => "learning",
+                   "provider" => "openai"
+                 }
+               })
+
+      assert profile["runner_kind"] == "manager"
+    end
+
     test "normalizes llm_tool_runner with planning role to planner" do
       assert {:ok, profile} =
                ExecutionProfile.normalize_from_config(%{
@@ -445,6 +480,20 @@ defmodule SymphonyElixir.ExecutionProfileTest do
                })
 
       assert profile["runner_kind"] == "planner"
+    end
+
+    test "normalizes llm_tool_runner with router role to router" do
+      assert {:ok, profile} =
+               ExecutionProfile.normalize_from_config(%{
+                 "execution_profile" => %{
+                   "runner_kind" => "llm_tool_runner",
+                   "role" => "router",
+                   "provider" => "openai"
+                 }
+               })
+
+      assert profile["runner_kind"] == "router"
+      assert {:ok, SymphonyElixir.Runner.LlmToolRunner} = ExecutionProfile.runner_module(profile)
     end
 
     test "passes through runner_kinds that already match the runtime vocabulary" do
@@ -465,7 +514,7 @@ defmodule SymphonyElixir.ExecutionProfileTest do
 
     test "rejects platform-only runner_kinds that don't have a normalizer mapping" do
       # These platform values (openclaw_http_sse, local_runtime, and
-      # llm_tool_runner without a manager/planning role)
+      # llm_tool_runner without a coding/manager/planning/router role)
       # have no entry in normalize_family_runner_kind/2 today and the
       # schema's allowlist doesn't include them. If they reach the
       # explicit-profile path, they correctly surface

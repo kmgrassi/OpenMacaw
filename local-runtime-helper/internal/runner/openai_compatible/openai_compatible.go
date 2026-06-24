@@ -10,9 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"time"
@@ -22,6 +24,13 @@ import (
 
 const Kind = "openai_compatible"
 
+// rawModelIOEnvVar gates verbose logging of the exact request and response
+// bodies exchanged with the local model. It mirrors the orchestrator's
+// OPENMACAW_LOG_MODEL_CONTEXT_RAW flag so a single env var turns on full
+// model-I/O logging across both subsystems. Off by default: these dumps write
+// full prompts, tool arguments, and tool results in plaintext.
+const rawModelIOEnvVar = "OPENMACAW_LOG_MODEL_CONTEXT_RAW"
+
 // Config controls a single OpenAI-compatible local endpoint.
 type Config struct {
 	Endpoint     string
@@ -29,6 +38,18 @@ type Config struct {
 	Model        string
 	Timeout      time.Duration
 	ToolExecutor ToolExecutor
+	// Logger receives diagnostic logs, including the raw model request/response
+	// bodies when rawModelIOEnvVar is set. Defaults to a no-op logger.
+	Logger *slog.Logger
+}
+
+func rawModelIOLoggingEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(rawModelIOEnvVar))) {
+	case "1", "true", "yes":
+		return true
+	default:
+		return false
+	}
 }
 
 // ToolExecutor executes helper-managed tool calls. The concrete filesystem,
@@ -69,6 +90,9 @@ func NewWithClient(cfg Config, client *http.Client) (*Runner, error) {
 		copyClient := *client
 		copyClient.Timeout = cfg.Timeout
 		client = &copyClient
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	return &Runner{cfg: cfg, client: client, toolExecutor: cfg.ToolExecutor}, nil
 }
@@ -227,13 +251,32 @@ func (r *Runner) chat(ctx context.Context, input runner.ChatCompletionInput, str
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return parseProviderError(resp)
 	}
+
+	body, logResponse := r.rawModelResponseBody(input, stream, resp.Body)
+	defer logResponse()
+
 	if stream {
 		if !isEventStream(resp.Header.Get("Content-Type")) {
-			return parseCompletion(resp.Body, definitionsByName, emit)
+			return parseCompletion(body, definitionsByName, emit)
 		}
-		return parseStream(ctx, resp.Body, definitionsByName, emit)
+		return parseStream(ctx, body, definitionsByName, emit)
 	}
-	return parseCompletion(resp.Body, definitionsByName, emit)
+	return parseCompletion(body, definitionsByName, emit)
+}
+
+func (r *Runner) rawModelResponseBody(input runner.ChatCompletionInput, stream bool, body io.Reader) (io.Reader, func()) {
+	if !rawModelIOLoggingEnabled() {
+		return body, func() {}
+	}
+
+	var captured bytes.Buffer
+	return io.TeeReader(body, &captured), func() {
+		r.cfg.Logger.Info("local model response",
+			"model", input.Model,
+			"stream", stream,
+			"body", captured.String(),
+		)
+	}
 }
 
 func (r *Runner) doChat(ctx context.Context, input runner.ChatCompletionInput, stream bool) (*http.Response, error) {
@@ -247,6 +290,17 @@ func (r *Runner) doChat(ctx context.Context, input runner.ChatCompletionInput, s
 	})
 	if err != nil {
 		return nil, &runner.Error{Kind: runner.ErrorKindInvalidInput, Message: fmt.Sprintf("openai_compatible request could not be encoded: %v", err)}
+	}
+
+	// Log the exact request body (system + agent context, message history, and
+	// tool definitions) when raw model-I/O logging is enabled.
+	if rawModelIOLoggingEnabled() {
+		r.cfg.Logger.Info("local model request",
+			"endpoint", chatCompletionsURL(r.cfg.Endpoint),
+			"model", input.Model,
+			"stream", stream,
+			"body", string(body),
+		)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, chatCompletionsURL(r.cfg.Endpoint), bytes.NewReader(body))

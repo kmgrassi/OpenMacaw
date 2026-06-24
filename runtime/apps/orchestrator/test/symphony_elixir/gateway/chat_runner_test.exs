@@ -1,164 +1,27 @@
 defmodule SymphonyElixir.Gateway.ChatRunnerTest do
   use SymphonyElixir.TestSupport, async: false
 
-  alias SymphonyElixir.AgentInventory.Agent
-  alias SymphonyElixir.AgentInventory.StoredCredential
   alias SymphonyElixir.Gateway.ChatRunner
+  alias SymphonyElixir.Gateway.ChatRunnerTestSupport
   alias SymphonyElixir.LocalRelay.Registry
-  alias SymphonyElixir.WorkItem
-
-  defmodule TestAgentInventory do
-    def list_agents, do: {:ok, []}
-
-    def get_agent("relay-1") do
-      {:ok,
-       %Agent{
-         id: "relay-1",
-         slug: "relay",
-         name: "Relay",
-         workspace_id: "workspace-1",
-         type: "coding",
-         created_by_user_id: "user-1"
-       }}
-    end
-
-    def get_agent("manager-1") do
-      {:ok,
-       %Agent{
-         id: "manager-1",
-         slug: "manager",
-         name: "Manager",
-         workspace_id: "workspace-1",
-         type: "manager",
-         created_by_user_id: "user-1"
-       }}
-    end
-
-    def get_agent(_agent_id), do: {:error, :not_found}
-
-    def list_credentials("planner-1") do
-      {:ok,
-       [
-         %StoredCredential{
-           id: "credential-openai",
-           agent_id: "planner-1",
-           workspace_id: "workspace-1",
-           provider: "openai",
-           label: "OpenAI",
-           env_var: "OPENAI_API_KEY",
-           has_secret: true,
-           secret_value: "test-openai-key",
-           aliases: ["OPENAI_API_KEY", "api_key"]
-         }
-       ]}
-    end
-
-    def list_credentials("relay-1") do
-      {:ok,
-       [
-         %StoredCredential{
-           id: "cred-relay:OPENAI_API_KEY",
-           agent_id: "relay-1",
-           workspace_id: "workspace-1",
-           provider: "openclaw",
-           label: "OpenClaw",
-           env_var: "OPENAI_API_KEY",
-           has_secret: true,
-           secret_value: "test-relay-key",
-           aliases: []
-         }
-       ]}
-    end
-
-    def list_credentials(_agent_id), do: {:ok, []}
-  end
-
-  defmodule TestSessionResolver do
-    def resolve("workspace-1") do
-      owner = owner()
-
-      send(owner, {:manager_session_resolved, "workspace-1"})
-
-      {:ok,
-       %{
-         workspace_id: "workspace-1",
-         runner: SymphonyElixir.Gateway.ChatRunnerTest.TestManagerRunner,
-         provider: "openai_compatible",
-         model: "manager-model",
-         on_message: fn message -> send(owner, {:resolver_on_message, message}) end,
-         message_recorder_scope: %{
-           agent_id: "manager-1",
-           workspace_id: "workspace-1",
-           user_id: "user-1",
-           session_key: "agent:manager-1:main"
-         }
-       }, %{agent_id: "manager-1"}}
-    end
-
-    def resolve("idle-workspace") do
-      {:idle, :config_missing, %{status: :idle_awaiting_config}}
-    end
-
-    defp owner, do: Application.fetch_env!(:symphony_elixir, :chat_runner_test_owner)
-  end
-
-  defmodule TestManagerRunner do
-    def run_turn(session, prompt, %WorkItem{} = work_item) do
-      send(owner(), {:manager_run_turn, session, prompt, work_item})
-
-      session.on_message.(%{
-        type: :notification,
-        payload: %{"text" => "manager event"}
-      })
-
-      {:ok, %{"response_id" => "resp-1", "output_text" => "manager response"}}
-    end
-
-    def stop_session(session) do
-      send(owner(), {:manager_stop_session, session})
-      :ok
-    end
-
-    defp owner, do: Application.fetch_env!(:symphony_elixir, :chat_runner_test_owner)
-  end
-
-  defmodule TestManagerToolDefinitionResolver do
-    def resolve_for_agent("manager-1") do
-      {:ok,
-       %{
-         tool_definitions: [
-           %{
-             "name" => "git.run",
-             "description" => "Run a git command",
-             "inputSchema" => %{
-               "type" => "object",
-               "properties" => %{
-                 "command" => %{"type" => "string"}
-               },
-               "required" => ["command"]
-             }
-           }
-         ]
-       }}
-    end
-
-    def resolve_for_agent(_agent_id), do: {:ok, %{tool_definitions: []}}
-  end
-
-  defmodule TestEmptyManagerToolDefinitionResolver do
-    def resolve_for_agent("manager-1"), do: {:ok, %{tool_definitions: []}}
-    def resolve_for_agent(_agent_id), do: {:error, :not_found}
-  end
 
   setup do
     put_app_env(:symphony_elixir, :chat_runner_test_owner, self())
-    put_app_env(:symphony_elixir, :gateway_manager_session_resolver, TestSessionResolver)
+
+    put_app_env(
+      :symphony_elixir,
+      :gateway_manager_session_resolver,
+      ChatRunnerTestSupport.TestSessionResolver
+    )
+
+    Registry.reset!()
+    on_exit(fn -> Registry.reset!() end)
 
     :ok
   end
 
   test "planning agents resolve stored OpenAI credentials for gateway chat turns" do
-    put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
+    put_app_env(:symphony_elixir, :agent_inventory_adapter, ChatRunnerTestSupport.TestAgentInventory)
     put_app_env(:symphony_elixir, :planner_responses_req_options, plug: {Req.Test, __MODULE__})
 
     test_pid = self()
@@ -192,7 +55,14 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
       end
     end)
 
-    assert :ok = ChatRunner.run(planning_agent(), planner_scope(), "hello planner", "run-planner", self())
+    assert :ok =
+             ChatRunner.run(
+               ChatRunnerTestSupport.planning_agent(),
+               ChatRunnerTestSupport.planner_scope(),
+               "hello planner",
+               "run-planner",
+               self()
+             )
 
     assert_receive {:authorization, ["Bearer test-openai-key"]}
 
@@ -204,8 +74,8 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
   end
 
   test "manager agents dispatch through SessionResolver and Runner.LlmToolRunner-compatible turns" do
-    agent = manager_agent()
-    scope = scope("workspace-1")
+    agent = ChatRunnerTestSupport.manager_agent()
+    scope = ChatRunnerTestSupport.manager_scope("workspace-1")
 
     assert :ok = ChatRunner.run(agent, scope, "hello manager", "run-1", self())
 
@@ -234,15 +104,114 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
   end
 
-  test "manager agents do not stop caller-owned scheduler sessions" do
-    agent = manager_agent()
+  test "learning agents dispatch through Runner.LlmToolRunner-compatible turns" do
+    agent = ChatRunnerTestSupport.learning_agent()
 
     scope =
       "workspace-1"
-      |> scope()
+      |> ChatRunnerTestSupport.learning_scope()
       |> Map.put(:manager_session, %{
         workspace_id: "workspace-1",
-        runner: TestManagerRunner,
+        runner: ChatRunnerTestSupport.TestManagerRunner,
+        provider: "openai_compatible",
+        model: "learning-model"
+      })
+
+    assert :ok = ChatRunner.run(agent, scope, "review transcript", "run-learning", self())
+
+    assert_received {:manager_run_turn, session, "review transcript", work_item}
+    assert session.provider == "openai_compatible"
+    assert session.model == "learning-model"
+    assert work_item.id == "agent:learning-1:main"
+    assert work_item.identifier == "learning"
+    assert work_item.runner_type == "manager"
+
+    assert_received {:gateway_runner_complete, "agent:learning-1:main", "run-learning", {:ok, result}}
+
+    assert result["output_text"] == "manager response"
+    assert result["provider"] == "openai_compatible"
+    assert result["model"] == "learning-model"
+  end
+
+  test "router agents dispatch through Runner.LlmToolRunner-compatible turns" do
+    agent = ChatRunnerTestSupport.router_agent()
+
+    scope =
+      "workspace-1"
+      |> ChatRunnerTestSupport.router_scope()
+      |> Map.put(:manager_session, %{
+        workspace_id: "workspace-1",
+        runner: ChatRunnerTestSupport.TestManagerRunner,
+        provider: "openai_compatible",
+        model: "router-model",
+        tool_bundle: :router
+      })
+
+    assert :ok = ChatRunner.run(agent, scope, "review routing", "run-router", self())
+
+    assert_received {:manager_run_turn, session, "review routing", work_item}
+    assert session.provider == "openai_compatible"
+    assert session.model == "router-model"
+    assert session.tool_bundle == :router
+    assert work_item.id == "agent:router-1:main"
+    assert work_item.identifier == "router"
+    assert work_item.runner_type == "manager"
+
+    assert_received {:gateway_runner_complete, "agent:router-1:main", "run-router", {:ok, result}}
+
+    assert result["output_text"] == "manager response"
+    assert result["provider"] == "openai_compatible"
+    assert result["model"] == "router-model"
+  end
+
+  test "coding agents with llm_tool_runner routes dispatch through Runner.LlmToolRunner-compatible turns" do
+    agent = ChatRunnerTestSupport.coding_agent()
+
+    scope =
+      "workspace-1"
+      |> ChatRunnerTestSupport.coding_scope()
+      |> Map.put(:manager_session, %{
+        workspace_id: "workspace-1",
+        runner: ChatRunnerTestSupport.TestManagerRunner,
+        provider: "openai",
+        model: "gpt-5.2",
+        tool_bundle: :coding
+      })
+
+    ChatRunnerTestSupport.setup_manager_profile_routing(__MODULE__, %{
+      "id" => "rule-coding",
+      "agent_id" => "coding-1",
+      "runner_kind" => "llm_tool_runner",
+      "provider" => "openai",
+      "model" => "gpt-5.2"
+    })
+
+    assert :ok = ChatRunner.run(agent, scope, "hello coding", "run-coding", self())
+
+    assert_received {:manager_run_turn, session, "hello coding", work_item}
+    assert session.provider == "openai"
+    assert session.model == "gpt-5.2"
+    assert session.tool_bundle == :coding
+    assert work_item.id == "agent:coding-1:main"
+    assert work_item.identifier == "coding"
+
+    assert_received {:gateway_runner_complete, "agent:coding-1:main", "run-coding", {:ok, result}}
+
+    assert result["output_text"] == "manager response"
+    assert result["provider"] == "openai"
+    assert result["model"] == "gpt-5.2"
+    refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
+  end
+
+  test "manager agents do not stop caller-owned scheduler sessions" do
+    agent = ChatRunnerTestSupport.manager_agent()
+
+    scope =
+      "workspace-1"
+      |> ChatRunnerTestSupport.manager_scope()
+      |> Map.put(:manager_session, %{
+        workspace_id: "workspace-1",
+        runner: ChatRunnerTestSupport.TestManagerRunner,
         provider: "openai_compatible",
         model: "manager-model",
         on_message: fn message -> send(self(), {:caller_on_message, message}) end
@@ -257,8 +226,8 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
   end
 
   test "manager resolver idle states fail the gateway run without invoking a runner" do
-    agent = manager_agent()
-    scope = scope("idle-workspace")
+    agent = ChatRunnerTestSupport.manager_agent()
+    scope = ChatRunnerTestSupport.manager_scope("idle-workspace")
 
     assert :ok = ChatRunner.run(agent, scope, "hello manager", "run-idle", self())
 
@@ -275,18 +244,33 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     put_system_env("SUPABASE_SERVICE_ROLE_KEY", nil)
     put_system_env("LAUNCHER_SUPABASE_SERVICE_KEY", nil)
 
-    assert :ok = ChatRunner.run(manager_agent(), scope("workspace-1"), "hello manager", "run-nil", self())
+    assert :ok =
+             ChatRunner.run(
+               ChatRunnerTestSupport.manager_agent(),
+               ChatRunnerTestSupport.manager_scope("workspace-1"),
+               "hello manager",
+               "run-nil",
+               self()
+             )
 
     assert_received {:gateway_runner_failed, "agent:manager-1:main", "run-nil", :supabase_unconfigured}
+
     refute_received {:manager_session_resolved, _workspace_id}
     refute_received {:manager_run_turn, _session, _prompt, _work_item}
   end
 
   test "manager gateway profile sessions include grant-derived tool definitions" do
     delete_app_env(:symphony_elixir, :gateway_manager_session_resolver)
-    put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
-    put_app_env(:symphony_elixir, :manager_tool_definition_resolver, TestManagerToolDefinitionResolver)
+    put_app_env(:symphony_elixir, :agent_inventory_adapter, ChatRunnerTestSupport.TestAgentInventory)
+
+    put_app_env(
+      :symphony_elixir,
+      :manager_tool_definition_resolver,
+      ChatRunnerTestSupport.TestManagerToolDefinitionResolver
+    )
+
     put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, __MODULE__})
+
     put_app_env(:symphony_elixir, :manager_openai_compatible_req_options, plug: {Req.Test, __MODULE__})
 
     put_system_envs([
@@ -305,7 +289,14 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
             if params["kind"] == "eq.agent_id" do
               [%{"rule_id" => "rule-manager"}]
             else
-              [%{"rule_id" => "rule-manager", "kind" => "agent_id", "key" => "agent_id", "value" => "manager-1"}]
+              [
+                %{
+                  "rule_id" => "rule-manager",
+                  "kind" => "agent_id",
+                  "key" => "agent_id",
+                  "value" => "manager-1"
+                }
+              ]
             end
 
           conn
@@ -354,12 +345,25 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
       end
     end)
 
-    assert :ok = ChatRunner.run(manager_agent(), scope("workspace-1"), "hello manager", "run-manager-profile", self())
+    assert :ok =
+             ChatRunner.run(
+               ChatRunnerTestSupport.manager_agent(),
+               ChatRunnerTestSupport.manager_scope("workspace-1"),
+               "hello manager",
+               "run-manager-profile",
+               self()
+             )
 
     assert_receive {:manager_chat_request, request}
-    assert [%{"type" => "function", "function" => %{"name" => "git_run"}}] = request["tools"]
+
+    assert %{"type" => "function", "function" => %{"name" => "git_run"}} =
+             Enum.find(request["tools"], &(get_in(&1, ["function", "name"]) == "git_run"))
+
+    assert %{"type" => "function", "function" => %{"name" => "shell_exec"}} =
+             Enum.find(request["tools"], &(get_in(&1, ["function", "name"]) == "shell_exec"))
 
     assert_receive {:gateway_runner_complete, "agent:manager-1:main", "run-manager-profile", {:ok, result}}
+
     assert result["output_text"] == "manager response"
     assert result["model"] == "qwen-manager"
     assert result["provider"] == "openai_compatible"
@@ -369,9 +373,16 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
 
   test "manager gateway profile sessions preserve empty grant-derived tool definitions" do
     delete_app_env(:symphony_elixir, :gateway_manager_session_resolver)
-    put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
-    put_app_env(:symphony_elixir, :manager_tool_definition_resolver, TestEmptyManagerToolDefinitionResolver)
+    put_app_env(:symphony_elixir, :agent_inventory_adapter, ChatRunnerTestSupport.TestAgentInventory)
+
+    put_app_env(
+      :symphony_elixir,
+      :manager_tool_definition_resolver,
+      ChatRunnerTestSupport.TestEmptyManagerToolDefinitionResolver
+    )
+
     put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, __MODULE__})
+
     put_app_env(:symphony_elixir, :manager_openai_compatible_req_options, plug: {Req.Test, __MODULE__})
 
     put_system_envs([
@@ -390,7 +401,14 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
             if params["kind"] == "eq.agent_id" do
               [%{"rule_id" => "rule-manager"}]
             else
-              [%{"rule_id" => "rule-manager", "kind" => "agent_id", "key" => "agent_id", "value" => "manager-1"}]
+              [
+                %{
+                  "rule_id" => "rule-manager",
+                  "kind" => "agent_id",
+                  "key" => "agent_id",
+                  "value" => "manager-1"
+                }
+              ]
             end
 
           conn
@@ -439,12 +457,20 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
       end
     end)
 
-    assert :ok = ChatRunner.run(manager_agent(), scope("workspace-1"), "hello manager", "run-manager-empty-profile", self())
+    assert :ok =
+             ChatRunner.run(
+               ChatRunnerTestSupport.manager_agent(),
+               ChatRunnerTestSupport.manager_scope("workspace-1"),
+               "hello manager",
+               "run-manager-empty-profile",
+               self()
+             )
 
     assert_receive {:manager_chat_request, request}
     assert request["tools"] == []
 
     assert_receive {:gateway_runner_complete, "agent:manager-1:main", "run-manager-empty-profile", {:ok, result}}
+
     assert result["output_text"] == "manager response"
 
     refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
@@ -452,8 +478,13 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
 
   test "local manager gateway profile sessions dispatch grant-derived tool definitions to helper" do
     delete_app_env(:symphony_elixir, :gateway_manager_session_resolver)
-    setup_manager_profile_routing(%{"provider" => "local", "model" => "qwen-manager"})
-    put_app_env(:symphony_elixir, :manager_tool_definition_resolver, TestManagerToolDefinitionResolver)
+    ChatRunnerTestSupport.setup_manager_profile_routing(__MODULE__, %{"provider" => "local", "model" => "qwen-manager"})
+
+    put_app_env(
+      :symphony_elixir,
+      :manager_tool_definition_resolver,
+      ChatRunnerTestSupport.TestManagerToolDefinitionResolver
+    )
 
     test_pid = self()
 
@@ -462,7 +493,10 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
         receive do
           {:local_relay_dispatch, frame} ->
             send(test_pid, {:manager_relay_dispatch_frame, frame})
-            Registry.complete(frame["correlation_id"], %{"output_text" => "local manager response"})
+
+            Registry.complete(frame["correlation_id"], %{
+              "output_text" => "local manager response"
+            })
         end
       end)
 
@@ -480,7 +514,14 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
       ]
     })
 
-    assert :ok = ChatRunner.run(manager_agent(), scope("workspace-1"), "hello local manager", "run-manager-local", self())
+    assert :ok =
+             ChatRunner.run(
+               ChatRunnerTestSupport.manager_agent(),
+               ChatRunnerTestSupport.manager_scope("workspace-1"),
+               "hello local manager",
+               "run-manager-local",
+               self()
+             )
 
     assert_receive {:manager_relay_dispatch_frame, frame}
     assert frame["runner_kind"] == "local_relay"
@@ -492,9 +533,17 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert %{"name" => "git.run", "execution_kind" => "helper"} =
              Enum.find(frame["tool_definitions"], &(&1["name"] == "git.run"))
 
-    assert [%{"function" => %{"name" => "git_run"}}] = frame["provider_tool_specs"]
+    assert %{"function" => %{"name" => "git_run"}} =
+             Enum.find(frame["provider_tool_specs"], &(get_in(&1, ["function", "name"]) == "git_run"))
+
+    assert %{"function" => %{"parameters" => shell_exec_schema}} =
+             Enum.find(frame["provider_tool_specs"], &(get_in(&1, ["function", "name"]) == "shell_exec"))
+
+    assert Map.has_key?(shell_exec_schema["properties"], "argv")
+    assert "argv" in Map.get(shell_exec_schema, "required", [])
 
     assert_receive {:gateway_runner_complete, "agent:manager-1:main", "run-manager-local", {:ok, result}}
+
     assert result["output_text"] == "local manager response"
     assert result["model"] == "qwen-manager"
     assert result["provider"] == "local"
@@ -503,11 +552,21 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
   end
 
   test "local_relay agents run gateway chat turns through the relay tool-calling loop" do
-    setup_local_relay_routing()
+    ChatRunnerTestSupport.setup_local_relay_routing(__MODULE__)
 
     SymphonyElixir.Runner.ManagerTestSupport.configure_history_adapter([
-      %{"role" => "assistant", "content" => "should not replay", "run_id" => "run-old", "created_at" => "2026-05-12T10:00:01Z"},
-      %{"role" => "user", "content" => "old scheduled prompt", "run_id" => "run-old", "created_at" => "2026-05-12T10:00:00Z"}
+      %{
+        "role" => "assistant",
+        "content" => "should not replay",
+        "run_id" => "run-old",
+        "created_at" => "2026-05-12T10:00:01Z"
+      },
+      %{
+        "role" => "user",
+        "content" => "old scheduled prompt",
+        "run_id" => "run-old",
+        "created_at" => "2026-05-12T10:00:00Z"
+      }
     ])
 
     test_pid = self()
@@ -517,7 +576,11 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
         receive do
           {:local_relay_dispatch, frame} ->
             send(test_pid, {:relay_dispatch_frame, frame})
-            Registry.complete(frame["correlation_id"], %{"output_text" => "local relay response", "usage" => %{"total_tokens" => 7}})
+
+            Registry.complete(frame["correlation_id"], %{
+              "output_text" => "local relay response",
+              "usage" => %{"total_tokens" => 7}
+            })
         end
       end)
 
@@ -525,10 +588,24 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
       workspace_id: "workspace-1",
       machine_id: "machine-relay",
       pid: helper,
-      runners: [%{runner_kind: "openai_compatible", provider: "local", model: "qwen-chat", capabilities: %{tool_calls: true}}]
+      runners: [
+        %{
+          runner_kind: "openai_compatible",
+          provider: "local",
+          model: "qwen-chat",
+          capabilities: %{tool_calls: true}
+        }
+      ]
     })
 
-    assert :ok = ChatRunner.run(relay_agent(), Map.put(relay_scope(), :history_window, 0), "hello relay", "run-relay", self())
+    assert :ok =
+             ChatRunner.run(
+               ChatRunnerTestSupport.relay_agent(),
+               Map.put(ChatRunnerTestSupport.relay_scope(), :history_window, 0),
+               "hello relay",
+               "run-relay",
+               self()
+             )
 
     assert_receive {:relay_dispatch_frame, frame}
     assert frame["runner_kind"] == "local_relay"
@@ -561,7 +638,11 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
   end
 
   test "local_relay agents thread a helper-runtime provider into the relay target runner kind" do
-    setup_local_relay_routing(%{"provider" => "openclaw", "model" => nil, "credential_id" => "cred-relay"})
+    ChatRunnerTestSupport.setup_local_relay_routing(__MODULE__, %{
+      "provider" => "openclaw",
+      "model" => nil,
+      "credential_id" => "cred-relay"
+    })
 
     test_pid = self()
 
@@ -578,10 +659,19 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
       workspace_id: "workspace-1",
       machine_id: "machine-openclaw",
       pid: helper,
-      runners: [%{runner_kind: "openclaw", provider: "openclaw", capabilities: %{tool_calls: true}}]
+      runners: [
+        %{runner_kind: "openclaw", provider: "openclaw", capabilities: %{tool_calls: true}}
+      ]
     })
 
-    assert :ok = ChatRunner.run(relay_agent(), relay_scope(), "hello openclaw", "run-openclaw", self())
+    assert :ok =
+             ChatRunner.run(
+               ChatRunnerTestSupport.relay_agent(),
+               ChatRunnerTestSupport.relay_scope(),
+               "hello openclaw",
+               "run-openclaw",
+               self()
+             )
 
     assert_receive {:relay_dispatch_frame, frame}
     assert frame["target_runner_kind"] == "openclaw"
@@ -594,187 +684,19 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
   end
 
   test "local_relay agents fail the gateway run with a typed error when no helper is online" do
-    setup_local_relay_routing()
+    ChatRunnerTestSupport.setup_local_relay_routing(__MODULE__)
 
-    assert :ok = ChatRunner.run(relay_agent(), relay_scope(), "hello relay", "run-offline", self())
+    assert :ok =
+             ChatRunner.run(
+               ChatRunnerTestSupport.relay_agent(),
+               ChatRunnerTestSupport.relay_scope(),
+               "hello relay",
+               "run-offline",
+               self()
+             )
 
     assert_receive {:gateway_runner_failed, "agent:relay-1:main", "run-offline", {:retryable, :local_runtime_offline}}
+
     refute_received {:gateway_runner_complete, _session_key, _run_id, _result}
-  end
-
-  defp setup_local_relay_routing(rule_overrides \\ %{}) do
-    Registry.reset!()
-    on_exit(fn -> Registry.reset!() end)
-
-    put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
-    put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, __MODULE__})
-
-    put_system_envs([
-      {"SUPABASE_URL", "https://test.supabase.co"},
-      {"SUPABASE_SERVICE_ROLE_KEY", "test-api-key"}
-    ])
-
-    rule =
-      Map.merge(
-        %{
-          "id" => "rule-relay",
-          "priority" => 1,
-          "runner_kind" => "local_relay",
-          "provider" => "local",
-          "model" => "qwen-chat",
-          "enabled" => true,
-          "workspace_id" => "workspace-1"
-        },
-        rule_overrides
-      )
-
-    Req.Test.stub(__MODULE__, fn conn ->
-      cond do
-        conn.request_path == "/rest/v1/routing_rule_match" ->
-          params = URI.decode_query(conn.query_string)
-
-          matches =
-            if params["kind"] == "eq.agent_id" do
-              [%{"rule_id" => "rule-relay"}]
-            else
-              [
-                %{"rule_id" => "rule-relay", "kind" => "agent_id", "key" => "agent_id", "value" => "relay-1"},
-                %{
-                  "rule_id" => "rule-relay",
-                  "kind" => "local_workspace_root",
-                  "key" => "path",
-                  "value" => "/Users/dev/repos/openmacaw"
-                }
-              ]
-            end
-
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!(matches))
-
-        conn.request_path == "/rest/v1/routing_rule" ->
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!([rule]))
-
-        true ->
-          Plug.Conn.send_resp(conn, 404, ~s({"error":"unexpected #{conn.request_path}"}))
-      end
-    end)
-  end
-
-  defp setup_manager_profile_routing(rule_overrides) do
-    Registry.reset!()
-    on_exit(fn -> Registry.reset!() end)
-
-    put_app_env(:symphony_elixir, :agent_inventory_adapter, TestAgentInventory)
-    put_app_env(:symphony_elixir, :gateway_runtime_req_options, plug: {Req.Test, __MODULE__})
-
-    put_system_envs([
-      {"SUPABASE_URL", "https://test.supabase.co"},
-      {"SUPABASE_SERVICE_ROLE_KEY", "test-api-key"}
-    ])
-
-    rule =
-      Map.merge(
-        %{
-          "id" => "rule-manager",
-          "priority" => 1,
-          "runner_kind" => "manager",
-          "provider" => "openai_compatible",
-          "model" => "qwen-manager",
-          "enabled" => true,
-          "workspace_id" => "workspace-1"
-        },
-        rule_overrides
-      )
-
-    Req.Test.stub(__MODULE__, fn conn ->
-      cond do
-        conn.request_path == "/rest/v1/routing_rule_match" ->
-          params = URI.decode_query(conn.query_string)
-
-          matches =
-            if params["kind"] == "eq.agent_id" do
-              [%{"rule_id" => "rule-manager"}]
-            else
-              [%{"rule_id" => "rule-manager", "kind" => "agent_id", "key" => "agent_id", "value" => "manager-1"}]
-            end
-
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!(matches))
-
-        conn.request_path == "/rest/v1/routing_rule" ->
-          conn
-          |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(200, Jason.encode!([rule]))
-
-        true ->
-          Plug.Conn.send_resp(conn, 404, ~s({"error":"unexpected #{conn.request_path}"}))
-      end
-    end)
-  end
-
-  defp relay_agent do
-    %Agent{
-      id: "relay-1",
-      slug: "relay",
-      name: "Relay",
-      workspace_id: "workspace-1",
-      type: "coding",
-      context: "Chat through the local relay"
-    }
-  end
-
-  defp relay_scope do
-    %{
-      agent_id: "relay-1",
-      workspace_id: "workspace-1",
-      user_id: "user-1",
-      session_key: "agent:relay-1:main"
-    }
-  end
-
-  defp manager_agent do
-    %Agent{
-      id: "manager-1",
-      slug: "manager",
-      name: "Manager",
-      workspace_id: "workspace-1",
-      type: "manager",
-      context: "Coordinate the workspace"
-    }
-  end
-
-  defp planning_agent do
-    %Agent{
-      id: "planner-1",
-      slug: "planner",
-      name: "Planner",
-      workspace_id: "workspace-1",
-      type: "planning",
-      context: "Plan the workspace",
-      model_settings: %{"model" => "gpt-test", "provider" => "openai"},
-      tool_policy: %{}
-    }
-  end
-
-  defp planner_scope do
-    %{
-      agent_id: "planner-1",
-      workspace_id: "workspace-1",
-      user_id: "user-1",
-      session_key: "agent:planner-1:main"
-    }
-  end
-
-  defp scope(workspace_id) do
-    %{
-      agent_id: "manager-1",
-      workspace_id: workspace_id,
-      user_id: "user-1",
-      session_key: "agent:manager-1:main"
-    }
   end
 end

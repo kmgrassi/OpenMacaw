@@ -6,7 +6,14 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
 
   defmodule AgentInventory do
     def get_agent("agent-1"),
-      do: {:ok, %Agent{id: "agent-1", workspace_id: "workspace-1", created_by_user_id: "user-1"}}
+      do:
+        {:ok,
+         %Agent{
+           id: "agent-1",
+           workspace_id: "workspace-1",
+           created_by_user_id: "user-1",
+           context: "  Stay terse.  "
+         }}
 
     def get_agent("manager-1"),
       do:
@@ -341,7 +348,8 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
               credential_id: "cred-1:OPENAI_API_KEY",
               credential_scope: "openai",
               api_key: "sk-test",
-              user_id: "user-1"
+              user_id: "user-1",
+              context: "Stay terse."
             }} =
              AgentExecutionProfile.resolve("agent-1", "workspace-1",
                agent_inventory: AgentInventory,
@@ -349,7 +357,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
              )
   end
 
-  test "rejects legacy llm_tool_runner routing rules instead of normalizing them" do
+  test "accepts llm_tool_runner routing rules for coding agents" do
     Req.Test.stub(AgentExecutionProfile, fn conn ->
       cond do
         conn.request_path == "/rest/v1/routing_rule_match" ->
@@ -387,7 +395,15 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfileTest do
       end
     end)
 
-    assert {:error, {:runner_unsupported, "llm_tool_runner"}} =
+    assert {:ok,
+            %{
+              agent_id: "agent-1",
+              workspace_id: "workspace-1",
+              agent_type: "coding",
+              runner_kind: "llm_tool_runner",
+              provider: "openai_compatible",
+              model: "qwen3-coder:30b"
+            }} =
              AgentExecutionProfile.resolve("agent-1", "workspace-1", agent_inventory: AgentInventory)
   end
 

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import type { AgentMessageToolCall } from "../../../../contracts/messages";
+import { copyTextToClipboard } from "../lib/clipboard";
 import { getManagerSchedulerMessageDisplay } from "../lib/manager-message-rendering";
 import {
   formatPersistedToolCalls,
@@ -9,6 +10,7 @@ import {
 } from "../lib/tool-call-rendering";
 import { Badge } from "./ui/Badge";
 import { Card } from "./ui/Card";
+import { IconButton } from "./ui/IconButton";
 
 // Links rendered inside chat content open in a new tab instead of taking over
 // the app window. DOMPurify is only used here (chat markdown), so a single
@@ -104,6 +106,24 @@ function ToolCallList({ toolCalls }: { toolCalls: ToolCallDisplay[] }) {
   );
 }
 
+function CopyIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="1.8"
+      viewBox="0 0 24 24"
+    >
+      <rect width="13" height="13" x="9" y="9" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
 export function ChatMessage({
   role,
   content,
@@ -129,6 +149,8 @@ export function ChatMessage({
   }, [content, managerDisplay, pending]);
 
   const isUser = role === "user";
+  const [copied, setCopied] = useState(false);
+  const canCopy = !pending && content.length > 0;
   const time = timestamp
     ? new Date(timestamp).toLocaleTimeString([], {
         hour: "2-digit",
@@ -141,12 +163,37 @@ export function ChatMessage({
       className={`group flex min-w-0 ${isUser ? "justify-end" : "justify-start"}`}
     >
       <div
-        className={`min-w-0 max-w-[88%] text-sm leading-relaxed sm:max-w-[min(44rem,84%)] ${
+        className={`relative min-w-0 max-w-[88%] text-sm leading-relaxed sm:max-w-[min(44rem,84%)] ${
           isUser
             ? "rounded-xl border border-blue-400/20 bg-blue-500/18 px-3.5 py-2 text-blue-50 shadow-sm"
             : "border-l border-slate-800/80 px-3 py-1 text-slate-200"
         }`}
       >
+        {canCopy && (
+          <IconButton
+            aria-label={copied ? "Message copied" : "Copy message"}
+            title={copied ? "Copied" : "Copy message"}
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              void copyTextToClipboard(content).then(() => {
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1400);
+              });
+            }}
+            className={`absolute top-1 z-10 h-6 w-6 border border-slate-700/80 bg-slate-950/90 text-slate-400 opacity-0 shadow-sm transition-opacity hover:border-slate-600 hover:bg-slate-900 hover:text-slate-100 focus-visible:opacity-100 group-hover:opacity-100 ${
+              isUser ? "-left-8" : "-right-8"
+            }`}
+          >
+            {copied ? (
+              <span aria-hidden="true" className="text-[11px] leading-none">
+                ✓
+              </span>
+            ) : (
+              <CopyIcon />
+            )}
+          </IconButton>
+        )}
         {pending ? (
           <div className="prose prose-sm prose-invert max-w-none">
             <PendingEllipsis />
@@ -190,8 +237,8 @@ export function ChatMessage({
         )}
         {time && (
           <div
-            className={`mt-1.5 text-right text-[10px] leading-none opacity-0 transition-opacity group-hover:opacity-100 ${
-              isUser ? "text-blue-200/65" : "text-slate-600"
+            className={`mt-1.5 text-right text-[10px] leading-none opacity-70 transition-opacity group-hover:opacity-100 ${
+              isUser ? "text-blue-100/75" : "text-slate-400"
             }`}
           >
             {time}

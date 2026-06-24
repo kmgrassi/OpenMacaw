@@ -187,11 +187,10 @@ export function WorkspaceSection() {
             Memory & learning
           </h2>
           <p className="mt-1 text-sm text-slate-400">
-            When on, completed agent runs in this workspace are summarized into
-            a workspace memory store. Future runs can search those memories via
-            the <code>memory.search</code> tool to recall prior decisions, repo
-            conventions, and known gotchas. Turn off if you want this workspace
-            to start every run with no history.
+            When on, OpenMacaw schedules a daily learning agent review for this
+            workspace. The learning agent samples a recent transcript and can
+            create draft skills, save durable facts, or hand bugs to the
+            planning agent.
           </p>
         </div>
 
@@ -201,10 +200,10 @@ export function WorkspaceSection() {
           onChange={(event) => void handleLearningToggle(event.target.checked)}
           label={
             learningEnabled
-              ? "Save run summaries to workspace memory"
-              : "Memory disabled — runs won't be summarized"
+              ? "Daily learning agent review enabled"
+              : "Daily learning agent review disabled"
           }
-          description="Memory is enabled by default. Existing memories stay searchable even when you turn this off; new runs just won't add to them."
+          description="Existing memories and approved skills remain available when this schedule is off."
         />
 
         {settings.updatedAt && (

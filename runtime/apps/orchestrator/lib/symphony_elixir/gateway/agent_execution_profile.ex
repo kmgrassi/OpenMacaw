@@ -41,30 +41,58 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
           optional(:credential_alias) => String.t() | nil,
           optional(:credential_scope) => String.t() | nil,
           optional(:api_key) => String.t() | nil,
-          optional(:user_id) => String.t() | nil
+          optional(:user_id) => String.t() | nil,
+          optional(:context) => String.t()
         }
 
   @spec resolve(String.t(), String.t()) :: {:ok, resolution()} | {:error, term()}
   def resolve(agent_id, workspace_id, opts \\ [])
 
   def resolve(agent_id, workspace_id, opts)
-      when is_binary(agent_id) and agent_id != "" and is_binary(workspace_id) and workspace_id != "" do
+      when is_binary(agent_id) and agent_id != "" and is_binary(workspace_id) and
+             workspace_id != "" do
     agent_inventory = Keyword.get(opts, :agent_inventory, AgentInventory)
     secret_resolver = Keyword.get(opts, :secret_resolver, SecretResolver)
 
-    with {:ok, config} <- resolve_config(),
-         {:ok, agent} <- validate_agent_workspace(agent_id, workspace_id, agent_inventory),
-         {:ok, rule_ids} <- match_rule_ids(config, agent_id, workspace_id),
-         {:ok, rule} <- pick_rule(config, rule_ids, workspace_id, agent),
-         {:ok, profile} <- profile_from_rule(rule, agent_id, workspace_id, agent),
+    with {:ok, profile, rule, agent} <-
+           resolve_profile_route(agent_id, workspace_id, agent_inventory),
          :ok <- validate_profile_policy(profile),
-         {:ok, profile} <- attach_credential(profile, rule, workspace_id, agent_inventory, secret_resolver),
-         {:ok, profile} <- attach_agent_user(profile, agent_id, workspace_id, agent_inventory) do
+         {:ok, profile} <-
+           attach_credential(profile, rule, workspace_id, agent_inventory, secret_resolver),
+         {:ok, profile} <- attach_agent_user(profile, agent_id, workspace_id, agent_inventory),
+         {:ok, profile} <- attach_agent_context(profile, agent) do
       {:ok, profile}
     end
   end
 
   def resolve(_agent_id, _workspace_id, _opts), do: {:error, :invalid_agent_profile_scope}
+
+  @spec resolve_route(String.t(), String.t()) :: {:ok, resolution()} | {:error, term()}
+  def resolve_route(agent_id, workspace_id, opts \\ [])
+
+  def resolve_route(agent_id, workspace_id, opts)
+      when is_binary(agent_id) and agent_id != "" and is_binary(workspace_id) and
+             workspace_id != "" do
+    agent_inventory = Keyword.get(opts, :agent_inventory, AgentInventory)
+
+    with {:ok, profile, _rule, agent} <- resolve_profile_route(agent_id, workspace_id, agent_inventory),
+         {:ok, profile} <- attach_agent_user(profile, agent_id, workspace_id, agent_inventory),
+         {:ok, profile} <- attach_agent_context(profile, agent) do
+      {:ok, profile}
+    end
+  end
+
+  def resolve_route(_agent_id, _workspace_id, _opts), do: {:error, :invalid_agent_profile_scope}
+
+  defp resolve_profile_route(agent_id, workspace_id, agent_inventory) do
+    with {:ok, config} <- resolve_config(),
+         {:ok, agent} <- validate_agent_workspace(agent_id, workspace_id, agent_inventory),
+         {:ok, rule_ids} <- match_rule_ids(config, agent_id, workspace_id),
+         {:ok, rule} <- pick_rule(config, rule_ids, workspace_id, agent),
+         {:ok, profile} <- profile_from_rule(rule, agent_id, workspace_id, agent) do
+      {:ok, profile, rule, agent}
+    end
+  end
 
   defp match_rule_ids(config, agent_id, workspace_id) do
     query = %{
@@ -215,13 +243,21 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
     match
     |> Map.get("kind")
     |> normalized_key_string()
-    |> then(&(&1 in ["local_endpoint", "local_workspace_root", "local_machine", "local_model_capability"]))
+    |> then(
+      &(&1 in [
+          "local_endpoint",
+          "local_workspace_root",
+          "local_machine",
+          "local_model_capability"
+        ])
+    )
   end
 
   defp numeric_priority(priority) when is_number(priority), do: priority
   defp numeric_priority(_priority), do: -1.0e308
 
-  defp local_model_coding_score(rule), do: if(Map.get(rule, "runner_kind") == "local_model_coding", do: 1, else: 0)
+  defp local_model_coding_score(rule),
+    do: if(Map.get(rule, "runner_kind") == "local_model_coding", do: 1, else: 0)
 
   defp normalized_optional_key_string(value) do
     case normalized_key_string(value) do
@@ -230,7 +266,9 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
     end
   end
 
-  defp normalized_key_string(value) when is_binary(value), do: value |> String.trim() |> String.downcase()
+  defp normalized_key_string(value) when is_binary(value),
+    do: value |> String.trim() |> String.downcase()
+
   defp normalized_key_string(_value), do: ""
 
   defp trimmed_string(value) when is_binary(value), do: String.trim(value)
@@ -260,6 +298,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
         schema_profile
         |> ExecutionProfileSchema.to_map()
         |> atomize_profile()
+        |> Map.put(:agent_type, Agent.kind(agent))
         |> then(&{:ok, &1})
 
       {:error, changeset} ->
@@ -281,11 +320,13 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
     end)
   end
 
-  defp credential_ref(%{"credential_id" => credential_id}) when is_binary(credential_id) and credential_id != "" do
+  defp credential_ref(%{"credential_id" => credential_id})
+       when is_binary(credential_id) and credential_id != "" do
     %{"type" => "credential_id", "credential_id" => credential_id}
   end
 
-  defp credential_ref(%{"credential_alias" => credential_alias}) when is_binary(credential_alias) and credential_alias != "" do
+  defp credential_ref(%{"credential_alias" => credential_alias})
+       when is_binary(credential_alias) and credential_alias != "" do
     %{"type" => "credential_alias", "credential_alias" => credential_alias}
   end
 
@@ -329,17 +370,38 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
         {:ok, profile}
 
       credential_id = string_value(rule, "credential_id") ->
-        resolve_stored_credential(profile, workspace_id, credential_id, :id, agent_inventory, secret_resolver)
+        resolve_stored_credential(
+          profile,
+          workspace_id,
+          credential_id,
+          :id,
+          agent_inventory,
+          secret_resolver
+        )
 
       credential_alias = string_value(rule, "credential_alias") ->
-        resolve_stored_credential(profile, workspace_id, credential_alias, :alias, agent_inventory, secret_resolver)
+        resolve_stored_credential(
+          profile,
+          workspace_id,
+          credential_alias,
+          :alias,
+          agent_inventory,
+          secret_resolver
+        )
 
       true ->
         {:error, :credential_missing}
     end
   end
 
-  defp resolve_stored_credential(profile, workspace_id, credential_ref, credential_ref_type, agent_inventory, secret_resolver) do
+  defp resolve_stored_credential(
+         profile,
+         workspace_id,
+         credential_ref,
+         credential_ref_type,
+         agent_inventory,
+         secret_resolver
+       ) do
     with {:ok, credentials} <- agent_inventory.list_credentials(profile.agent_id),
          {:ok, %StoredCredential{} = credential} <-
            find_credential(credentials, credential_ref, credential_ref_type, workspace_id),
@@ -360,7 +422,11 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
   defp find_credential(credentials, credential_ref, credential_ref_type, workspace_id)
        when is_list(credentials) do
     credentials
-    |> Enum.find(fn %StoredCredential{id: id, aliases: aliases, workspace_id: candidate_workspace_id} ->
+    |> Enum.find(fn %StoredCredential{
+                      id: id,
+                      aliases: aliases,
+                      workspace_id: candidate_workspace_id
+                    } ->
       candidate_workspace_id == workspace_id and
         credential_matches?(credential_ref_type, credential_ref, id, aliases)
     end)
@@ -426,6 +492,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
       "planning" -> "planner"
       "planner" -> "planner"
       "manager" -> "manager"
+      "learning" -> "manager"
       _ -> "llm_tool_runner"
     end
   end
@@ -438,7 +505,8 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
       when agent_workspace_id in [workspace_id, nil, ""] and is_binary(user_id) and user_id != "" ->
         {:ok, Map.put(profile, :user_id, user_id)}
 
-      {:ok, %Agent{workspace_id: agent_workspace_id}} when agent_workspace_id in [workspace_id, nil, ""] ->
+      {:ok, %Agent{workspace_id: agent_workspace_id}}
+      when agent_workspace_id in [workspace_id, nil, ""] ->
         {:ok, profile}
 
       {:ok, %Agent{workspace_id: agent_workspace_id}} ->
@@ -449,13 +517,32 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
     end
   end
 
+  defp attach_agent_context(profile, %Agent{context: context}) when is_binary(context) do
+    case String.trim(context) do
+      "" -> {:ok, profile}
+      trimmed -> {:ok, Map.put(profile, :context, trimmed)}
+    end
+  end
+
+  defp attach_agent_context(profile, _agent), do: {:ok, profile}
+
   defp atomize_profile(profile) do
     profile
-    |> Map.take(["agent_id", "workspace_id", "runner_kind", "provider", "model", "credential_ref", "source_metadata"])
+    |> Map.take([
+      "agent_id",
+      "workspace_id",
+      "runner_kind",
+      "provider",
+      "model",
+      "credential_ref",
+      "source_metadata"
+    ])
     |> Map.new(fn {key, value} -> {String.to_atom(key), value} end)
   end
 
-  defp credential_optional_provider?(profile), do: Map.get(profile, :provider) in @credential_optional_providers
+  defp credential_optional_provider?(profile),
+    do: Map.get(profile, :provider) in @credential_optional_providers
+
   defp local_relay_provider?(profile), do: Map.get(profile, :provider) in @local_relay_providers
 
   defp string_value(map, key) when is_map(map) do

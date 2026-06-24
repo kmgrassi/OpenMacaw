@@ -154,7 +154,8 @@ defmodule SymphonyElixir.Manager.SchedulerTestSupport do
             provider: Map.get(config, "provider"),
             model: Map.get(config, "model"),
             api_key: Map.get(config, "api_key") || local_api_key(config),
-            credential_id: Map.get(config, "credential_id")
+            credential_id: Map.get(config, "credential_id"),
+            context: Map.get(config, "context")
           }
 
           resolve_credential(profile, config, opts)
@@ -194,5 +195,90 @@ defmodule SymphonyElixir.Manager.SchedulerTestSupport do
 
     def resolve(_workspace_id, _opts),
       do: {:error, {:adapter_failed, :timeout}, %{status: :error}}
+  end
+
+  def decode_logged_events!(log) do
+    log
+    |> String.split("\n", trim: true)
+    |> Enum.flat_map(fn line ->
+      case Regex.run(~r/(\{.*\})/, line) do
+        [_, json] -> [Jason.decode!(json)]
+        _ -> []
+      end
+    end)
+  end
+
+  def event!(events, event_name) do
+    Enum.find(events, &(Map.get(&1, "event") == event_name)) ||
+      ExUnit.Assertions.flunk(
+        "expected log event #{event_name}, got: #{inspect(Enum.map(events, &Map.get(&1, "event")))}"
+      )
+  end
+end
+
+defmodule SymphonyElixir.Manager.SchedulerCase do
+  use ExUnit.CaseTemplate
+
+  using do
+    quote do
+      use ExUnit.Case, async: false
+
+      import ExUnit.CaptureLog
+
+      alias SymphonyElixir.Manager.Scheduler
+      alias SymphonyElixir.Manager.SchedulerTestSupport
+      alias SymphonyElixir.Manager.SchedulerTestSupport.ErrorChatGateway
+      alias SymphonyElixir.Manager.SchedulerTestSupport.ErrorSessionResolver
+      alias SymphonyElixir.Manager.SchedulerTestSupport.ErrorWorkItemSource
+      alias SymphonyElixir.Manager.SchedulerTestSupport.RaisingChatGateway
+      alias SymphonyElixir.Manager.SchedulerTestSupport.ReturningErrorWorkItemSource
+      alias SymphonyElixir.Manager.SchedulerTestSupport.TestAgentInventory
+      alias SymphonyElixir.Manager.SchedulerTestSupport.TestChatGateway
+      alias SymphonyElixir.Manager.SchedulerTestSupport.TestExecutionProfile
+      alias SymphonyElixir.Manager.SchedulerTestSupport.TestGatewayConfig
+      alias SymphonyElixir.Manager.SchedulerTestSupport.TestRunner
+      alias SymphonyElixir.Manager.SchedulerTestSupport.TestSecretResolver
+      alias SymphonyElixir.Manager.SchedulerTestSupport.TestToolDefinitionResolver
+      alias SymphonyElixir.Manager.SchedulerTestSupport.TestWorkItemSource
+      alias SymphonyElixir.Manager.WorkItemRow
+
+      defp decode_logged_events!(log), do: SchedulerTestSupport.decode_logged_events!(log)
+      defp event!(events, event_name), do: SchedulerTestSupport.event!(events, event_name)
+    end
+  end
+
+  setup do
+    registry = :"manager_scheduler_registry_#{System.unique_integer([:positive])}"
+
+    Application.put_env(:symphony_elixir, :manager_scheduler_test_pid, self())
+    Application.put_env(:symphony_elixir, :manager_scheduler_rows, [])
+    Application.put_env(
+      :symphony_elixir,
+      :manager_scheduler_session_resolver,
+      SymphonyElixir.Manager.SchedulerTestSupport.TestExecutionProfile
+    )
+
+    Application.put_env(
+      :symphony_elixir,
+      :launcher_gateway_config_adapter,
+      SymphonyElixir.Manager.SchedulerTestSupport.TestGatewayConfig
+    )
+    Application.delete_env(:symphony_elixir, :manager_tool_definition_resolver)
+    Application.delete_env(:symphony_elixir, :manager_scheduler_tool_definitions)
+    Application.delete_env(:symphony_elixir, :manager_scheduler_gateway_config)
+
+    start_supervised!({Registry, keys: :unique, name: registry})
+
+    on_exit(fn ->
+      Application.delete_env(:symphony_elixir, :manager_scheduler_test_pid)
+      Application.delete_env(:symphony_elixir, :manager_scheduler_rows)
+      Application.delete_env(:symphony_elixir, :manager_scheduler_gateway_config)
+      Application.delete_env(:symphony_elixir, :manager_scheduler_session_resolver)
+      Application.delete_env(:symphony_elixir, :manager_tool_definition_resolver)
+      Application.delete_env(:symphony_elixir, :manager_scheduler_tool_definitions)
+      Application.delete_env(:symphony_elixir, :launcher_gateway_config_adapter)
+    end)
+
+    %{registry: registry}
   end
 end

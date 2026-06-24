@@ -1,8 +1,20 @@
 /**
- * Web-side helpers for the dev-only workspace-directory endpoints
- * registered by apps/api/src/routes/local-directory.ts.
+ * Web-side helpers for local workspace-directory actions.
+ *
+ * Directory picking runs through the local runtime helper because the selected
+ * absolute path only has meaning on the user's machine. Workspace-path
+ * persistence/validation endpoints below are still platform API routes.
  */
 import { brokerFetch } from "./broker-fetch";
+
+const DEFAULT_LOCAL_HELPER_BASE = "http://127.0.0.1:7317";
+
+export function resolveLocalRuntimeHelperBase(): string {
+  return (
+    import.meta.env.VITE_LOCAL_RUNTIME_HELPER_BASE?.trim() ||
+    DEFAULT_LOCAL_HELPER_BASE
+  ).replace(/\/+$/, "");
+}
 
 export type ValidateDirectoryResult =
   | { ok: true; path: string }
@@ -20,10 +32,15 @@ export async function pickDirectory(opts?: {
   defaultLocation?: string;
   prompt?: string;
 }): Promise<PickDirectoryResult> {
-  const res = await brokerFetch("/api/local/pick-directory", {
+  const base = resolveLocalRuntimeHelperBase();
+  const res = await fetch(`${base}/api/local/pick-directory`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(opts ?? {}),
+  }).catch((error) => {
+    throw new Error(
+      `Could not reach local runtime helper at ${base}. Start the helper, then try Browse again. (${error instanceof Error ? error.message : String(error)})`,
+    );
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");

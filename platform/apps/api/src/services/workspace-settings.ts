@@ -15,6 +15,10 @@ import {
   upsertWorkspaceSettingsRow,
   type WorkspaceSettingsRow,
 } from "../repositories/workspace-settings.js";
+import {
+  ensureLearningMetaAgentScheduleForWorkspace,
+  setLearningMetaAgentScheduledTaskEnabled,
+} from "./setup/store/learning-agent.js";
 
 /**
  * Read the effective settings for a workspace. When no row exists in
@@ -79,6 +83,20 @@ export async function patchWorkspaceSettings(input: {
     trackerCredentialId: merged.trackerCredentialId,
     updatedByUserId: input.userId ?? null,
   });
+
+  if ("learningEnabled" in input.patch) {
+    if (merged.learningEnabled) {
+      await ensureLearningMetaAgentScheduleForWorkspace({
+        workspaceId: input.workspaceId,
+        userId: input.userId,
+      });
+    } else {
+      await setLearningMetaAgentScheduledTaskEnabled({
+        workspaceId: input.workspaceId,
+        enabled: false,
+      });
+    }
+  }
 
   return projectSettings(input.workspaceId, row);
 }

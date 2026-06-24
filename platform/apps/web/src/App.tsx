@@ -94,6 +94,11 @@ const MemorySection = lazy(async () => {
   return { default: module.MemorySection };
 });
 
+const SkillsSection = lazy(async () => {
+  const module = await import("./components/settings/SkillsSection");
+  return { default: module.SkillsSection };
+});
+
 const ConfigSection = lazy(async () => {
   const module = await import("./components/settings/ConfigSection");
   return { default: module.ConfigSection };
@@ -102,6 +107,11 @@ const ConfigSection = lazy(async () => {
 const RuntimeSection = lazy(async () => {
   const module = await import("./components/settings/RuntimeSection");
   return { default: module.RuntimeSection };
+});
+
+const DebugSection = lazy(async () => {
+  const module = await import("./components/settings/DebugSection");
+  return { default: module.DebugSection };
 });
 
 const LocalRuntimesSection = lazy(async () => {
@@ -287,9 +297,11 @@ function AppRoutes() {
           <Route path="models" element={<ModelsSection />} />
           <Route path="sessions" element={<SessionsSection />} />
           <Route path="memory" element={<MemorySection />} />
+          <Route path="skills" element={<SkillsSection />} />
           <Route path="usage" element={<UsageSection />} />
           <Route path="config" element={<ConfigSection />} />
           <Route path="runtime" element={<RuntimeSection />} />
+          <Route path="debug" element={<DebugSection />} />
           <Route path="local-runtimes" element={<LocalRuntimesSection />} />
           <Route path="workspace" element={<WorkspaceSection />} />
         </Route>

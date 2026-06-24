@@ -50,6 +50,7 @@ describe("stored agent credential routes", () => {
         agentType: "coding",
         model: "openai/gpt-5.2",
         provider: "openai",
+        context: null,
         hasCredentials: false,
         isResolved: true,
         configurationStatus: null,
@@ -103,12 +104,12 @@ describe("stored agent credential routes", () => {
       {
         path: storedAgentCredentialLaunchRoute("agent-1", "credential-1"),
         method: "POST",
-        body: { workspaceId: "workspace-1", cwd: "/tmp/workspace" },
+        body: { workspaceId: "workspace-1" },
       },
       {
         path: storedAgentActivateRoute("agent-1"),
         method: "POST",
-        body: { workspaceId: "workspace-1", cwd: "/tmp/workspace" },
+        body: { workspaceId: "workspace-1" },
       },
     ];
 
@@ -147,14 +148,14 @@ describe("stored agent credential routes", () => {
         authorization: "Bearer test-token",
         "content-type": "application/json",
       },
-      body: JSON.stringify({ workspaceId: "workspace-1" }),
+      body: JSON.stringify({}),
     });
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       error: {
         code: "invalid_request",
-        message: "workspaceId and cwd are required",
+        message: "workspaceId is required",
       },
     });
   });

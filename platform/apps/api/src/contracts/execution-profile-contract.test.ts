@@ -22,12 +22,6 @@ import {
   LocalCodingToolArgumentsSchema,
   LocalCodingToolResultEnvelopeSchema,
   LocalCodingToolResultPayloadSchema,
-  RepoListArgumentsSchema,
-  RepoListResultPayloadSchema,
-  RepoReadFileArgumentsSchema,
-  RepoReadFileResultPayloadSchema,
-  RepoSearchArgumentsSchema,
-  RepoSearchResultPayloadSchema,
 } from "../../../../contracts/local-model-coding.js";
 
 const workspaceId = "22222222-2222-4222-8222-222222222222";
@@ -341,38 +335,6 @@ describe("execution profile contract", () => {
   });
 
   it("parses local coding shell, patch, and normalized event payloads", () => {
-    const repoSearchTool = LocalCodingToolArgumentsSchema.parse({
-      toolSlug: "repo.search",
-      arguments: {
-        query: "contracts",
-        path: "src",
-        limit: 3,
-        snippet_chars: 120,
-      },
-    });
-    expect(repoSearchTool.toolSlug).toBe("repo.search");
-
-    const repoSearchArguments = RepoSearchArgumentsSchema.parse({
-      query: "contracts",
-      path: "src",
-      limit: 3,
-      snippet_chars: 120,
-    });
-    expect(repoSearchArguments.query).toBe("contracts");
-
-    const repoListArguments = RepoListArgumentsSchema.parse({
-      path: "src",
-      max_depth: 2,
-      limit: 10,
-    });
-    expect(repoListArguments.path).toBe("src");
-
-    const repoReadFileArguments = RepoReadFileArgumentsSchema.parse({
-      path: "README.md",
-      byte_limit: 256,
-    });
-    expect(repoReadFileArguments.path).toBe("README.md");
-
     const shellArguments = LocalCodingToolArgumentsSchema.parse({
       toolSlug: "shell.exec",
       arguments: {
@@ -402,37 +364,26 @@ describe("execution profile contract", () => {
       expect(shellResult.commandActions).toEqual(["search"]);
     }
 
-    const repoReadFileToolResult = LocalCodingToolResultPayloadSchema.parse({
-      toolSlug: "repo.read_file",
+    const gitResult = LocalCodingToolResultPayloadSchema.parse({
+      toolSlug: "git.run",
       status: "completed",
+      commandActions: ["unknown"],
       result: {
-        path: "README.md",
-        content: "hello",
-        bytesRead: 5,
-        truncated: false,
+        exitCode: 0,
+        stdout: "main",
       },
     });
-    expect(repoReadFileToolResult.toolSlug).toBe("repo.read_file");
+    expect(gitResult.toolSlug).toBe("git.run");
 
-    const repoSearchResult = RepoSearchResultPayloadSchema.parse({
-      query: "contracts",
-      matches: [{ path: "contracts/local-model-coding.ts", line: 1, column: 1, snippet: "contracts" }],
+    const patchResult = LocalCodingToolResultPayloadSchema.parse({
+      toolSlug: "apply_patch",
+      status: "completed",
+      result: {
+        applied: true,
+        changes: [{ path: "README.md", changeType: "modified" }],
+      },
     });
-    expect(repoSearchResult.matches).toHaveLength(1);
-
-    const repoListResult = RepoListResultPayloadSchema.parse({
-      path: ".",
-      entries: [{ path: "src", type: "directory", size: 0 }],
-    });
-    expect(repoListResult.entries[0]?.path).toBe("src");
-
-    const repoReadFileResult = RepoReadFileResultPayloadSchema.parse({
-      path: "README.md",
-      content: "hello",
-      bytesRead: 5,
-      truncated: false,
-    });
-    expect(repoReadFileResult.content).toBe("hello");
+    expect(patchResult.toolSlug).toBe("apply_patch");
 
     expect(
       LocalCodingNormalizedEventSchema.parse({

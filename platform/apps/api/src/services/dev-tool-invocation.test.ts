@@ -124,11 +124,11 @@ describe("dev tool invocation service", () => {
         {
           id: toolId,
           workspace_id: null,
-          slug: "repo.read_file",
+          slug: "shell.exec",
           name: "Read File",
           description: "Read a file",
           parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
-          function_name: "repo_read_file",
+          function_name: "shell_exec",
           type: "function",
           execution_kind: "filesystem_read",
           runner_kind: "local_model_coding",
@@ -171,7 +171,7 @@ describe("dev tool invocation service", () => {
     const result = await invokeDevTool({
       accessToken,
       userId,
-      toolSlug: "repo.read_file",
+      toolSlug: "shell.exec",
       request: {
         agentId,
         workspaceId,
@@ -183,7 +183,7 @@ describe("dev tool invocation service", () => {
       agentId,
       workspaceId,
       toolId,
-      toolSlug: "repo.read_file",
+      toolSlug: "shell.exec",
       executionProfile: {
         runnerKind: "local_model_coding",
         provider: "local",
@@ -192,7 +192,7 @@ describe("dev tool invocation service", () => {
       },
       observation: {
         status: "completed",
-        commandActions: ["read"],
+        commandActions: ["unknown"],
         arguments: { path: "package.json" },
         result: { ok: true, status: 200, output: '{"ok":true}' },
       },
@@ -207,14 +207,14 @@ describe("dev tool invocation service", () => {
       expect.objectContaining({
         id: expect.stringMatching(/^dev-/),
         function: expect.objectContaining({
-          name: "repo_read_file",
+          name: "shell_exec",
           arguments: JSON.stringify({ path: "package.json" }),
         }),
       }),
       expect.objectContaining({
         id: toolId,
-        slug: "repo.read_file",
-        functionName: "repo_read_file",
+        slug: "shell.exec",
+        functionName: "shell_exec",
       }),
       {
         context: expect.objectContaining({
@@ -233,7 +233,7 @@ describe("dev tool invocation service", () => {
     await invokeDevTool({
       accessToken,
       userId,
-      toolSlug: "repo.read_file",
+      toolSlug: "shell.exec",
       request: {
         agentId,
         workspaceId,
@@ -253,7 +253,7 @@ describe("dev tool invocation service", () => {
       invokeDevTool({
         accessToken,
         userId,
-        toolSlug: "repo.search",
+        toolSlug: "scheduled_task.list",
         request: { agentId, workspaceId, input: { query: "needle" } },
       }),
     ).rejects.toMatchObject({
@@ -270,7 +270,7 @@ describe("dev tool invocation service", () => {
       invokeDevTool({
         accessToken,
         userId,
-        toolSlug: "repo.read_file",
+        toolSlug: "shell.exec",
         request: { agentId, workspaceId, input: { path: "package.json" } },
       }),
     ).rejects.toMatchObject({
@@ -292,7 +292,7 @@ describe("dev tool invocation service", () => {
       invokeDevTool({
         accessToken,
         userId,
-        toolSlug: "repo.read_file",
+        toolSlug: "shell.exec",
         request: { agentId, workspaceId, input: {} },
       }),
     ).rejects.toMatchObject({
@@ -324,7 +324,7 @@ describe("dev tool invocation service", () => {
       invokeDevTool({
         accessToken,
         userId,
-        toolSlug: "repo.read_file",
+        toolSlug: "shell.exec",
         request: { agentId, workspaceId, input: { path: "package.json" } },
       }),
     ).rejects.toMatchObject({

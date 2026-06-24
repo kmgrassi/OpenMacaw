@@ -20,7 +20,7 @@ defmodule SymphonyElixir.ToolSpecTest do
 
   @tool %{
     name: "read_file",
-    description: "Read contents of a repository file.",
+    description: "Run a shell command.",
     parameters_schema: @schema,
     execution_kind: "filesystem_read",
     runner_kind: "local_relay"
@@ -32,7 +32,7 @@ defmodule SymphonyElixir.ToolSpecTest do
                "type" => "function",
                "function" => %{
                  "name" => "read_file",
-                 "description" => "Read contents of a repository file.",
+                 "description" => "Run a shell command.",
                  "parameters" => @schema
                }
              }
@@ -44,7 +44,7 @@ defmodule SymphonyElixir.ToolSpecTest do
              "type" => "function",
              "function" => %{
                "name" => "read_file",
-               "description" => "Read contents of a repository file.",
+               "description" => "Run a shell command.",
                "parameters" => @schema
              }
            }
@@ -67,7 +67,7 @@ defmodule SymphonyElixir.ToolSpecTest do
     assert ToolSpec.to_provider_format([@tool], :anthropic) == [
              %{
                "name" => "read_file",
-               "description" => "Read contents of a repository file.",
+               "description" => "Run a shell command.",
                "input_schema" => @schema
              }
            ]
@@ -82,7 +82,7 @@ defmodule SymphonyElixir.ToolSpecTest do
 
     assert message =~ ~s({"tool_call":{"name":"tool_name","arguments":{}}})
     assert message =~ "Available tools:"
-    assert message =~ "read_file: Read contents of a repository file."
+    assert message =~ "read_file: Run a shell command."
     assert message =~ Jason.encode!(@schema)
   end
 
@@ -121,12 +121,12 @@ defmodule SymphonyElixir.ToolSpecTest do
 
   test "accepts existing dotted runtime tool names" do
     tool = %{
-      "name" => "repo.read_file",
-      "description" => "Read a repository file.",
+      "name" => "plan.create",
+      "description" => "Create a plan.",
       "parameters_schema" => @schema
     }
 
-    assert %{"name" => "repo.read_file", "input_schema" => @schema} = ToolSpec.translate_tool(tool, :anthropic)
+    assert %{"name" => "plan.create", "input_schema" => @schema} = ToolSpec.translate_tool(tool, :anthropic)
   end
 
   test "preserves existing inputSchema tool parameter contracts" do

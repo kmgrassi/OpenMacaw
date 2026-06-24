@@ -9,6 +9,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   alias SymphonyElixir.LocalRelay.Registry, as: LocalRelayRegistry
   alias SymphonyElixir.AgentInventory.StoredCredential
   alias SymphonyElixir.Manager.Prompt, as: ManagerPrompt
+  alias SymphonyElixir.Learning.Prompt, as: LearningPrompt
   alias SymphonyElixir.Manager.ModelClient
   alias SymphonyElixir.Planner.ToolNameMapping
   alias SymphonyElixir.Runner.Observability
@@ -22,10 +23,11 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   # CLI tools the relay helper executes on the user's machine (with local
   # git/gh auth) instead of the orchestrator. Only relevant for local-relay
   # managers, where a helper is present to delegate to.
-  @local_helper_cli_tools ["git.run"]
+  @local_helper_tools ["git.run", "shell.exec"]
+  @local_relay_fallback_excluded_tools ["git.run"]
 
   @impl true
-  def start_session(config, _workspace) when is_map(config) do
+  def start_session(config, workspace) when is_map(config) do
     if probe_only?(config) do
       with :ok <- ping(config) do
         {:ok, %{probe_only: true, runner: "manager"}}
@@ -48,6 +50,8 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
            credential_id: credential.credential_id,
            credential_ref: credential_ref(config),
            credential_scope: Map.get(credential, :credential_scope),
+           workspace: workspace,
+           workspace_root: workspace,
            workspace_id: config_value(config, "workspace_id"),
            model: provider_model(config_value(config, "model")) || @default_model,
            model_tier_floor: model_tier_floor(config),
@@ -135,13 +139,33 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   def requires_workspace?, do: false
 
   defp runtime_prompt(config) do
-    case agent_type(config) do
-      "manager" ->
-        ManagerPrompt.load!() <>
-          "\n\nCurrent time: #{DateTime.utc_now() |> DateTime.to_iso8601()}. Workspace timezone: Etc/UTC. When a user asks to pause or defer a work_item to a specific time, call snooze with until set to the resolved absolute ISO timestamp."
+    base =
+      case agent_type(config) do
+        "manager" ->
+          ManagerPrompt.load!() <>
+            "\n\nCurrent time: #{DateTime.utc_now() |> DateTime.to_iso8601()}. Workspace timezone: Etc/UTC. When a user asks to pause or defer a work_item to a specific time, call snooze with until set to the resolved absolute ISO timestamp."
 
-      _other ->
-        config_value(config, "prompt") || "You are a helpful agent. Use the available tools when needed."
+        "learning" ->
+          LearningPrompt.load!() <>
+            "\n\nCurrent time: #{DateTime.utc_now() |> DateTime.to_iso8601()}. Workspace timezone: Etc/UTC."
+
+        _other ->
+          config_value(config, "prompt") || "You are a helpful agent. Use the available tools when needed."
+      end
+
+    append_agent_context(base, config)
+  end
+
+  defp append_agent_context(prompt, config) do
+    case config_value(config, "agent_context") do
+      context when is_binary(context) ->
+        case String.trim(context) do
+          "" -> prompt
+          trimmed -> prompt <> "\n\nAgent instructions:\n" <> trimmed
+        end
+
+      _ ->
+        prompt
     end
   end
 
@@ -188,6 +212,9 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
       emit_message(session, event, %{
         run_id: run_id,
         payload: %{
+          "tool_name" => tool,
+          "tool_call_id" => tool_call_id,
+          "arguments" => arguments,
           "params" =>
             %{"tool" => tool, "callId" => tool_call_id}
             |> maybe_put_payload_field("errorCode", Map.get(result, "error_code"))
@@ -230,7 +257,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   defp fallback_tool_names(config, ModelClient.LocalRelay) do
     tool_bundle(config)
     |> ToolRegistry.bundle()
-    |> Enum.reject(&(&1 in @local_helper_cli_tools))
+    |> Enum.reject(&(&1 in @local_relay_fallback_excluded_tools))
   end
 
   defp fallback_tool_names(config, _model_client) do
@@ -243,7 +270,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   # Non-relay managers keep the registry execution_kind and execute in-process.
   defp mark_helper_cli_tools(tool_specs, ModelClient.LocalRelay) when is_list(tool_specs) do
     Enum.map(tool_specs, fn spec ->
-      if is_map(spec) and tool_spec_name(spec) in @local_helper_cli_tools do
+      if is_map(spec) and tool_spec_name(spec) in @local_helper_tools do
         Map.put(spec, "execution_kind", "helper")
       else
         spec
@@ -505,6 +532,9 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   defp tool_bundle(config) do
     case config_value(config, "tool_bundle") || agent_type(config) do
       "manager" -> :manager
+      "learning" -> :learning
+      "router" -> :router
+      "coding" -> :coding
       "planning" -> :planner
       "planner" -> :planner
       value when is_atom(value) -> value
@@ -837,7 +867,10 @@ defmodule SymphonyElixir.Runner.LlmToolRunner do
   defp req_options(config, _model_client) do
     configured = config_value(config, "req_options") || []
     env_options = Application.get_env(:symphony_elixir, :manager_responses_req_options, [])
+    defaults = [receive_timeout: 120_000]
 
-    Keyword.merge(List.wrap(configured), env_options)
+    defaults
+    |> Keyword.merge(List.wrap(configured))
+    |> Keyword.merge(env_options)
   end
 end

@@ -9,7 +9,9 @@ export const AgentTypeSchema = z.enum([
   "coding",
   "planning",
   "manager",
+  "learning",
   "router",
+  "learning",
   "custom",
 ]);
 export type AgentType = z.infer<typeof AgentTypeSchema>;
@@ -123,6 +125,7 @@ export const StoredAgentSchema = z.object({
   agentType: AgentTypeSchema.default("coding"),
   model: z.string().nullable(),
   provider: z.string().nullable(),
+  context: z.string().nullable().default(null),
   runnerKind: z.string().nullable().optional().default(null),
   hasCredentials: z.boolean(),
   isResolved: z.boolean(),

@@ -100,6 +100,7 @@ describe("credential routes", () => {
         agentType: "coding",
         model: "openai/gpt-5.2",
         provider: "openai",
+        context: null,
         hasCredentials: false,
         isResolved: true,
         configurationStatus: null,
@@ -401,7 +402,6 @@ describe("credential routes", () => {
       },
       credentialId: "credential-row-2",
       provider: "openai",
-      userId: "user-1",
     });
   });
 });

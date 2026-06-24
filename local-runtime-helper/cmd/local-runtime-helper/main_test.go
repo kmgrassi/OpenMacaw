@@ -22,6 +22,7 @@ func TestRegisterWritesConfigWithoutPrintingToken(t *testing.T) {
 		"register",
 		"--endpoint", "wss://example.test/relay/ws",
 		"--workspace", "ws_123",
+		"--machine-id", "machine-123",
 		"--name", "Kevin MBP",
 		"--token", token,
 		"--workspace-root", "/tmp",
@@ -52,6 +53,9 @@ func TestRegisterWritesConfigWithoutPrintingToken(t *testing.T) {
 	}
 	if !strings.Contains(string(data), `workspace_root = "/tmp"`) {
 		t.Fatalf("config did not contain workspace root:\n%s", data)
+	}
+	if !strings.Contains(string(data), `id = "machine-123"`) {
+		t.Fatalf("config did not contain machine id:\n%s", data)
 	}
 	if !strings.Contains(string(data), `[runner.openai_compatible]`) {
 		t.Fatalf("config did not contain openai-compatible runner:\n%s", data)

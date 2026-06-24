@@ -11,7 +11,7 @@ import { Card } from "../ui/Card";
 import { ChoosePathCard } from "./ChoosePathCard";
 import { CloudKeyCard } from "./CloudKeyCard";
 import { LaunchAgentCard } from "./LaunchAgentCard";
-import { LocalHelperCard } from "./LocalHelperCard";
+import { LocalRuntimeRelayCard } from "./LocalRuntimeRelayCard";
 
 const CARD_META: Record<
   OnboardingCard,
@@ -23,7 +23,7 @@ const CARD_META: Record<
     title: "How do you want to run your agent?",
   },
   "cloud-key": { label: "Cloud key", step: 2, title: "Use a cloud model" },
-  "local-helper": {
+  "local-runtime-relay": {
     label: "Local runtime relay",
     step: 2,
     title: "Use a local model",
@@ -44,15 +44,18 @@ export function OnboardingCards() {
     setPath,
     advanceCard,
     goBack,
-    reset,
+    resumeIncompleteStep,
     setSelectedAgentIds,
   } = useOnboardingStore();
 
+  // If we land on the launch card while onboarding is still required (e.g. a
+  // reload after the config step's server state was invalidated), return to the
+  // path's config step rather than wiping the user's progress back to step 1.
   useEffect(() => {
     if (currentCard === "launch" && defaultAgentOnboarding.required) {
-      reset();
+      resumeIncompleteStep();
     }
-  }, [currentCard, defaultAgentOnboarding.required, reset]);
+  }, [currentCard, defaultAgentOnboarding.required, resumeIncompleteStep]);
 
   if (currentCard === "launch" && defaultAgentOnboarding.required) {
     return null;
@@ -107,8 +110,8 @@ export function OnboardingCards() {
         <CloudKeyCard onBack={goBack} onContinue={advanceCard} />
       )}
 
-      {currentCard === "local-helper" && (
-        <LocalHelperCard
+      {currentCard === "local-runtime-relay" && (
+        <LocalRuntimeRelayCard
           onBack={goBack}
           onContinue={advanceCard}
           onSkip={() =>

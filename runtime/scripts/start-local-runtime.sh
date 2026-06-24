@@ -7,7 +7,7 @@ LAUNCHER_PORT="${LAUNCHER_PORT:-4100}"
 LAUNCHER_START_PORT="${LAUNCHER_START_PORT:-4001}"
 ORCHESTRATOR_PORT="${ORCHESTRATOR_PORT:-4000}"
 WORKFLOW_PATH="${WORKFLOW_PATH:-./WORKFLOW.local-e2e.md}"
-HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-30}"
+HEALTH_TIMEOUT_SECONDS="${HEALTH_TIMEOUT_SECONDS:-${OPENMACAW_HEALTH_TIMEOUT:-60}}"
 MODE="foreground"
 
 LAUNCHER_SESSION="${LAUNCHER_SESSION:-par-runtime-launcher}"
@@ -84,20 +84,87 @@ cleanup() {
 
 trap cleanup INT TERM EXIT
 
-is_project_listener() {
+project_listener_pids() {
   local port="$1"
-  local pattern="$2"
   local pid
-  local command_line
+  local cwd_path
 
   for pid in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null || true); do
-    command_line="$(ps -p "$pid" -o command= 2>/dev/null || true)"
-    case "$command_line" in
-      *"$pattern"*) return 0 ;;
+    cwd_path="$(lsof -p "$pid" -a -d cwd -Fn 2>/dev/null | awk '/^n/ { print substr($0, 2); exit }' || true)"
+    case "$cwd_path" in
+      "$ROOT_DIR"|"$ROOT_DIR"/*)
+        printf '%s\n' "$pid"
+        ;;
     esac
   done
+}
 
-  return 1
+is_project_listener() {
+  [ -n "$(project_listener_pids "$1" "$2")" ]
+}
+
+process_env_value() {
+  local pid="$1"
+  local key="$2"
+
+  ps eww -p "$pid" -o command= 2>/dev/null \
+    | tr ' ' '\n' \
+    | awk -v key="$key" 'index($0, key "=") == 1 { print substr($0, length(key) + 2); exit }'
+}
+
+listener_env_matches_current_env() {
+  local pid="$1"
+  local expected_url="${SUPABASE_URL-}"
+  local expected_key="${SUPABASE_SERVICE_ROLE_KEY-}"
+  local actual_url
+  local actual_key
+
+  actual_url="$(process_env_value "$pid" SUPABASE_URL)"
+  [ "$actual_url" = "$expected_url" ] || return 1
+
+  actual_key="$(process_env_value "$pid" SUPABASE_SERVICE_ROLE_KEY)"
+  [ "$actual_key" = "$expected_key" ] || return 1
+
+  return 0
+}
+
+restart_stale_project_listener() {
+  local port="$1"
+  local service="$2"
+  local expected_pattern="$3"
+  local pid
+  local stale_pids=""
+  local timeout_seconds=10
+  local elapsed=0
+
+  for pid in $(project_listener_pids "$port" "$expected_pattern"); do
+    if listener_env_matches_current_env "$pid"; then
+      continue
+    fi
+    stale_pids="${stale_pids} ${pid}"
+  done
+
+  if [ -z "$stale_pids" ]; then
+    return 1
+  fi
+
+  echo "[local-runtime] restarting stale ${service} listener on port ${port}; loaded env changed"
+  for pid in $stale_pids; do
+    kill "$pid" 2>/dev/null || true
+  done
+
+  while lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 && [ "$elapsed" -lt "$timeout_seconds" ]; do
+    sleep 1
+    elapsed=$((elapsed + 1))
+  done
+
+  if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    echo "[local-runtime] cannot restart ${service}: stale listener did not release port ${port}" >&2
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN >&2 || true
+    exit 1
+  fi
+
+  return 0
 }
 
 require_port_available() {
@@ -110,6 +177,9 @@ require_port_available() {
   fi
 
   if is_project_listener "$port" "$expected_pattern"; then
+    if restart_stale_project_listener "$port" "$service" "$expected_pattern"; then
+      return 0
+    fi
     echo "[local-runtime] reusing existing ${service} listener on port ${port}"
     return 0
   fi

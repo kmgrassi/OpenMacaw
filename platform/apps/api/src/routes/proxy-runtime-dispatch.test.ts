@@ -184,6 +184,7 @@ function setupAgent(toolPolicy: SetupAgentRow["tool_policy"] = {}): SetupAgentRo
     name: "Coding Agent",
     status: "active",
     type: "coding",
+    context: null,
     model_settings: {},
     tool_policy: toolPolicy,
     created_by_user_id: userId,

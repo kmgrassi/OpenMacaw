@@ -25,16 +25,16 @@ defmodule SymphonyElixir.Planner.ToolNameMappingTest do
   end
 
   test "provider_to_runtime/1 reverses the canonical map for relay tool calls" do
-    assert ToolNameMapping.provider_to_runtime(["repo.list", "repo_list"]) == %{
-             "repo_list" => "repo.list",
-             "repo_list_1" => "repo_list"
+    assert ToolNameMapping.provider_to_runtime(["scheduled_task.list", "scheduled_task_list"]) == %{
+             "scheduled_task_list" => "scheduled_task.list",
+             "scheduled_task_list_1" => "scheduled_task_list"
            }
   end
 
   test "runtime_name/2 maps provider calls back to runtime names" do
-    mapping = ToolNameMapping.runtime_to_provider(["repo.list"])
+    mapping = ToolNameMapping.runtime_to_provider(["scheduled_task.list"])
 
-    assert ToolNameMapping.runtime_name("repo_list", mapping) == "repo.list"
+    assert ToolNameMapping.runtime_name("scheduled_task_list", mapping) == "scheduled_task.list"
     assert ToolNameMapping.runtime_name("unknown_tool", mapping) == "unknown_tool"
   end
 
@@ -59,20 +59,20 @@ defmodule SymphonyElixir.Planner.ToolNameMappingTest do
   end
 
   test "responses_tool_spec/2 includes examples in descriptions" do
-    mapping = ToolNameMapping.runtime_to_provider(["repo.read_file"])
+    mapping = ToolNameMapping.runtime_to_provider(["shell.exec"])
 
     spec =
       ToolNameMapping.responses_tool_spec(
         %{
-          name: "repo.read_file",
-          description: "Read file",
-          examples: [%{"input" => %{"path" => "README.md"}}]
+          name: "shell.exec",
+          description: "Run command",
+          examples: [%{"input" => %{"command" => "pwd"}}]
         },
         mapping
       )
 
     assert spec["description"] =~ "Examples / usage guidance:"
-    assert spec["description"] =~ "README.md"
+    assert spec["description"] =~ "pwd"
   end
 
   test "put_provider_tool_name/2 rewrites both Responses and chat-style specs" do

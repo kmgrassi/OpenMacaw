@@ -50,12 +50,9 @@ SymphonyElixir.Orchestrator.WorkerSlotReservations.release/2
 SymphonyElixir.Planner.DatabaseTools.execute/3
 SymphonyElixir.Planner.DatabaseTools.req_options/0
 SymphonyElixir.PlanningProfile.execute/3
-SymphonyElixir.PlatformLearningClient.req_options/0
 SymphonyElixir.Provider.AnthropicMessages.start_turn/4
 SymphonyElixir.Provider.OpenAICompatible.start_turn/4
 SymphonyElixir.ScheduledTask.Delivery.delivery_kind/0
-SymphonyElixir.ScheduledTask.Delivery.learning_reflection_kind/0
-SymphonyElixir.ScheduledTask.Delivery.learning_distillation_kind/0
 SymphonyElixir.ScheduledTask.Delivery.known_kinds/0
 SymphonyElixir.ScheduledTask.Delivery.validate_delivery/1
 SymphonyElixir.ScheduledTask.NextRun.first_after/3

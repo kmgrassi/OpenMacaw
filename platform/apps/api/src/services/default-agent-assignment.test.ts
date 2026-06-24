@@ -43,6 +43,7 @@ function agent(id: string, type: Role) {
     name: `${type} agent`,
     status: "active",
     type,
+    context: null,
     model_settings: {},
     tool_policy: {},
     created_by_user_id: USER_ONE_ID,

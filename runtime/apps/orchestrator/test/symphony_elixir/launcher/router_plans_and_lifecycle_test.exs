@@ -214,7 +214,7 @@ defmodule SymphonyElixir.Launcher.RouterPlansAndLifecycleTest do
     assert body["data"]["project_id"] == "project-1"
   end
 
-  test "POST /agents/:id/start returns structured launcher config errors" do
+  test "POST /agents/:id/start defaults to a database tracker when none is configured" do
     Application.put_env(:symphony_elixir, :agent_launch_template, %{})
 
     Application.put_env(:symphony_elixir, :test_agent_inventory_agents, [
@@ -226,14 +226,11 @@ defmodule SymphonyElixir.Launcher.RouterPlansAndLifecycleTest do
       |> put_req_header("content-type", "application/json")
       |> call()
 
-    assert conn.status == 422
+    # The tracker is sourced from workspace_settings (default "database"), so a
+    # launch config that omits a tracker no longer fails with missing_tracker_kind.
+    assert conn.status == 201
     body = Jason.decode!(conn.resp_body)
-    assert body["error"] == "agent launch config tracker.kind is required"
-    assert body["error_code"] == "missing_tracker_kind"
-    assert body["required_config"] == ["tracker.kind"]
-
-    assert body["resolution_hint"] ==
-             "Create a gateway_config with tracker settings for this agent"
+    assert body["data"]["agent_id"] == "agent-1"
   end
 
   test "runtime websocket state overrides caller-supplied scope with launcher context" do

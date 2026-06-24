@@ -12,7 +12,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolsAgentToolGrantTest do
           json(conn, 200, [%{"id" => "agent-2", "workspace_id" => "workspace-1"}])
 
         {"GET", "/rest/v1/tool"} ->
-          json(conn, 200, [%{"id" => "tool-read", "slug" => "repo.read_file", "name" => "Read File", "enabled" => true}])
+          json(conn, 200, [%{"id" => "tool-read", "slug" => "shell.exec", "name" => "Read File", "enabled" => true}])
 
         {"GET", "/rest/v1/agent_tool_grant"} ->
           json(conn, 200, [])
@@ -27,7 +27,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolsAgentToolGrantTest do
                    "tool_id" => "tool-read",
                    "mode" => "include",
                    "source" => "system",
-                   "reason" => "operability signature repo.read_file",
+                   "reason" => "operability signature shell.exec",
                    "created_by_user_id" => nil
                  }
 
@@ -44,16 +44,16 @@ defmodule SymphonyElixir.Planner.DatabaseToolsAgentToolGrantTest do
       end
     end)
 
-    assert {:ok, %{"grant" => %{"id" => "grant-1"}, "tool" => %{"slug" => "repo.read_file"}}} =
+    assert {:ok, %{"grant" => %{"id" => "grant-1"}, "tool" => %{"slug" => "shell.exec"}}} =
              DatabaseTools.execute("agent_tool_grant.create", %{
                "workspace_id" => "workspace-1",
                "agentId" => "agent-2",
-               "toolSlug" => "repo.read_file",
-               "reason" => "operability signature repo.read_file"
+               "toolSlug" => "shell.exec",
+               "reason" => "operability signature shell.exec"
              })
 
     assert_received {:request, "GET", "/rest/v1/agent", %{"id" => "eq.agent-2", "workspace_id" => "eq.workspace-1"}}
-    assert_received {:request, "GET", "/rest/v1/tool", %{"slug" => "eq.repo.read_file"} = tool_query}
+    assert_received {:request, "GET", "/rest/v1/tool", %{"slug" => "eq.shell.exec"} = tool_query}
     assert tool_query["or"] == "(workspace_id.is.null,workspace_id.eq.workspace-1)"
 
     assert_received {:request, "GET", "/rest/v1/agent_tool_grant",
@@ -73,7 +73,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolsAgentToolGrantTest do
           json(conn, 200, [%{"id" => "agent-2", "workspace_id" => "workspace-1"}])
 
         {"GET", "/rest/v1/tool"} ->
-          json(conn, 200, [%{"id" => "tool-read", "slug" => "repo.read_file", "name" => "Read File", "enabled" => true}])
+          json(conn, 200, [%{"id" => "tool-read", "slug" => "shell.exec", "name" => "Read File", "enabled" => true}])
 
         {"GET", "/rest/v1/agent_tool_grant"} ->
           json(conn, 200, [
@@ -96,9 +96,9 @@ defmodule SymphonyElixir.Planner.DatabaseToolsAgentToolGrantTest do
              DatabaseTools.execute("agent_tool_grant.update", %{
                "workspace_id" => "workspace-1",
                "agentId" => "agent-2",
-               "toolSlug" => "repo.read_file",
+               "toolSlug" => "shell.exec",
                "mode" => "include",
-               "reason" => "operability signature repo.read_file"
+               "reason" => "operability signature shell.exec"
              })
   end
 

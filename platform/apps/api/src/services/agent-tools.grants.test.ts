@@ -48,7 +48,23 @@ describe("agent tool grants", () => {
   it("does not return disabled assigned tools", async () => {
     harness.tables.tool[0] = tool({ enabled: false });
 
-    await expect(getToolsForAgent({ accessToken, userId, agentId, workspaceId })).resolves.toEqual([]);
+    await expect(getToolsForAgent({ accessToken, userId, agentId, workspaceId })).resolves.toEqual([
+      expect.objectContaining({ slug: "memory.create" }),
+      expect.objectContaining({ slug: "memory.search" }),
+    ]);
+  });
+
+  it("uses callable names for universal runtime memory tools", async () => {
+    const tools = await getToolsForAgent({ accessToken, userId, agentId, workspaceId });
+
+    expect(
+      tools
+        .filter((resolvedTool) => resolvedTool.slug.startsWith("memory."))
+        .map((resolvedTool) => [resolvedTool.slug, resolvedTool.name]),
+    ).toEqual([
+      ["memory.create", "memory_create"],
+      ["memory.search", "memory_search"],
+    ]);
   });
 
   it("prevents assigning disabled tool definitions", async () => {
@@ -167,15 +183,15 @@ describe("agent tool grants", () => {
     harness.tables.tool = [
       tool({
         id: "tool-read",
-        slug: "repo.read_file",
+        slug: "shell.exec",
         name: "Read File",
-        function_name: "repo_read_file",
+        function_name: "shell_exec",
       }),
       tool({
         id: "tool-search",
-        slug: "repo.search",
+        slug: "scheduled_task.list",
         name: "Search",
-        function_name: "repo_search",
+        function_name: "scheduled_task_list",
       }),
       tool({
         id: "tool-shell",
@@ -226,12 +242,16 @@ describe("agent tool grants", () => {
     expect(
       result.tools.map((resolvedTool) => [resolvedTool.slug, resolvedTool.source, resolvedTool.enabledForAgent]),
     ).toEqual([
-      ["repo.read_file", "include", true],
-      ["repo.search", "exclude", false],
+      ["memory.create", "system", true],
+      ["memory.search", "system", true],
+      ["shell.exec", "include", true],
+      ["scheduled_task.list", "exclude", false],
       ["shell.exec", "include", true],
     ]);
     await expect(getToolsForAgent({ accessToken, userId, agentId, workspaceId })).resolves.toEqual([
-      expect.objectContaining({ slug: "repo.read_file" }),
+      expect.objectContaining({ slug: "memory.create" }),
+      expect.objectContaining({ slug: "memory.search" }),
+      expect.objectContaining({ slug: "shell.exec" }),
       expect.objectContaining({ slug: "shell.exec" }),
     ]);
   });
@@ -241,9 +261,9 @@ describe("agent tool grants", () => {
     harness.tables.tool = [
       tool({
         id: "tool-read",
-        slug: "repo.read_file",
+        slug: "shell.exec",
         name: "Read File",
-        function_name: "repo_read_file",
+        function_name: "shell_exec",
       }),
       tool({
         id: "tool-shell",
@@ -294,10 +314,14 @@ describe("agent tool grants", () => {
       ]),
     ).toEqual([
       ["apply_patch", "include", true, "local_model_coding"],
+      ["memory.create", "system", true, null],
+      ["memory.search", "system", true, null],
       ["shell.exec", "include", true, "local_model_coding"],
     ]);
     await expect(getToolsForAgent({ accessToken, userId, agentId, workspaceId })).resolves.toEqual([
       expect.objectContaining({ slug: "apply_patch", runnerKind: "local_model_coding" }),
+      expect.objectContaining({ slug: "memory.create" }),
+      expect.objectContaining({ slug: "memory.search" }),
       expect.objectContaining({ slug: "shell.exec", runnerKind: "local_model_coding" }),
     ]);
   });

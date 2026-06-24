@@ -87,6 +87,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
 
     result =
       with {:ok, frame} <- dispatch_frame(session, prompt, work_item, correlation_id),
+           :ok <- log_request_context(context, frame),
            {:ok, helper} <- Readiness.lookup(session.workspace_id, session.target_runner_kind),
            :ok <- ensure_model_available(session, helper),
            :ok <- ensure_capabilities(session, helper) do
@@ -128,6 +129,10 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   defp cancel_relay_dispatch_on_error({:error, _reason} = result, correlation_id) do
     _ = Registry.cancel(correlation_id)
     result
+  end
+
+  defp log_request_context(context, frame) do
+    Observability.log_model_request_context_prepared(context, frame)
   end
 
   @impl true
@@ -474,6 +479,7 @@ defmodule SymphonyElixir.Runner.LocalRelay do
       workspace_id: session.workspace_id,
       user_id: Map.get(session, :user_id),
       session_id: Map.get(session, :session_id) || work_item_session_id(work_item),
+      run_id: work_item_run_id(work_item),
       workspace_root: Map.get(session, :workspace_root)
     })
   end
@@ -561,7 +567,10 @@ defmodule SymphonyElixir.Runner.LocalRelay do
   end
 
   defp log_provider_result({:ok, response} = result, context, started_at) do
-    Observability.log_model_call_completed(context, elapsed_ms(started_at), provider_request_id: Map.get(response, "correlation_id"))
+    Observability.log_model_call_completed(context, elapsed_ms(started_at),
+      provider_request_id: Map.get(response, "correlation_id"),
+      response: response
+    )
 
     result
   end

@@ -29,6 +29,7 @@ const agent = {
   name: "Agent",
   status: "active",
   type: "coding",
+  context: null,
   model_settings: { primary: "openai/gpt-5.2" },
   tool_policy: {},
   created_by_user_id: "user-1",

@@ -1,5 +1,6 @@
 ExUnit.start(exclude: [:live_db])
 Code.require_file("support/test_support.exs", __DIR__)
+Code.require_file("support/chat_runner_test_support.exs", __DIR__)
 Code.require_file("support/app_server_support.ex", __DIR__)
 Code.require_file("support/database_tools_case.ex", __DIR__)
 Code.require_file("support/gateway_socket_case.exs", __DIR__)

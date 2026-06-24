@@ -56,7 +56,7 @@ describe("buildLocalExecution", () => {
     });
   });
 
-  it("adds a workspace-root diagnostic when repository tools cannot resolve local paths", () => {
+  it("adds a workspace-root diagnostic when local helper commands cannot resolve local paths", () => {
     expect(
       buildLocalExecution({
         machine: {

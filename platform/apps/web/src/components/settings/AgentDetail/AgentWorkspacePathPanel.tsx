@@ -11,6 +11,9 @@ import { Button } from "../../ui/Button";
 import { Card } from "../../ui/Card";
 import { Input } from "../../ui/Input";
 
+const WORKSPACE_PATH_API_UNAVAILABLE_MESSAGE =
+  "Workspace directory editing from this panel is only available when running the web app with the local development API. Use Local runtimes setup to configure the helper workspace root.";
+
 type Props = {
   agentId: string;
   /**
@@ -30,6 +33,7 @@ type LoadState =
   | { kind: "error"; message: string };
 
 export function AgentWorkspacePathPanel({ agentId, visible }: Props) {
+  const workspacePathApiAvailable = import.meta.env.DEV;
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [draft, setDraft] = useState<string>("");
   const [draftValidation, setDraftValidation] =
@@ -56,11 +60,26 @@ export function AgentWorkspacePathPanel({ agentId, visible }: Props) {
   }, [agentId]);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible || !workspacePathApiAvailable) return;
     void refresh();
-  }, [visible, refresh]);
+  }, [visible, workspacePathApiAvailable, refresh]);
 
   if (!visible) return null;
+
+  if (!workspacePathApiAvailable) {
+    return (
+      <Card>
+        <div className="flex flex-col gap-2">
+          <div className="text-sm font-medium text-slate-100">
+            Workspace directory
+          </div>
+          <div className="text-sm text-slate-400">
+            {WORKSPACE_PATH_API_UNAVAILABLE_MESSAGE}
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   const onPick = async () => {
     setFeedback(null);

@@ -11,7 +11,7 @@ defmodule SymphonyElixir.Codex.ToolPolicyTest do
     turn_sandbox_policy: %{"type" => "workspaceWrite", "writableRoots" => ["/tmp/workspace"]}
   }
 
-  @repo_read_tools ["repo.list", "repo.search", "repo.read_file", "repo.read_symbols"]
+  @repo_read_tools ["scheduled_task.read", "scheduled_task.list", "shell.exec", "task.status"]
   @plan_task_tools [
     "plan.create",
     "plan.update",
@@ -22,6 +22,7 @@ defmodule SymphonyElixir.Codex.ToolPolicyTest do
     "task.schedule",
     "agent_tool_grant.create",
     "agent_tool_grant.update",
+    "skill.create",
     "scheduled_task.create",
     "scheduled_task.read",
     "scheduled_task.update",

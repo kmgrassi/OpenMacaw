@@ -305,25 +305,8 @@ defmodule SymphonyElixir.ChatGateway do
             Keyword.put(buffer.opts, :tool_calls, ToolCallPersistence.completed(buffer.tool_call_acc))
           )
 
-        # Learning sidecar: best-effort enqueue of a reflection job. Runs
-        # AFTER record_assistant_message so the platform reflector sees
-        # the persisted transcript. Best-effort by contract — never
-        # propagates an error.
-        :ok =
-          SymphonyElixir.Learning.ReflectionDispatcher.maybe_enqueue(
-            scope,
-            run_id,
-            source_work_item_id: assistant_source_work_item_id(buffer.opts, opts)
-          )
-
         {:ok, run_id}
     end
-  end
-
-  defp assistant_source_work_item_id(buffer_opts, opts) do
-    Keyword.get(opts, :source_work_item_id) ||
-      Keyword.get(buffer_opts, :source_work_item_id) ||
-      get_in(Keyword.get(buffer_opts, :assistant_metadata, %{}), ["source_work_item_id"])
   end
 
   defp fail_run(scope, session_thread_id, run_id, reason, buffer) do

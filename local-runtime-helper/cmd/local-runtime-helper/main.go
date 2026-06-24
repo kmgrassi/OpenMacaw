@@ -21,8 +21,10 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/kmgrassi/local-runtime-helper/internal/config"
+	"github.com/kmgrassi/local-runtime-helper/internal/localapi"
 	"github.com/kmgrassi/local-runtime-helper/internal/protocol"
 	"github.com/kmgrassi/local-runtime-helper/internal/relay"
 	"github.com/kmgrassi/local-runtime-helper/internal/runner"
@@ -47,7 +49,7 @@ func main() {
 	case "status":
 		cmdStatus(os.Args[2:])
 	case "doctor":
-		cmdDoctor(os.Args[2:])
+		os.Exit(cmdDoctor(os.Args[2:]))
 	case "logout":
 		cmdLogout(os.Args[2:])
 	case "version", "--version", "-v":
@@ -79,6 +81,7 @@ Commands:
 Register flags:
   --endpoint <wss-url>       Cloud relay endpoint
   --workspace <id>           Workspace id to register with
+  --machine-id <id>          Stable machine id from OpenMacaw registration
   --name <display-name>      Machine display name
   --token <token>            One-time local runtime token
   --workspace-root <path>    Local workspace root for filesystem tools
@@ -104,6 +107,7 @@ func cmdRegister(args []string) {
 
 	endpoint := fs.String("endpoint", "", "cloud relay endpoint")
 	workspaceID := fs.String("workspace", "", "workspace id")
+	machineID := fs.String("machine-id", "", "stable machine id from OpenMacaw registration")
 	displayName := fs.String("name", "", "machine display name")
 	token := fs.String("token", "", "one-time local runtime token")
 	workspaceRoot := fs.String("workspace-root", "", "local workspace root for filesystem tools")
@@ -118,7 +122,7 @@ func cmdRegister(args []string) {
 
 	fs.Usage = func() {
 		fmt.Fprintln(os.Stderr, `Usage:
-  local-runtime-helper register --endpoint <wss-url> --workspace <id> --name <display-name> --token <token> --openai-compatible-endpoint <url> --openai-compatible-model <model> [--workspace-root <path>] [--force]
+  local-runtime-helper register --endpoint <wss-url> --workspace <id> --machine-id <id> --name <display-name> --token <token> --openai-compatible-endpoint <url> --openai-compatible-model <model> [--workspace-root <path>] [--force]
 
 Flags:`)
 		fs.PrintDefaults()
@@ -135,6 +139,7 @@ Flags:`)
 
 	cfg := config.Config{
 		Machine: config.MachineConfig{
+			ID:            strings.TrimSpace(*machineID),
 			DisplayName:   strings.TrimSpace(*displayName),
 			WorkspaceRoot: strings.TrimSpace(*workspaceRoot),
 		},
@@ -174,6 +179,7 @@ Flags:`)
 func cmdStart(args []string) {
 	fs := flag.NewFlagSet("start", flag.ExitOnError)
 	configPath := fs.String("config", "", "config path (default ~/.config/openmacaw/runtime.toml)")
+	localAPIAddr := fs.String("local-api-addr", localapi.DefaultAddr, "localhost address for browser helper endpoints")
 	maxConcurrent := fs.Int("max-concurrent", relay.DefaultMaxConcurrentDispatches, "maximum simultaneous dispatches")
 	logLevel := fs.String("log-level", "info", "log level (debug, info, warn, error)")
 	if err := fs.Parse(args); err != nil {
@@ -258,6 +264,19 @@ func cmdStart(args []string) {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	localAPIServer := localapi.NewServer(strings.TrimSpace(*localAPIAddr), logger)
+	if err := localAPIServer.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "start: local helper api: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := localAPIServer.Shutdown(shutdownCtx); err != nil {
+			logger.Warn("local helper api shutdown failed", "error", err)
+		}
+	}()
+
 	logger.Info("starting relay client", "endpoint", cfg.Cloud.Endpoint)
 	if err := client.Run(ctx); err != nil && ctx.Err() == nil {
 		fmt.Fprintf(os.Stderr, "start: relay client exited: %v\n", err)
@@ -297,6 +316,7 @@ func buildRunners(cfg *config.Config, logger *slog.Logger) ([]runner.Runner, []s
 			APIKey:       rc.APIKey,
 			Model:        rc.Model,
 			ToolExecutor: localToolExecutor,
+			Logger:       logger,
 		})
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("initialize openai_compatible runner: %w", err)

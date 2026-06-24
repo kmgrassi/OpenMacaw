@@ -24,14 +24,10 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
     assert description =~ "Linear"
   end
 
-  test "planner_tool_specs advertises repo-read and database-backed planner input contracts" do
+  test "planner_tool_specs advertises database-backed planner input contracts" do
     specs = DynamicTool.planner_tool_specs()
 
     assert Enum.map(specs, & &1["name"]) == [
-             "repo.list",
-             "repo.search",
-             "repo.read_file",
-             "repo.read_symbols",
              "plan.create",
              "plan.update",
              "plan.delete",
@@ -41,6 +37,7 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
              "task.schedule",
              "agent_tool_grant.create",
              "agent_tool_grant.update",
+             "skill.create",
              "scheduled_task.create",
              "scheduled_task.read",
              "scheduled_task.update",
@@ -55,13 +52,6 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
              "workspace_settings.update_tracker_kind",
              "snooze_work_item"
            ]
-
-    assert %{
-             "inputSchema" => %{
-               "required" => ["workspace_id", "path"],
-               "properties" => %{"workspace_id" => _, "path" => _, "byte_limit" => _}
-             }
-           } = Enum.find(specs, &(&1["name"] == "repo.read_file"))
 
     assert %{
              "inputSchema" => %{
@@ -125,7 +115,6 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
     assert runner_kinds == ExecutionProfile.supported_runner_kinds() ++ [nil]
 
     refute "local_runtime" in runner_kinds
-    refute "llm_tool_runner" in runner_kinds
     refute "openclaw_http_sse" in runner_kinds
 
     assert %{
@@ -159,26 +148,6 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
            } = Enum.find(specs, &(&1["name"] == "task.status"))
 
     assert task_status_description =~ "dispatch eligibility"
-
-    assert %{
-             "inputSchema" => %{
-               "required" => ["workspace_id"],
-               "properties" => %{"workspace_id" => _, "path" => _, "query" => _, "kinds" => _, "limit" => _}
-             }
-           } = Enum.find(specs, &(&1["name"] == "repo.read_symbols"))
-  end
-
-  test "repository_tool_specs advertises repository read input contracts" do
-    specs = DynamicTool.repository_tool_specs()
-
-    assert Enum.map(specs, & &1["name"]) == ["repo.list", "repo.search", "repo.read_file", "repo.read_symbols"]
-
-    assert %{
-             "inputSchema" => %{
-               "required" => ["workspace_id", "path"],
-               "properties" => %{"workspace_id" => _, "path" => _, "byte_limit" => _}
-             }
-           } = Enum.find(specs, &(&1["name"] == "repo.read_file"))
   end
 
   test "planner tool execution returns a normal failure when Supabase is not configured" do
@@ -215,31 +184,6 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
                "supportedTools" => ["plan.create"]
              }
            }
-  end
-
-  test "repository tools can be executed when allowed by policy" do
-    root =
-      Path.join(
-        System.tmp_dir!(),
-        "symphony-dynamic-repo-tools-#{System.unique_integer([:positive])}"
-      )
-
-    workspace = Path.join(root, "workspace-1")
-    File.mkdir_p!(workspace)
-    File.write!(Path.join(workspace, "README.md"), "# Runtime\n")
-
-    on_exit(fn -> File.rm_rf(root) end)
-
-    response =
-      DynamicTool.execute(
-        "repo.read_file",
-        %{"workspace_id" => "workspace-1", "path" => "README.md"},
-        allowed_tools: ["repo.read_file"],
-        workspace_root: root
-      )
-
-    assert response["success"] == true
-    assert Jason.decode!(response["output"])["content"] == "# Runtime\n"
   end
 
   test "agent communication tools execute through the dynamic tool dispatcher" do
@@ -445,10 +389,6 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
 
   test "unsupported tool failures report policy-allowed tools when supplied" do
     allowed_tools = [
-      "repo.list",
-      "repo.search",
-      "repo.read_file",
-      "repo.read_symbols",
       "plan.create",
       "plan.update",
       "plan.delete",

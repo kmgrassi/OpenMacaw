@@ -14,6 +14,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
     "task.schedule",
     "agent_tool_grant.create",
     "agent_tool_grant.update",
+    "skill.create",
     "plan.read",
     "task.read",
     "task.status"
@@ -102,7 +103,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
             "priority" => nullable_string_schema("Optional task priority."),
             "intent" => nullable_string_schema("Optional intent such as implement, review, test, browse, or remediate."),
             "depends_on" => %{"type" => ["array", "null"], "items" => %{"type" => "string"}},
-            "repository" => nullable_string_schema("Optional repository identifier using the same shape as repository tools and RepositoryIndex."),
+            "repository" => nullable_string_schema("Optional stable repository identifier."),
             "when" => %{
               "type" => ["string", "null"],
               "description" => "Use now for immediate manager pickup, an ISO-8601 timestamp for scheduled pickup, or omit/null for plan-only todo work."
@@ -148,9 +149,7 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
                 "Optional dispatch intent such as implement, review, test, plan, browse, remediate, or manage. When runner_kind is omitted, the orchestrator resolves a canonical runner kind from this intent."
               ),
             "repository" =>
-              nullable_string_schema(
-                "Optional repository identifier for this work item, using the same shape as repository tools and RepositoryIndex. Stored in work_items.repository and mirrored into metadata.repository for routing context."
-              ),
+              nullable_string_schema("Optional stable repository identifier for this work item. Stored in work_items.repository and mirrored into metadata.repository for routing context."),
             "routing" => routing_hint_schema(),
             "when" => task_when_schema(),
             "metadata" => metadata_schema("Optional task metadata. Use routing for dispatch guidance instead of inventing ad hoc routing keys here."),
@@ -236,6 +235,37 @@ defmodule SymphonyElixir.Planner.DatabaseToolSpecs do
         "agent_tool_grant.update",
         "Update an existing grant to include or exclude an enabled catalog tool. Use reason to name the operability signature or rollback rationale."
       ),
+      %{
+        "name" => "skill.create",
+        "description" => "Create a draft Agent Skill for a target agent in the current workspace. Draft skills require human approval before runtime materialization.",
+        "inputSchema" => %{
+          "type" => "object",
+          "additionalProperties" => false,
+          "required" => ["agentId", "name", "description", "body"],
+          "properties" => %{
+            "workspace_id" => string_schema("Workspace database UUID."),
+            "agentId" => string_schema("Target agent UUID in the current workspace."),
+            "name" => %{
+              "type" => "string",
+              "minLength" => 1,
+              "maxLength" => 64,
+              "pattern" => "^[a-z0-9-]+$",
+              "description" => "Agent Skills directory name; cannot be claude or anthropic."
+            },
+            "description" => %{
+              "type" => "string",
+              "minLength" => 1,
+              "maxLength" => 1024,
+              "description" => "What the skill does and when to use it."
+            },
+            "body" => %{
+              "type" => "string",
+              "minLength" => 1,
+              "description" => "The SKILL.md instruction body."
+            }
+          }
+        }
+      },
       read_tool_spec(
         "plan.read",
         "plan_id",

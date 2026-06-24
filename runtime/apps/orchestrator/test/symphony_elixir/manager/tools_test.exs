@@ -19,6 +19,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     escalate_to_human
     snooze
     mark_done
+    skill.create
     scheduled_task.create
     scheduled_task.read
     scheduled_task.update
@@ -109,7 +110,7 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     assert schema["properties"]["work_item"]["required"] == ["instructions"]
     assert intents == IntentVocabulary.names()
     assert runner_kinds == ExecutionProfile.supported_runner_kinds() ++ [nil]
-    refute "llm_tool_runner" in runner_kinds
+    assert "llm_tool_runner" in runner_kinds
     assert "local_model_coding" in runner_kinds
   end
 

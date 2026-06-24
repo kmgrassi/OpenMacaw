@@ -38,7 +38,9 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
   | `local_model_coding` | `local_model_coding` |
   | `local_relay` | `local_relay` |
   | `computer_use` | `computer_use` |
-  | `llm_tool_runner` (role=manager) | `manager` |
+  | `llm_tool_runner` (role=coding) | `llm_tool_runner` |
+  | `llm_tool_runner` (role=manager/learning) | `manager` |
+  | `llm_tool_runner` (role=router) | `router` |
   | `llm_tool_runner` (role=planning) | `planner` |
   | `planner` | `planner` |
 
@@ -84,7 +86,7 @@ defmodule SymphonyElixir.Schema.ExecutionProfile do
 
   @primary_key false
 
-  @supported_runner_kinds ~w(codex claude_code openclaw openclaw_ws computer_use manager planner local_relay local_model_coding)
+  @supported_runner_kinds ~w(codex claude_code openclaw openclaw_ws computer_use llm_tool_runner manager planner router local_relay local_model_coding)
   @supported_providers ~w(openai openai_codex codex anthropic openai_compatible openclaw computer_use local)
 
   embedded_schema do

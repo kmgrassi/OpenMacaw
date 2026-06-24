@@ -93,16 +93,16 @@ export function DoctorPanel({
 
   const checks: DoctorCheck[] = [
     {
-      label: "Helper connected",
+      label: "Relay connected",
       passed: runtime.status === "online",
       remediation:
-        "Helper has not connected: start local-runtime-helper and wait for a fresh heartbeat.",
+        "Relay has not connected: start local-runtime-helper and wait for a fresh heartbeat.",
     },
     {
       label: "Runner advertised",
       passed: hasAdvertisedRunner,
       remediation:
-        "Runner missing: confirm the helper config includes this runner and restart the daemon.",
+        "Runner missing: confirm the local runtime relay config includes this runner and restart the daemon.",
     },
     {
       label: "Model present",
@@ -125,8 +125,8 @@ export function DoctorPanel({
         <div>
           <h3 className="text-sm font-semibold text-slate-200">Doctor panel</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Checks the helper, advertised runner, configured model, and a live
-            dispatch probe for {runtime.machineDisplayName}.
+            Checks the local runtime relay, advertised runner, configured model,
+            and a live dispatch probe for {runtime.machineDisplayName}.
           </p>
         </div>
         <Button

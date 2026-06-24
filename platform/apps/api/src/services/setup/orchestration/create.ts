@@ -88,7 +88,6 @@ export async function createSetupImpl(
         },
         credentialId: saved.credentialId,
         provider: saved.provider,
-        userId,
       });
     } catch (syncError) {
       console.error("[setup-create] Failed to sync credential into routing rule:", syncError);

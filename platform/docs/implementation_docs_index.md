@@ -84,7 +84,7 @@ In-flight work. Each entry should map to one or more open PRs.
   — Always-on learning loop: on a slow tick, sample one running agent
   (rotating across the fleet), read a ~10-message slice of its most
   recent run, and emit an advisory recommendation the planning/manager
-  agent consumes. Builds on learning-sidecar + closed-loop-observability;
+  agent consumes. Builds on learning-agent redesign + closed-loop-observability;
   advisory only, no routing-rule writes.
 - [active/frontend-supabase-api-refactor-pr-plan.md](active/frontend-supabase-api-refactor-pr-plan.md)
   — Move browser-side Supabase table/realtime access behind platform API
@@ -109,22 +109,13 @@ In-flight work. Each entry should map to one or more open PRs.
 - [active/large-file-refactor-pr-plan.md](active/large-file-refactor-pr-plan.md)
   — PR-by-PR scoping for the top 10 refactor targets identified in the
   checklist.
-- [active/learning-sidecar-scope.md](active/learning-sidecar-scope.md)
-  — Hermes-style learning layer for the parallel-agent stack: workspace-scoped
-  memory persistence, post-run reflection, prompt-time retrieval, and
-  PR-gated skill distillation on top of the existing `memory_items` table.
-- [active/learning-sidecar-pr-plan.md](active/learning-sidecar-pr-plan.md)
-  — PR-by-PR sequence for the learning sidecar across harper-server,
-  parallel-agent-platform, and parallel-agent-runtime, including the
-  small migration footprint.
-- [active/learning-sidecar-production-readiness-scope.md](active/learning-sidecar-production-readiness-scope.md)
-  — Get the learning loop actually running in prod. Fixes the verified
-  runtime↔platform break: the runtime POSTs `/api/learning/jobs/<kind>` but
-  the platform only registers a reflection-only path, so reflection 404s and
-  distillation has no route. Converges both repos on one endpoint that reuses
-  the existing dispatcher, plus prod config + rollout + verification. Also adds
-  an operability track: feed `agent_tool_call_event` into reflection so the loop
-  learns from tool/config failures, not just chat transcripts.
+- [active/learning-agent-redesign-scope.md](active/learning-agent-redesign-scope.md)
+  — Reframes learning away from the memory-centric sidecar: memory and skills
+  become universal, ungated agent capabilities (`memory.create`/`memory.search`;
+  agent-owned DB skills in Claude Agent Skills format, draft→approved), and a
+  `learning` meta-agent reviews other agents' transcripts on a daily sample,
+  handing bugs to the planner and authoring skills. Supersedes the
+  `learning-sidecar-*` series.
 - [active/local-chat-deprecation-scope.md](active/local-chat-deprecation-scope.md)
   — Phase out `/local-chat` and route coding-agent local-model traffic
   through the Runtime relay path.

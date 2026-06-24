@@ -69,6 +69,7 @@ const agent: StoredAgent = {
   agentType: "coding",
   model: "gpt-5",
   provider: "openai",
+  context: null,
   runnerKind: "codex",
   hasCredentials: false,
   isResolved: true,
@@ -182,7 +183,7 @@ describe("stored agent default routing", () => {
     vi.mocked(resolveExecutionProfile).mockResolvedValueOnce(resolution("rule-1"));
     vi.mocked(ensureDefaultAgentToolsForAgent).mockResolvedValueOnce({
       changed: true,
-      assignedToolSlugs: ["repo.read_file"],
+      assignedToolSlugs: ["shell.exec"],
       missingToolSlugs: [],
     });
 

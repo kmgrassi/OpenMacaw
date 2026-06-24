@@ -48,6 +48,7 @@ function agent(id: string, type: "planning" | "coding", workspace = workspaceId)
     name: type === "planning" ? "Planning Agent" : "Coding Agent",
     status: "ready",
     type,
+    context: null,
     model_settings: {},
     tool_policy: {},
     created_by_user_id: userId,

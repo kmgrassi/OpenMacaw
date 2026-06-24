@@ -47,7 +47,9 @@ defmodule SymphonyElixir.ExecutionProfile do
     case Map.get(profile, "runner_kind") do
       "codex" -> {:ok, SymphonyElixir.Runner.Codex}
       "claude_code" -> {:ok, SymphonyElixir.Runner.ClaudeCode}
+      "llm_tool_runner" -> {:ok, SymphonyElixir.Runner.LlmToolRunner}
       "manager" -> {:ok, SymphonyElixir.Runner.LlmToolRunner}
+      "router" -> {:ok, SymphonyElixir.Runner.LlmToolRunner}
       "planner" -> {:ok, SymphonyElixir.Runner.Planner}
       "openclaw" -> {:ok, SymphonyElixir.Runner.OpenClaw}
       "openclaw_ws" -> {:ok, SymphonyElixir.Runner.OpenClawWS}
@@ -67,6 +69,8 @@ defmodule SymphonyElixir.ExecutionProfile do
       |> maybe_put("model", Map.get(profile, "model"))
       |> maybe_put("model_provider", Map.get(profile, "provider"))
       |> maybe_put("provider", Map.get(profile, "provider"))
+      |> maybe_put("agent_type", Map.get(profile, "role"))
+      |> maybe_put("tool_bundle", Map.get(profile, "tool_profile"))
       |> maybe_put("credential_ref", Map.get(profile, "credential_ref"))
       |> maybe_put_target_runner_kind(profile)
 
@@ -95,7 +99,9 @@ defmodule SymphonyElixir.ExecutionProfile do
   back to `Runner.LocalRelay`'s default (`"openai_compatible"`).
   """
   @spec local_relay_target_runner_kind(String.t() | nil) :: String.t() | nil
-  def local_relay_target_runner_kind(provider) when provider in ~w(openclaw codex computer_use), do: provider
+  def local_relay_target_runner_kind(provider) when provider in ~w(openclaw codex computer_use),
+    do: provider
+
   def local_relay_target_runner_kind(_provider), do: nil
 
   defp supplied_profile(%WorkItem{} = work_item, runner_config, opts) do
@@ -389,7 +395,10 @@ defmodule SymphonyElixir.ExecutionProfile do
     Map.put(
       profile,
       "runner_kind",
-      normalize_family_runner_kind(runner_kind, Map.get(profile, "role") || Map.get(profile, "tool_profile"))
+      normalize_family_runner_kind(
+        runner_kind,
+        Map.get(profile, "role") || Map.get(profile, "tool_profile")
+      )
     )
   end
 
@@ -401,6 +410,8 @@ defmodule SymphonyElixir.ExecutionProfile do
 
     case {runner_kind, role} do
       {"llm_tool_runner", "manager"} -> "manager"
+      {"llm_tool_runner", "learning"} -> "manager"
+      {"llm_tool_runner", "router"} -> "router"
       {"llm_tool_runner", "planning"} -> "planner"
       {"llm_tool_runner", "planner"} -> "planner"
       _ -> runner_kind
@@ -512,8 +523,11 @@ defmodule SymphonyElixir.ExecutionProfile do
 
   defp normalize_keys(map) when is_map(map) do
     Map.new(map, fn
-      {key, value} when is_atom(key) -> {canonical_key(Atom.to_string(key)), normalize_value(value)}
-      {key, value} -> {canonical_key(key), normalize_value(value)}
+      {key, value} when is_atom(key) ->
+        {canonical_key(Atom.to_string(key)), normalize_value(value)}
+
+      {key, value} ->
+        {canonical_key(key), normalize_value(value)}
     end)
   end
 

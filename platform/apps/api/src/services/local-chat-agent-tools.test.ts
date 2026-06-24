@@ -11,10 +11,10 @@ function tool(overrides: Record<string, unknown>) {
   return {
     id: "tool-read",
     workspace_id: null,
-    slug: "repo.read_file",
+    slug: "shell.exec",
     name: "Read File",
     description: "Read a file",
-    function_name: "repo_read_file",
+    function_name: "shell_exec",
     parameters: { type: "object" },
     examples: [],
     type: null,
@@ -49,7 +49,7 @@ describe("local chat agent tools", () => {
           function_name: "plan_create",
           runner_kind: "local_relay",
         }),
-        tool({ id: "tool-search", slug: "repo.search", function_name: "repo_search" }),
+        tool({ id: "tool-search", slug: "scheduled_task.list", function_name: "scheduled_task_list" }),
         tool({
           id: "tool-shell",
           slug: "shell.exec",
@@ -73,6 +73,8 @@ describe("local chat agent tools", () => {
 
     expect(resolution.tools.map((resolvedTool) => [resolvedTool.slug, resolvedTool.functionName])).toEqual([
       ["plan.create", "plan_create"],
+      ["memory.create", "memory_create"],
+      ["memory.search", "memory_search"],
     ]);
     expect(resolution.rejectedLocalCodingTools.map((resolvedTool) => resolvedTool.slug)).toEqual(["shell.exec"]);
   });
@@ -103,7 +105,7 @@ describe("local chat agent tools", () => {
       supabase: createMockSupabaseClient(tables) as never,
     });
 
-    expect(tools.map((resolvedTool) => resolvedTool.slug)).toEqual(["plan.create"]);
+    expect(tools.map((resolvedTool) => resolvedTool.slug)).toEqual(["plan.create", "memory.create", "memory.search"]);
   });
 
   it("ignores tools without concrete include grants", async () => {
@@ -127,18 +129,16 @@ describe("local chat agent tools", () => {
       supabase: createMockSupabaseClient(tables) as never,
     });
 
-    expect(tools).toEqual([]);
+    expect(tools.map((resolvedTool) => [resolvedTool.slug, resolvedTool.functionName])).toEqual([
+      ["memory.create", "memory_create"],
+      ["memory.search", "memory_search"],
+    ]);
   });
 
-  it("adds memory.search as a system tool when learning is enabled", async () => {
+  it("adds memory tools as system tools without a learning gate", async () => {
     const tables: Record<string, Array<Record<string, unknown>>> = {
-      agent: [
-        {
-          id: agentId,
-          workspace_id: workspaceId,
-        },
-      ],
-      workspaces: [{ id: workspaceId, settings: { learning: { enabled: true } } }],
+      agent: [{ id: agentId, workspace_id: workspaceId }],
+      workspaces: [{ id: workspaceId, settings: { learning: { enabled: false } } }],
       tool: [],
       agent_tool_grant: [],
     };
@@ -150,6 +150,7 @@ describe("local chat agent tools", () => {
     });
 
     expect(tools.map((resolvedTool) => [resolvedTool.slug, resolvedTool.functionName])).toEqual([
+      ["memory.create", "memory_create"],
       ["memory.search", "memory_search"],
     ]);
   });

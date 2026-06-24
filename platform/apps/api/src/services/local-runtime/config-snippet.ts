@@ -7,10 +7,8 @@ import type { Tables } from "@kmgrassi/supabase-schema";
 
 export const LOCAL_RUNTIME_HEARTBEAT_INTERVAL_MS = 30_000;
 const HELPER_ONLINE_WINDOW_MS = LOCAL_RUNTIME_HEARTBEAT_INTERVAL_MS * 2;
-const HELPER_DOCTOR_COMMAND =
-  "local-runtime-helper doctor --config ~/.config/openmacaw/runtime.toml";
-const HELPER_START_COMMAND =
-  "local-runtime-helper start --config ~/.config/openmacaw/runtime.toml";
+const HELPER_DOCTOR_COMMAND = "local-runtime-helper doctor --config ~/.config/openmacaw/runtime.toml";
+const HELPER_START_COMMAND = "local-runtime-helper start --config ~/.config/openmacaw/runtime.toml";
 
 export type LocalRuntimeMachineRow = Pick<
   Tables<"local_runtime_machine">,
@@ -59,6 +57,7 @@ export type RunnerSnippet =
     };
 
 export type ConfigSnippetInput = {
+  machineId: string;
   displayName: string;
   /** Workspace root applies to the openai_compatible runner only; rendered on the [machine] table. */
   workspaceRoot: string | null;
@@ -79,6 +78,8 @@ export function buildSetupCommand(input: ConfigSnippetInput) {
     input.runtimeEndpoint,
     "--workspace",
     input.workspaceId,
+    "--machine-id",
+    input.machineId,
     "--name",
     input.displayName,
     "--token",
@@ -120,6 +121,7 @@ export function buildSetupCommand(input: ConfigSnippetInput) {
 export function buildConfigSnippet(input: ConfigSnippetInput) {
   const header = [
     "[machine]",
+    `id = ${tomlString(input.machineId)}`,
     `display_name = ${tomlString(input.displayName)}`,
     input.workspaceRoot ? `workspace_root = ${tomlString(input.workspaceRoot)}` : null,
     "",
@@ -235,7 +237,7 @@ function buildLocalRuntimeDiagnostics(input: {
       code: "workspace_root_missing",
       severity: "warning",
       title: "Workspace root is missing",
-      message: "Local repository tools need a workspace root so relative repo paths resolve on the helper machine.",
+      message: "Local helper commands need a workspace root so relative paths resolve on the helper machine.",
       action: "Regenerate the local runtime config with a repository root and restart the helper.",
       command: null,
       logPath: null,

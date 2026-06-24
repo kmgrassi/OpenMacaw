@@ -45,6 +45,30 @@ export function resolveRoutingRuleModelForProvider(currentModel: string | null, 
   return defaultModelForProvider(targetProvider) ?? currentModel;
 }
 
+type RoutingRuleSyncAgent = {
+  id: string;
+  workspaceId: string;
+  agentType: string | null;
+};
+
+type RoutingRuleSyncInput = {
+  agent: RoutingRuleSyncAgent;
+  provider: string;
+  model: string | null;
+  credentialRef: ReturnType<typeof credentialRefFromRoutingRule>;
+};
+
+async function upsertStoredAgentRoutingRule(input: RoutingRuleSyncInput) {
+  return upsertAgentCredentialReferenceRule({
+    agentId: input.agent.id,
+    workspaceId: input.agent.workspaceId,
+    runnerKind: defaultRunnerKindForAgentType(input.agent.agentType),
+    provider: input.provider,
+    model: input.model,
+    credentialRef: input.credentialRef,
+  });
+}
+
 /**
  * Bring the agent's routing rule into alignment when the agent's model
  * changes (e.g., via `PATCH /api/stored-agents/:id`). Keeps the existing
@@ -56,15 +80,7 @@ export function resolveRoutingRuleModelForProvider(currentModel: string | null, 
  * provider, the rule's provider is rewritten too. Runner kind is
  * re-derived from the agent type.
  */
-export async function syncModelIntoRoutingRuleForAgent(input: {
-  agent: {
-    id: string;
-    workspaceId: string;
-    agentType: string | null;
-  };
-  newModel: string;
-  userId?: string | null;
-}) {
+export async function syncModelIntoRoutingRuleForAgent(input: { agent: RoutingRuleSyncAgent; newModel: string }) {
   const existingRule = await getAgentCredentialReferenceRule({
     agentId: input.agent.id,
     workspaceId: input.agent.workspaceId,
@@ -77,44 +93,29 @@ export async function syncModelIntoRoutingRuleForAgent(input: {
   const targetProvider = deriveProviderFromModel(input.newModel) ?? existingRule.provider;
   if (!targetProvider) return existingRule;
 
-  const credentialRef = credentialRefFromRoutingRule(existingRule);
-  const runnerKind = defaultRunnerKindForAgentType(input.agent.agentType);
-
-  const rule = await upsertAgentCredentialReferenceRule({
-    agentId: input.agent.id,
-    workspaceId: input.agent.workspaceId,
-    runnerKind,
+  const rule = await upsertStoredAgentRoutingRule({
+    agent: input.agent,
     provider: targetProvider,
     model: input.newModel,
-    credentialRef,
+    credentialRef: credentialRefFromRoutingRule(existingRule),
   });
 
   return rule;
 }
 
 export async function syncCredentialIntoRoutingRuleForAgent(input: {
-  agent: {
-    id: string;
-    workspaceId: string;
-    agentType: string | null;
+  agent: RoutingRuleSyncAgent & {
     model: string | null;
     provider: string | null;
   };
   credentialId: string;
   provider: string;
-  userId?: string | null;
 }) {
-  const runnerKind = defaultRunnerKindForAgentType(input.agent.agentType);
-  const credentialRef = { type: "credential_id" as const, value: input.credentialId };
-  const model = resolveRoutingRuleModelForProvider(input.agent.model, input.provider);
-
-  const rule = await upsertAgentCredentialReferenceRule({
-    agentId: input.agent.id,
-    workspaceId: input.agent.workspaceId,
-    runnerKind,
+  const rule = await upsertStoredAgentRoutingRule({
+    agent: input.agent,
     provider: input.provider,
-    model,
-    credentialRef,
+    model: resolveRoutingRuleModelForProvider(input.agent.model, input.provider),
+    credentialRef: { type: "credential_id" as const, value: input.credentialId },
   });
 
   return rule;
@@ -161,7 +162,6 @@ export async function ensureStoredAgentDefaultRouting(input: { agentId: string; 
     return { agent, changed: defaultTools.changed, resolution: before };
   }
 
-  const runnerKind = defaultRunnerKindForAgentType(agent.agentType);
   const model = agent.model?.trim() || null;
   const provider = agent.provider?.trim() || deriveProviderFromModel(model);
   if (!model || !provider) {
@@ -180,10 +180,12 @@ export async function ensureStoredAgentDefaultRouting(input: { agentId: string; 
   });
 
   if (!existingRule || routeMissing) {
-    await upsertAgentCredentialReferenceRule({
-      agentId: agent.id,
-      workspaceId: agent.workspaceId,
-      runnerKind,
+    await upsertStoredAgentRoutingRule({
+      agent: {
+        id: agent.id,
+        workspaceId: agent.workspaceId,
+        agentType: agent.agentType,
+      },
       provider: existingRule?.provider ?? provider,
       model: existingRule?.model ?? model,
       credentialRef: credentialRefFromRoutingRule(existingRule),

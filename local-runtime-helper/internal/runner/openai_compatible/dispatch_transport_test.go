@@ -67,6 +67,46 @@ func TestDispatchConstructsStreamingRequest(t *testing.T) {
 	assertOutput(t, events, "hello")
 }
 
+func TestDispatchPassesAgentContextSystemMessageToProvider(t *testing.T) {
+	requests := make(chan chatRequest, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req chatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		requests <- req
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"done"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	r, err := New(Config{Endpoint: server.URL + "/v1", Model: "local-model"})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	stream := false
+	err = r.Dispatch(context.Background(), runner.ChatCompletionInput{
+		Messages: []runner.ChatMessage{
+			{Role: "system", Content: "Base prompt\n\nAgent instructions:\nAlways check the repo."},
+			{Role: "user", Content: "list PRs"},
+		},
+		Stream: &stream,
+	}, func(event any) error { return nil })
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+
+	req := <-requests
+	if len(req.Messages) != 2 {
+		t.Fatalf("messages = %#v, want two", req.Messages)
+	}
+	if req.Messages[0].Role != "system" || req.Messages[0].Content != "Base prompt\n\nAgent instructions:\nAlways check the repo." {
+		t.Fatalf("system message = %#v", req.Messages[0])
+	}
+	if req.Messages[1].Role != "user" || req.Messages[1].Content != "list PRs" {
+		t.Fatalf("user message = %#v", req.Messages[1])
+	}
+}
+
 func TestDispatchSupportsNonStreamingFallback(t *testing.T) {
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

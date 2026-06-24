@@ -38,7 +38,7 @@ export function LocalRuntimeBindingPanel({
     <div className="mt-4 space-y-3 rounded-md border border-white/5 bg-surface px-3 py-3">
       <div className="grid gap-2 text-xs md:grid-cols-3">
         <WizardCheck
-          label="Helper connected"
+          label="Relay connected"
           state={
             localRuntimesLoading
               ? "pending"
@@ -48,8 +48,8 @@ export function LocalRuntimeBindingPanel({
           }
           detail={
             helperRegistered
-              ? "Relay registered for this workspace."
-              : "Set up a helper from local runtime settings."
+              ? "Local runtime relay registered for this workspace."
+              : "Set up a local runtime relay from settings."
           }
         />
         <WizardCheck
@@ -58,7 +58,7 @@ export function LocalRuntimeBindingPanel({
           detail={
             selectedLocalRunner
               ? localRunnerLabel(selectedLocalRunner)
-              : "No online helper is advertising a model."
+              : "No online local runtime relay is advertising a model."
           }
         />
         <WizardCheck
@@ -75,7 +75,7 @@ export function LocalRuntimeBindingPanel({
               ? localProbeResult.reachable && localProbeResult.modelFound
                 ? "Connection test passed."
                 : (localProbeResult.error ??
-                  "The helper did not find the selected model.")
+                  "The local runtime relay did not find the selected model.")
               : "Run a test before binding."
           }
         />
@@ -88,7 +88,7 @@ export function LocalRuntimeBindingPanel({
             </p>
           ) : (
             <p className="text-xs text-slate-500">
-              Pick an advertised model, test the helper path, then bind this
+              Pick an advertised model, test the relay path, then bind this
               agent.
             </p>
           )}

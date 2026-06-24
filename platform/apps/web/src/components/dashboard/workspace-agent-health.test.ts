@@ -15,6 +15,7 @@ function agent(input: Partial<Agent> & Pick<Agent, "id">): Agent {
     agentType: input.agentType ?? "coding",
     model: input.model ?? null,
     provider: input.provider ?? null,
+    context: input.context ?? null,
     runnerKind: input.runnerKind ?? null,
     hasCredentials: input.hasCredentials ?? false,
     configurationStatus: input.configurationStatus ?? null,

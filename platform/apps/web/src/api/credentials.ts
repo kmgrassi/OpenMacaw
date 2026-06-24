@@ -135,7 +135,6 @@ export async function saveAgentCredentialReference(input: {
 export async function launchSavedCredential(
   agentId: string,
   credentialId: string,
-  cwd: string,
   workspaceId: string,
   handoff?: CodingHandoffRequest | null,
 ): Promise<StoredCredentialActivationResponse> {
@@ -143,7 +142,7 @@ export async function launchSavedCredential(
     ROUTES.storedAgentCredentialLaunch(agentId, credentialId),
     {
       method: "POST",
-      body: { cwd, workspaceId, handoff: handoff ?? null },
+      body: { workspaceId, handoff: handoff ?? null },
       schema: StoredCredentialActivationResponseSchema,
       defaultErrorMessage: (status) =>
         `Failed to launch stored credential (${status})`,
@@ -154,11 +153,10 @@ export async function launchSavedCredential(
 export async function activateStoredAgent(
   agentId: string,
   workspaceId: string,
-  cwd: string,
 ) {
   return apiFetch(ROUTES.storedAgentActivate(agentId), {
     method: "POST",
-    body: { workspaceId, cwd },
+    body: { workspaceId },
     schema: StoredCredentialActivationResponseSchema,
     defaultErrorMessage: (status) =>
       `Failed to activate stored agent (${status})`,

@@ -78,7 +78,6 @@ export function registerCredentialOAuthRoutes(app: Express) {
         },
         credentialId: input.credential.credentialRowId,
         provider: "openai_codex",
-        userId: input.userId,
       });
     }
   }

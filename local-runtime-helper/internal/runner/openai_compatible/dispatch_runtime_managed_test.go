@@ -60,7 +60,7 @@ func TestDispatchRuntimeManagedParsesTaggedTextToolCall(t *testing.T) {
 
 func TestDispatchRuntimeManagedParsesRepoReadFileTaggedTextToolCall(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"I'll read the README.md file to find the first heading.\n\n<function=repo.read_file>\n<parameter=path>\nREADME.md\n</parameter>\n<parameter=workspace_id>\n7a5d31a8-2ffd-4fd2-ab12-a3c4f7e83b47\n</parameter>\n</function>\n</tool_call>"},"finish_reason":"stop"}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"I'll read the README.md file to find the first heading.\n\n<function=shell.exec>\n<parameter=path>\nREADME.md\n</parameter>\n<parameter=workspace_id>\n7a5d31a8-2ffd-4fd2-ab12-a3c4f7e83b47\n</parameter>\n</function>\n</tool_call>"},"finish_reason":"stop"}]}`))
 	}))
 	defer server.Close()
 
@@ -73,7 +73,7 @@ func TestDispatchRuntimeManagedParsesRepoReadFileTaggedTextToolCall(t *testing.T
 		Messages:        []runner.ChatMessage{{Role: "user", Content: "read README"}},
 		ToolCallingMode: "runtime_managed",
 		ToolDefinitions: []runner.ToolDefinition{{
-			Name:          "repo.read_file",
+			Name:          "shell.exec",
 			ExecutionKind: "runtime",
 		}},
 	}, func(event any) error {
@@ -92,8 +92,8 @@ func TestDispatchRuntimeManagedParsesRepoReadFileTaggedTextToolCall(t *testing.T
 		t.Fatalf("tool calls = %#v", event.ToolCalls)
 	}
 	call := event.ToolCalls[0]
-	if call.Name != "repo.read_file" {
-		t.Fatalf("tool call name = %q, want repo.read_file", call.Name)
+	if call.Name != "shell.exec" {
+		t.Fatalf("tool call name = %q, want shell.exec", call.Name)
 	}
 	if call.Arguments["path"] != "README.md" {
 		t.Fatalf("path argument = %#v, want README.md", call.Arguments["path"])
@@ -375,7 +375,7 @@ func TestDispatchRuntimeManagedReturnsAbsentToolAsResult(t *testing.T) {
 		Stream:          &stream,
 		ToolCallingMode: "runtime_managed",
 		ToolDefinitions: []runner.ToolDefinition{{
-			Name:             "repo.search",
+			Name:             "scheduled_task.list",
 			ParametersSchema: map[string]any{"type": "object"},
 			ExecutionKind:    "runtime",
 		}},

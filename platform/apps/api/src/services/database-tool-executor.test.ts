@@ -50,12 +50,12 @@ describe("executeDatabaseTool scheduled_task tools", () => {
         {
           id: "tool-repo-read",
           workspace_id: null,
-          slug: "repo.read_file",
+          slug: "shell.exec",
           name: "Read File",
           description: "Read a file.",
           examples: [{ input: { path: "README.md" } }],
           parameters: {},
-          function_name: "repo.read_file",
+          function_name: "shell.exec",
           execution_kind: "filesystem_read",
           runner_kind: "codex",
           enabled: true,
@@ -103,6 +103,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
           is_active: true,
         },
       ],
+      skill: [],
       routing_rule: [
         {
           id: "routing-rule-1",
@@ -207,14 +208,13 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     });
   });
 
-  it("executes memory.search only when learning is enabled for the runtime agent", async () => {
+  it("executes memory.search for the runtime agent without a learning gate", async () => {
     tables.agent = [
       {
         id: agentId,
         workspace_id: workspaceId,
       },
     ];
-    tables.workspaces = [{ id: workspaceId, settings: { learning: { enabled: true } } }];
     tables.memory_items = [
       {
         id: "55555555-5555-4555-8555-555555555555",
@@ -250,11 +250,70 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     });
   });
 
+  it("creates an agent-owned long-term memory for the runtime agent", async () => {
+    tables.workspaces = [{ id: workspaceId, settings: {} }];
+    tables.memory_items = [];
+
+    const result = await executeDatabaseTool(
+      scheduledTaskTool("memory.create"),
+      {
+        content: "Use pnpm validate before opening PRs.",
+        tags: { source: "tool" },
+        importance: 8,
+      },
+      { workspaceId, agentId, sessionId: "run-1" },
+    );
+
+    expect(result.status).toBe(201);
+    expect(JSON.parse(result.output)).toMatchObject({
+      memoryItem: {
+        workspaceId,
+        agentId,
+        scope: "long_term",
+        content: "Use pnpm validate before opening PRs.",
+        importance: 8,
+        sourceRunId: "run-1",
+      },
+    });
+    expect(tables.memory_items).toEqual([
+      expect.objectContaining({
+        workspace_id: workspaceId,
+        agent_id: agentId,
+        scope: "long_term",
+        content: "Use pnpm validate before opening PRs.",
+        tags: { source: "tool" },
+        importance: 8,
+        source_run_id: "run-1",
+      }),
+    ]);
+  });
+
+  it("creates workspace-visible memory when requested", async () => {
+    tables.workspaces = [{ id: workspaceId, settings: {} }];
+    tables.memory_items = [];
+
+    const result = await executeDatabaseTool(
+      scheduledTaskTool("memory.create"),
+      {
+        content: "The workspace uses pnpm.",
+        visibility: "workspace",
+      },
+      { workspaceId, agentId },
+    );
+
+    expect(result.status).toBe(201);
+    expect(tables.memory_items?.[0]).toMatchObject({
+      workspace_id: workspaceId,
+      agent_id: null,
+      content: "The workspace uses pnpm.",
+    });
+  });
+
   it("appends examples to a tool assigned to the runtime agent", async () => {
     const result = await executeDatabaseTool(
       scheduledTaskTool("tool_examples.append"),
       {
-        tool_slug: "repo.read_file",
+        tool_slug: "shell.exec",
         example: {
           when: "Need package metadata.",
           input: { path: "package.json" },
@@ -269,7 +328,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
       exampleCount: 2,
       tool: {
         id: "tool-repo-read",
-        slug: "repo.read_file",
+        slug: "shell.exec",
       },
     });
     expect(tables.tool?.[0]?.examples).toEqual([
@@ -278,16 +337,85 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     ]);
   });
 
+  it("creates draft skills for an agent in the runtime workspace", async () => {
+    const result = await executeDatabaseTool(
+      scheduledTaskTool("skill.create"),
+      {
+        agentId: targetAgentId,
+        name: "debug-tool-failures",
+        description: "Use when a tool call fails with a database or validation error.",
+        body: "Inspect the tool schema, compare the attempted arguments, and preserve the exact error in the fix.",
+      },
+      { workspaceId, agentId, userId: "66666666-6666-4666-8666-666666666666", sessionId: "run-123" },
+    );
+
+    expect(result.status).toBe(201);
+    expect(JSON.parse(result.output)).toMatchObject({
+      skill: {
+        agentId: targetAgentId,
+        name: "debug-tool-failures",
+        status: "draft",
+        createdByAgentId: agentId,
+        createdByUserId: "66666666-6666-4666-8666-666666666666",
+        sourceRunId: "run-123",
+      },
+    });
+    expect(tables.skill).toEqual([
+      expect.objectContaining({
+        workspace_id: workspaceId,
+        agent_id: targetAgentId,
+        name: "debug-tool-failures",
+        status: "draft",
+      }),
+    ]);
+  });
+
+  it("rejects skill creation for agents outside the runtime workspace", async () => {
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("skill.create"),
+        {
+          agentId: foreignAgentId,
+          name: "foreign-skill",
+          description: "Use somewhere else.",
+          body: "Do not write cross-workspace skills.",
+        },
+        { workspaceId, agentId },
+      ),
+    ).rejects.toMatchObject({
+      status: 404,
+      code: "agent_not_found",
+    });
+  });
+
+  it("reports invalid skill.create arguments as tool argument errors", async () => {
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("skill.create"),
+        {
+          agentId: targetAgentId,
+          name: "Invalid Skill Name",
+          description: "Use when invalid.",
+          body: "Do not create this skill.",
+        },
+        { workspaceId, agentId },
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: "invalid_tool_arguments",
+    });
+  });
+
   it("rejects tool example updates for tools not assigned to the runtime agent", async () => {
     tables.tool?.push({
       id: "tool-unassigned",
       workspace_id: null,
-      slug: "repo.search",
+      slug: "scheduled_task.list",
       name: "Search",
       description: "Search files.",
       examples: [],
       parameters: {},
-      function_name: "repo.search",
+      function_name: "scheduled_task.list",
       execution_kind: "filesystem_read",
       runner_kind: "codex",
       enabled: true,
@@ -297,7 +425,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
       executeDatabaseTool(
         scheduledTaskTool("tool_examples.append"),
         {
-          tool_slug: "repo.search",
+          tool_slug: "scheduled_task.list",
           example: { input: { query: "ToolDefinition" } },
         },
         { workspaceId, agentId },
@@ -308,15 +436,12 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     });
   });
 
-  it("rejects memory.search when learning is disabled", async () => {
-    tables.agent = [{ id: agentId, workspace_id: workspaceId, tool_policy: { learning: { enabled: true } } }];
-    tables.workspaces = [{ id: workspaceId, settings: { learning: { enabled: false } } }];
-
+  it("rejects memory.create without runtime agent context", async () => {
     await expect(
-      executeDatabaseTool(scheduledTaskTool("memory.search"), { query: "pnpm" }, { workspaceId, agentId }),
+      executeDatabaseTool(scheduledTaskTool("memory.create"), { content: "Remember this." }, { workspaceId }),
     ).rejects.toMatchObject({
-      status: 403,
-      code: "learning_disabled",
+      status: 400,
+      code: "runtime_context_required",
     });
   });
 
@@ -325,8 +450,8 @@ describe("executeDatabaseTool scheduled_task tools", () => {
       scheduledTaskTool("agent_tool_grant.create"),
       {
         agentId: targetAgentId,
-        toolSlug: "repo.read_file",
-        reason: "operability signature tool:repo.read_file|error:tool_not_granted|agent:coding",
+        toolSlug: "shell.exec",
+        reason: "operability signature tool:shell.exec|error:tool_not_granted|agent:coding",
       },
       { workspaceId, agentId, sessionId: "grant-create-run" },
     );
@@ -339,11 +464,11 @@ describe("executeDatabaseTool scheduled_task tools", () => {
         tool_id: "tool-repo-read",
         mode: "include",
         source: "system",
-        reason: "operability signature tool:repo.read_file|error:tool_not_granted|agent:coding",
+        reason: "operability signature tool:shell.exec|error:tool_not_granted|agent:coding",
         created_by_user_id: null,
       },
       tool: {
-        slug: "repo.read_file",
+        slug: "shell.exec",
       },
     });
     expect(tables.agent_tool_grant).toEqual(
@@ -363,7 +488,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
         scheduledTaskTool("agent_tool_grant.update"),
         {
           agentId: targetAgentId,
-          toolSlug: "repo.read_file",
+          toolSlug: "shell.exec",
           mode: "exclude",
           reason: "Reverse an incorrect grant.",
         },
@@ -391,7 +516,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
         scheduledTaskTool("agent_tool_grant.create"),
         {
           agentId: targetAgentId,
-          toolSlug: "repo.read_file",
+          toolSlug: "shell.exec",
           reason: "operability signature still recurs",
         },
         { workspaceId, agentId, sessionId: "grant-backoff-run" },

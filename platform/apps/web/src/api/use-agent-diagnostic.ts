@@ -8,8 +8,12 @@ export type UseAgentDiagnosticResult = {
   data: AgentDiagnosticResponse | null;
   isLoading: boolean;
   error: Error | null;
-  refetch: () => Promise<void>;
+  refetch: () => Promise<AgentDiagnosticFetchResult>;
 };
+
+export type AgentDiagnosticFetchResult =
+  | { ok: true; data: AgentDiagnosticResponse | null }
+  | { ok: false; error: Error };
 
 /**
  * One-shot diagnostic fetch for an agent. Designed for the gateway WS
@@ -35,7 +39,7 @@ export function useAgentDiagnostic(
       setData(null);
       setIsLoading(false);
       setError(null);
-      return;
+      return { ok: true, data: null } satisfies AgentDiagnosticFetchResult;
     }
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
@@ -43,16 +47,24 @@ export function useAgentDiagnostic(
     setError(null);
     try {
       const result = await getAgentDiagnostic(agentId, workspaceId ?? null);
-      if (requestIdRef.current !== requestId) return;
+      if (requestIdRef.current !== requestId) {
+        return { ok: true, data: null } satisfies AgentDiagnosticFetchResult;
+      }
       setData(result);
+      return { ok: true, data: result } satisfies AgentDiagnosticFetchResult;
     } catch (err) {
-      if (requestIdRef.current !== requestId) return;
-      setError(err instanceof Error ? err : new Error(String(err)));
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (requestIdRef.current !== requestId) {
+        return { ok: false, error } satisfies AgentDiagnosticFetchResult;
+      }
+      setError(error);
+      return { ok: false, error } satisfies AgentDiagnosticFetchResult;
     } finally {
       if (requestIdRef.current === requestId) {
         setIsLoading(false);
       }
     }
+    return { ok: true, data: null } satisfies AgentDiagnosticFetchResult;
   }, [agentId, workspaceId]);
 
   useEffect(() => {
@@ -63,7 +75,7 @@ export function useAgentDiagnostic(
   }, [fetchOnce]);
 
   const refetch = useCallback(async () => {
-    await fetchOnce();
+    return await fetchOnce();
   }, [fetchOnce]);
 
   return { data, isLoading, error, refetch };

@@ -50,6 +50,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
           "provider" => "local",
           "model" => "qwen",
           "workspace_id" => "workspace-1",
+          "agent_context" => "Always check the repo before answering.",
           on_message: fn message -> send(test_pid, {:manager_event, message}) end
         },
         nil
@@ -78,13 +79,16 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
                        "provider" => "local",
                        "model" => "qwen",
                        "messages" => [
-                         %{"role" => "system"},
+                         %{"role" => "system", "content" => system_prompt},
                          %{"role" => "user", "content" => ~s({"due_tasks":[]})}
                        ],
                        "capability_requirements" => %{"runtime_managed_tools" => true},
                        "provider_tool_specs" => provider_tool_specs,
                        "tool_definitions" => tool_definitions
                      }}
+
+    assert system_prompt =~ "manager agent"
+    assert system_prompt =~ "Agent instructions:\nAlways check the repo before answering."
 
     assert Enum.map(provider_tool_specs, &get_in(&1, ["function", "name"])) ==
              tool_names()
@@ -148,6 +152,31 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
     git_spec = Enum.find(session.tool_specs, &(Map.get(&1, "name") == "git.run"))
     assert git_spec, "expected explicitly supplied git.run in session.tool_specs"
     assert git_spec["execution_kind"] == "helper"
+
+    snooze_spec = Enum.find(session.tool_specs, &(Map.get(&1, "name") == "snooze"))
+    assert snooze_spec
+    refute Map.get(snooze_spec, "execution_kind") == "helper"
+
+    assert :ok = Manager.stop_session(session)
+  end
+
+  test "keeps explicitly supplied manager local relay shell.exec helper-executed" do
+    {:ok, session} =
+      Manager.start_session(
+        %{
+          "provider" => "local",
+          "model" => "qwen",
+          "workspace_id" => "workspace-1",
+          "tool_definitions" => ToolRegistry.definitions(["snooze", "shell.exec"])
+        },
+        nil
+      )
+
+    assert session.allowed_tools == ["snooze", "shell.exec"]
+
+    shell_spec = Enum.find(session.tool_specs, &(Map.get(&1, "name") == "shell.exec"))
+    assert shell_spec, "expected explicitly supplied shell.exec in session.tool_specs"
+    assert shell_spec["execution_kind"] == "helper"
 
     snooze_spec = Enum.find(session.tool_specs, &(Map.get(&1, "name") == "snooze"))
     assert snooze_spec

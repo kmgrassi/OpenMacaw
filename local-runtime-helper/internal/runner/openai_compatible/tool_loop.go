@@ -280,8 +280,11 @@ func (r *Runner) complete(ctx context.Context, input runner.ChatCompletionInput)
 		return toolCompletion{}, parseProviderError(resp)
 	}
 
+	body, logResponse := r.rawModelResponseBody(input, false, resp.Body)
+	defer logResponse()
+
 	var response completionResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+	if err := json.NewDecoder(body).Decode(&response); err != nil {
 		return toolCompletion{}, &runner.Error{Kind: runner.ErrorKindProvider, Message: fmt.Sprintf("openai_compatible response is invalid JSON: %v", err)}
 	}
 	if len(response.Choices) == 0 {

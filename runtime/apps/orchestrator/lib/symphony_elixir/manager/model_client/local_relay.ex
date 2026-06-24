@@ -22,6 +22,7 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
     correlation_id = Map.fetch!(request, "correlation_id")
     started_at = System.monotonic_time(:millisecond)
     context = provider_context(session, attempt, correlation_id)
+    Observability.log_model_request_context_prepared(context, request)
     Observability.log_model_call_started(context)
 
     result = request |> continuation_frame() |> run_session(session, correlation_id, :send_frame)
@@ -34,6 +35,7 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
     target_runner_kind = target_runner_kind(session)
     started_at = System.monotonic_time(:millisecond)
     context = provider_context(session, attempt, correlation_id)
+    Observability.log_model_request_context_prepared(context, request)
     Observability.log_model_call_started(context)
 
     result =
@@ -285,7 +287,10 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
   end
 
   defp log_result({:ok, response} = result, context, started_at) do
-    Observability.log_model_call_completed(context, elapsed_ms(started_at), provider_request_id: response_id(response))
+    Observability.log_model_call_completed(context, elapsed_ms(started_at),
+      provider_request_id: response_id(response),
+      response: response
+    )
 
     result
   end

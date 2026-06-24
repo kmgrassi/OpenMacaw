@@ -227,17 +227,6 @@ defmodule SymphonyElixirWeb.GatewaySocket do
           provider: Keyword.get(opts, :provider)
         })
 
-        # Learning sidecar: best-effort enqueue of a reflection job. Runs
-        # AFTER record_assistant_message so the platform reflector sees
-        # the persisted transcript. Best-effort by contract — never
-        # propagates an error.
-        :ok =
-          SymphonyElixir.Learning.ReflectionDispatcher.maybe_enqueue(
-            socket_scope(state),
-            run_id,
-            source_work_item_id: Keyword.get(opts, :source_work_item_id)
-          )
-
         payload = %{
           runId: run_id,
           sessionKey: session.key,
@@ -250,12 +239,6 @@ defmodule SymphonyElixirWeb.GatewaySocket do
 
         {:push, [Frame.event("chat", payload)], drop_tool_calls(state, run_id)}
     end
-  end
-
-  defp socket_scope(state) do
-    state
-    |> Map.take([:workspace_id, :agent_id, :user_id, :session_key])
-    |> Enum.into(%{})
   end
 
   @impl true

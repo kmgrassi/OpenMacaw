@@ -79,7 +79,8 @@ export function ChatView({
   activationState,
   readOnly = false,
 }: Props) {
-  const { connected, scope, status, diagnostics } = useGatewayContext();
+  const { connected, scope, status, diagnostics, connect } =
+    useGatewayContext();
   const lastAbnormalCloseAt = diagnostics.lastAbnormalCloseAt;
   const lastCloseCode = diagnostics.lastCloseCode;
   // Track which abnormal-close event the user has dismissed. The banner
@@ -301,6 +302,7 @@ export function ChatView({
             reason="ws_close_abnormal"
             closeCode={lastCloseCode}
             onDismiss={() => setDismissedCloseAt(lastAbnormalCloseAt)}
+            onReconnect={connect}
           />
         )}
 
