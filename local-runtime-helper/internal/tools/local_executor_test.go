@@ -201,6 +201,63 @@ func TestShellExecTreatsWorkspaceExecutableAsWorkspaceRootPath(t *testing.T) {
 	}
 }
 
+func TestShellExecTreatsWorkspaceOperandAsWorkspaceRootPath(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	root := t.TempDir()
+	readme := filepath.Join(root, "README.md")
+	if err := os.WriteFile(readme, []byte("workspace operand"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	executor, err := NewExecutor(root)
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+
+	result := executor.Execute(context.Background(), runner.ToolCallRequest{
+		ToolCallID: "call-shell-workspace-operand",
+		Name:       "shell.exec",
+		Arguments: map[string]any{
+			"command": "cat /workspace/README.md",
+		},
+	})
+	if !result.Success {
+		t.Fatalf("result.Success = false, output = %#v", result.Output)
+	}
+	output := result.Output.(map[string]any)
+	if output["stdout"] != "workspace operand" {
+		t.Fatalf("stdout = %#v, want workspace operand", output["stdout"])
+	}
+}
+
+func TestShellExecAppliesEnvArgument(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
+	t.Setenv("OPENMACAW_TEST_ENV", "host-value")
+
+	root := t.TempDir()
+	executor, err := NewExecutor(root)
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+
+	result := executor.Execute(context.Background(), runner.ToolCallRequest{
+		ToolCallID: "call-shell-env",
+		Name:       "shell.exec",
+		Arguments: map[string]any{
+			"argv": []any{"sh", "-c", "printf %s \"$OPENMACAW_TEST_ENV\""},
+			"env":  map[string]any{"OPENMACAW_TEST_ENV": "tool-value"},
+		},
+	})
+	if !result.Success {
+		t.Fatalf("result.Success = false, output = %#v", result.Output)
+	}
+	output := result.Output.(map[string]any)
+	if output["stdout"] != "tool-value" {
+		t.Fatalf("stdout = %#v, want tool-value", output["stdout"])
+	}
+}
+
 func TestNormalizedToolPathAddsLocalToolDirectories(t *testing.T) {
 	path := normalizedToolPath("/usr/bin:/bin")
 	entries := filepath.SplitList(path)
