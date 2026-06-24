@@ -1,6 +1,5 @@
-import { useState } from "react";
-
 import { getContainerArtifactHandoffSmoke } from "../../../api/container-artifact-handoff-smoke";
+import { useAsyncTask } from "../../../hooks/useAsyncTask";
 import type { AwsResourceAccessSmokeResponse } from "../../../../../../contracts/aws-resource-access-smoke";
 import { Badge } from "../../ui/Badge";
 import { Button } from "../../ui/Button";
@@ -24,23 +23,10 @@ function commandVariant(
 }
 
 export function ContainerArtifactHandoffCard() {
-  const [smoke, setSmoke] = useState<AwsResourceAccessSmokeResponse | null>(
-    null,
+  const smokeTask = useAsyncTask<AwsResourceAccessSmokeResponse>(
+    getContainerArtifactHandoffSmoke,
   );
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function handleLoad() {
-    setLoading(true);
-    setError(null);
-    try {
-      setSmoke(await getContainerArtifactHandoffSmoke());
-    } catch (err) {
-      setError((err as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const smoke = smokeTask.data;
 
   return (
     <Card>
@@ -57,14 +43,16 @@ export function ContainerArtifactHandoffCard() {
         <Button
           size="sm"
           variant="secondary"
-          loading={loading}
-          onClick={() => void handleLoad()}
+          loading={smokeTask.loading}
+          onClick={() => void smokeTask.run()}
         >
           Load fixture
         </Button>
       </div>
 
-      {error && <p className="mt-3 text-xs text-red-400">{error}</p>}
+      {smokeTask.error && (
+        <p className="mt-3 text-xs text-red-400">{smokeTask.error}</p>
+      )}
 
       {smoke && (
         <div className="mt-4 space-y-3">
