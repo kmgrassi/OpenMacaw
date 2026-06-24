@@ -237,7 +237,7 @@ function buildLocalRuntimeDiagnostics(input: {
       code: "workspace_root_missing",
       severity: "warning",
       title: "Workspace root is missing",
-      message: "Local repository tools need a workspace root so relative repo paths resolve on the helper machine.",
+      message: "Local helper commands need a workspace root so relative paths resolve on the helper machine.",
       action: "Regenerate the local runtime config with a repository root and restart the helper.",
       command: null,
       logPath: null,

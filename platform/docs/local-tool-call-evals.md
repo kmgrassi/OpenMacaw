@@ -17,7 +17,6 @@ manager smoke command.
 
 Enabled-by-default cases are read-only or intentionally harmless:
 
-- repository tools: `repo.read_file`, `repo.search`, `repo.list`
 - local helper tools: `git.run`, `shell.exec`
 - database read tool: `scheduled_task.list`
 - negative cases where the model should not call any tool

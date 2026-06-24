@@ -51,7 +51,7 @@ The tool infrastructure uses three existing tables (no new migration needed):
 |--------|------|-------------|
 | `id` | uuid | Primary key |
 | `name` | text | Human-readable name |
-| `slug` | text | Unique identifier (e.g., `repo.read_file`) |
+| `slug` | text | Unique identifier (e.g., `shell.exec`) |
 | `function_name` | text | Function name for API calls |
 | `description` | text | What the tool does |
 | `parameters` | jsonb | JSON Schema for input parameters |

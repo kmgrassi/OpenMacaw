@@ -201,6 +201,63 @@ func TestShellExecTreatsWorkspaceExecutableAsWorkspaceRootPath(t *testing.T) {
 	}
 }
 
+func TestShellExecTreatsWorkspaceOperandAsWorkspaceRootPath(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	root := t.TempDir()
+	readme := filepath.Join(root, "README.md")
+	if err := os.WriteFile(readme, []byte("workspace operand"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	executor, err := NewExecutor(root)
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+
+	result := executor.Execute(context.Background(), runner.ToolCallRequest{
+		ToolCallID: "call-shell-workspace-operand",
+		Name:       "shell.exec",
+		Arguments: map[string]any{
+			"command": "cat /workspace/README.md",
+		},
+	})
+	if !result.Success {
+		t.Fatalf("result.Success = false, output = %#v", result.Output)
+	}
+	output := result.Output.(map[string]any)
+	if output["stdout"] != "workspace operand" {
+		t.Fatalf("stdout = %#v, want workspace operand", output["stdout"])
+	}
+}
+
+func TestShellExecAppliesEnvArgument(t *testing.T) {
+	t.Setenv("PATH", "/usr/bin:/bin")
+	t.Setenv("OPENMACAW_TEST_ENV", "host-value")
+
+	root := t.TempDir()
+	executor, err := NewExecutor(root)
+	if err != nil {
+		t.Fatalf("NewExecutor() error = %v", err)
+	}
+
+	result := executor.Execute(context.Background(), runner.ToolCallRequest{
+		ToolCallID: "call-shell-env",
+		Name:       "shell.exec",
+		Arguments: map[string]any{
+			"argv": []any{"sh", "-c", "printf %s \"$OPENMACAW_TEST_ENV\""},
+			"env":  map[string]any{"OPENMACAW_TEST_ENV": "tool-value"},
+		},
+	})
+	if !result.Success {
+		t.Fatalf("result.Success = false, output = %#v", result.Output)
+	}
+	output := result.Output.(map[string]any)
+	if output["stdout"] != "tool-value" {
+		t.Fatalf("stdout = %#v, want tool-value", output["stdout"])
+	}
+}
+
 func TestNormalizedToolPathAddsLocalToolDirectories(t *testing.T) {
 	path := normalizedToolPath("/usr/bin:/bin")
 	entries := filepath.SplitList(path)
@@ -238,139 +295,6 @@ func containsEntry(entries []string, want string) bool {
 		}
 	}
 	return false
-}
-
-func TestRepoReadFileUsesRoutedWorkspaceRoot(t *testing.T) {
-	root := t.TempDir()
-	repo := filepath.Join(root, "openmacaw")
-	if err := os.Mkdir(repo, 0o755); err != nil {
-		t.Fatalf("Mkdir() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# OpenMacaw\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	executor, err := NewExecutor(root)
-	if err != nil {
-		t.Fatalf("NewExecutor() error = %v", err)
-	}
-
-	result := executor.Execute(context.Background(), runner.ToolCallRequest{
-		ToolCallID: "call-repo-read",
-		Name:       "repo.read_file",
-		Arguments: map[string]any{
-			"path":         "README.md",
-			"workspace_id": "workspace-1",
-		},
-		Context: runner.ToolExecutionContext{
-			"workspace_root": repo,
-		},
-	})
-	if !result.Success {
-		t.Fatalf("result.Success = false, output = %#v", result.Output)
-	}
-	output := result.Output.(map[string]any)
-	if output["path"] != "README.md" {
-		t.Fatalf("path = %#v, want README.md", output["path"])
-	}
-	if output["content"] != "# OpenMacaw\n" {
-		t.Fatalf("content = %#v, want README heading", output["content"])
-	}
-}
-
-func TestRepoReadFileRejectsRoutedWorkspaceOutsideRoot(t *testing.T) {
-	executor, err := NewExecutor(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewExecutor() error = %v", err)
-	}
-
-	result := executor.Execute(context.Background(), runner.ToolCallRequest{
-		ToolCallID: "call-repo-escape",
-		Name:       "repo.read_file",
-		Arguments:  map[string]any{"path": "README.md"},
-		Context: runner.ToolExecutionContext{
-			"workspace_root": t.TempDir(),
-		},
-	})
-	if result.Success {
-		t.Fatalf("result.Success = true, want false for route outside helper workspace root")
-	}
-}
-
-func TestRepoReadFileAllowsRepositoryPathInsideWorkspaceRoot(t *testing.T) {
-	root := t.TempDir()
-	repo := filepath.Join(root, "openmacaw")
-	if err := os.Mkdir(repo, 0o755); err != nil {
-		t.Fatalf("Mkdir() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# Routed\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	executor, err := NewExecutor(root)
-	if err != nil {
-		t.Fatalf("NewExecutor() error = %v", err)
-	}
-
-	result := executor.Execute(context.Background(), runner.ToolCallRequest{
-		ToolCallID: "call-repo-read",
-		Name:       "repo.read_file",
-		Arguments: map[string]any{
-			"path":            "README.md",
-			"repository_path": repo,
-		},
-		Context: runner.ToolExecutionContext{
-			"workspace_root": root,
-		},
-	})
-	if !result.Success {
-		t.Fatalf("result.Success = false, output = %#v", result.Output)
-	}
-	output := result.Output.(map[string]any)
-	if output["content"] != "# Routed\n" {
-		t.Fatalf("content = %#v, want routed repository content", output["content"])
-	}
-}
-
-func TestRepoReadFileTruncatesAtUTF8Boundary(t *testing.T) {
-	root := t.TempDir()
-	repo := filepath.Join(root, "openmacaw")
-	if err := os.Mkdir(repo, 0o755); err != nil {
-		t.Fatalf("Mkdir() error = %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("ab€z\n"), 0o644); err != nil {
-		t.Fatalf("WriteFile() error = %v", err)
-	}
-
-	executor, err := NewExecutor(root)
-	if err != nil {
-		t.Fatalf("NewExecutor() error = %v", err)
-	}
-
-	result := executor.Execute(context.Background(), runner.ToolCallRequest{
-		ToolCallID: "call-repo-read",
-		Name:       "repo.read_file",
-		Arguments: map[string]any{
-			"path":       "README.md",
-			"byte_limit": 4,
-		},
-		Context: runner.ToolExecutionContext{
-			"workspace_root": repo,
-		},
-	})
-	if !result.Success {
-		t.Fatalf("result.Success = false, output = %#v", result.Output)
-	}
-	output := result.Output.(map[string]any)
-	if output["content"] != "ab" {
-		t.Fatalf("content = %#v, want UTF-8 boundary prefix", output["content"])
-	}
-	if output["bytes_read"] != 2 {
-		t.Fatalf("bytes_read = %#v, want 2", output["bytes_read"])
-	}
-	if output["truncated"] != true {
-		t.Fatalf("truncated = %#v, want true", output["truncated"])
-	}
 }
 
 func TestGitRunExecutesInsideWorkspaceRoot(t *testing.T) {

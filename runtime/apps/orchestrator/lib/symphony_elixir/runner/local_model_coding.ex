@@ -163,9 +163,7 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
 
     # Prepend a system message that names the workspace path so the model
     # can answer "where am I?" with the actual directory and reason about
-    # absolute paths in shell.exec. repo.list / repo.read_file / repo.search
-    # return paths relative to this directory; the model needs to know what
-    # they're relative to.
+    # absolute paths in shell.exec.
     case system_message(session, work_item) do
       nil -> base
       content -> [%{"role" => "system", "content" => content} | base]
@@ -236,8 +234,7 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
         """
         You are operating in workspace directory: #{path}
 
-        Paths returned by repo.list, repo.read_file, and repo.search are
-        relative to this directory. shell.exec runs commands inside it.
+        shell.exec runs commands inside this directory.
         When the user asks which directory or workspace you are in, answer
         with this absolute path.
         """
@@ -431,34 +428,7 @@ defmodule SymphonyElixir.Runner.LocalModelCoding do
     :coding
     |> ToolRegistry.bundle()
     |> ToolRegistry.definitions()
-    |> Enum.map(&local_coding_tool_definition/1)
   end
-
-  defp local_coding_tool_definition(%{"name" => name} = definition)
-       when name in ["repo.list", "repo.read_file", "repo.search"] do
-    definition
-    |> Map.update("inputSchema", %{}, &strip_repository_scope/1)
-    |> Map.update("parameters", %{}, &strip_repository_scope/1)
-    |> Map.update("parameters_schema", %{}, &strip_repository_scope/1)
-  end
-
-  defp local_coding_tool_definition(definition), do: definition
-
-  defp strip_repository_scope(%{"properties" => properties} = schema) do
-    required =
-      schema
-      |> Map.get("required", [])
-      |> Enum.reject(&(&1 in ["workspace_id", "repo_id", "repository_id"]))
-
-    schema
-    |> Map.put("properties", Map.drop(properties, ["workspace_id", "repo_id", "repository_id"]))
-    |> maybe_put_required(required)
-  end
-
-  defp strip_repository_scope(schema), do: schema
-
-  defp maybe_put_required(schema, []), do: Map.delete(schema, "required")
-  defp maybe_put_required(schema, required), do: Map.put(schema, "required", required)
 
   defp require_model(%{model: model}) when is_binary(model) and model != "", do: :ok
   defp require_model(_session), do: {:error, :missing_model}

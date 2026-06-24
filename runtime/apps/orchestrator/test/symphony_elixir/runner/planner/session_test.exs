@@ -47,10 +47,10 @@ defmodule SymphonyElixir.Runner.Planner.SessionTest do
     assert session.instructions =~ "address_review"
     assert session.instructions =~ "fix_tests"
     assert session.instructions =~ "task.create accepts optional top-level repository and runner_kind fields"
-    assert session.instructions =~ "inspect available repository context with repo.list"
-    assert session.instructions =~ "repo.search"
-    assert session.instructions =~ "repo.read_file"
-    assert session.instructions =~ "repo.read_symbols"
+    refute session.instructions =~ "task.status"
+    refute session.instructions =~ "shell.exec"
+    refute session.instructions =~ "repository inspection tools"
+    refute session.instructions =~ "inspect available repository context"
     assert session.instructions =~ "Use only canonical runtime runner_kind values"
 
     for runner_kind <- ExecutionProfile.supported_runner_kinds() do
@@ -112,7 +112,7 @@ defmodule SymphonyElixir.Runner.Planner.SessionTest do
              )
 
     refute "task.create" in session.tool_names
-    assert session.instructions =~ "inspect available repository context with repo.list"
+    refute session.instructions =~ "inspect available repository context"
 
     assert {:ok, %{"response_id" => "resp-grants", "output_text" => "No task tool available."}} =
              Planner.run_turn(session, "Create a task", %WorkItem{id: "work-1", identifier: "PLAN-1"})
@@ -124,7 +124,7 @@ defmodule SymphonyElixir.Runner.Planner.SessionTest do
     assert "plan_create" in provider_names
   end
 
-  test "omits repo tool names from routing instructions when they are not granted" do
+  test "omits repository inspection routing instructions" do
     Req.Test.stub(__MODULE__, fn conn ->
       case {conn.method, conn.request_path} do
         {"GET", "/rest/v1/planning_profile"} ->
@@ -151,11 +151,12 @@ defmodule SymphonyElixir.Runner.Planner.SessionTest do
              )
 
     assert session.tool_names == ["plan.create", "task.create"]
-    assert session.instructions =~ "repository inspection tools are not available"
-    refute session.instructions =~ "repo.list"
-    refute session.instructions =~ "repo.search"
-    refute session.instructions =~ "repo.read_file"
-    refute session.instructions =~ "repo.read_symbols"
+    refute session.instructions =~ "repository inspection tools"
+    refute session.instructions =~ "inspect available repository context"
+    refute session.instructions =~ "scheduled_task.read"
+    refute session.instructions =~ "scheduled_task.list"
+    refute session.instructions =~ "shell.exec"
+    refute session.instructions =~ "task.status"
   end
 
   test "Responses planner preserves canonical schemas from explicit tool definitions" do

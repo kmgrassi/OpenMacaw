@@ -59,7 +59,7 @@ describe("agent tool grant contract", () => {
     const parsed = AgentToolGrantResolvedToolSchema.parse({
       id: toolId,
       workspaceId,
-      slug: "repo.read_file",
+      slug: "shell.exec",
       name: "Read File",
       description: "Read a file within the workspace.",
       parameters: {},

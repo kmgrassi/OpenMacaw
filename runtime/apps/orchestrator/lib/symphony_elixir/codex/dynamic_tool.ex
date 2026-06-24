@@ -29,8 +29,5 @@ defmodule SymphonyElixir.Codex.DynamicTool do
   @spec agent_communication_tool_specs() :: [map()]
   def agent_communication_tool_specs, do: ToolRegistry.agent_communication_tool_specs()
 
-  @spec repository_tool_specs() :: [map()]
-  def repository_tool_specs, do: ToolRegistry.repository_tool_specs()
-
   defp use_tool_registry?, do: System.get_env("USE_TOOL_REGISTRY", "1") != "0"
 end

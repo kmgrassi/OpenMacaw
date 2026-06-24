@@ -132,34 +132,6 @@ defmodule SymphonyElixir.Tools.Codex.WrappedTool do
   end
 end
 
-defmodule SymphonyElixir.Tools.Codex.RepoList do
-  use SymphonyElixir.Tools.Codex.WrappedTool,
-    name: "repo.list",
-    source: SymphonyElixir.Planner.RepositoryTools,
-    bundle: :repo_read
-end
-
-defmodule SymphonyElixir.Tools.Codex.RepoSearch do
-  use SymphonyElixir.Tools.Codex.WrappedTool,
-    name: "repo.search",
-    source: SymphonyElixir.Planner.RepositoryTools,
-    bundle: :repo_read
-end
-
-defmodule SymphonyElixir.Tools.Codex.RepoReadFile do
-  use SymphonyElixir.Tools.Codex.WrappedTool,
-    name: "repo.read_file",
-    source: SymphonyElixir.Planner.RepositoryTools,
-    bundle: :repo_read
-end
-
-defmodule SymphonyElixir.Tools.Codex.RepoReadSymbols do
-  use SymphonyElixir.Tools.Codex.WrappedTool,
-    name: "repo.read_symbols",
-    source: SymphonyElixir.Planner.RepositoryTools,
-    bundle: :repo_read
-end
-
 defmodule SymphonyElixir.Tools.Codex.PlanCreate do
   use SymphonyElixir.Tools.Codex.WrappedTool,
     name: "plan.create",

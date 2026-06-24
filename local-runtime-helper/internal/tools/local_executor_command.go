@@ -32,9 +32,10 @@ func (e *Executor) runCommand(ctx context.Context, argv []string, args map[strin
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(runCtx, executable, argv[1:]...)
+	resolvedArgv := e.resolveWorkspaceArgv(argv)
+	cmd := exec.CommandContext(runCtx, executable, resolvedArgv[1:]...)
 	cmd.Dir = cwd
-	cmd.Env = e.commandEnv()
+	cmd.Env = e.commandEnv(args)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &limitedWriter{buf: &stdout, limit: outputLimit}
@@ -50,7 +51,7 @@ func (e *Executor) runCommand(ctx context.Context, argv []string, args map[strin
 			return map[string]any{
 				"ok":             false,
 				"error":          "command_timeout",
-				"argv":           argv,
+				"argv":           resolvedArgv,
 				"cwd":            cwd,
 				"workspace_root": e.workspaceRoot,
 				"timeout_ms":     int(timeout.Milliseconds()),
@@ -62,7 +63,7 @@ func (e *Executor) runCommand(ctx context.Context, argv []string, args map[strin
 				"ok":             false,
 				"error":          "command_failed_to_start",
 				"message":        err.Error(),
-				"argv":           argv,
+				"argv":           resolvedArgv,
 				"cwd":            cwd,
 				"workspace_root": e.workspaceRoot,
 				"stdout":         stdout.String(),
@@ -75,7 +76,7 @@ func (e *Executor) runCommand(ctx context.Context, argv []string, args map[strin
 	return map[string]any{
 		"ok":             ok,
 		"exit_code":      exitCode,
-		"argv":           argv,
+		"argv":           resolvedArgv,
 		"cwd":            cwd,
 		"workspace_root": e.workspaceRoot,
 		"stdout":         stdout.String(),
@@ -83,20 +84,73 @@ func (e *Executor) runCommand(ctx context.Context, argv []string, args map[strin
 	}, ok
 }
 
-func (e *Executor) commandEnv() []string {
-	env := os.Environ()
-	pathSet := false
-	for index, entry := range env {
-		if strings.HasPrefix(entry, "PATH=") {
-			env[index] = "PATH=" + e.toolPath
-			pathSet = true
-			break
+func (e *Executor) resolveWorkspaceArgv(argv []string) []string {
+	resolved := make([]string, len(argv))
+	copy(resolved, argv)
+	for index, arg := range resolved {
+		if index == 0 {
+			continue
+		}
+		if workspacePath, ok := e.virtualWorkspacePath(arg); ok {
+			resolved[index] = workspacePath
 		}
 	}
-	if !pathSet {
-		env = append(env, "PATH="+e.toolPath)
+	return resolved
+}
+
+func (e *Executor) commandEnv(args map[string]any) []string {
+	envMap := map[string]string{}
+	env := os.Environ()
+	for _, entry := range env {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		envMap[key] = value
+	}
+	for key, value := range commandEnvOverrides(args) {
+		envMap[key] = value
+	}
+	envMap["PATH"] = e.toolPath
+
+	result := make([]string, 0, len(envMap))
+	for key, value := range envMap {
+		result = append(result, key+"="+value)
+	}
+	return result
+}
+
+func commandEnvOverrides(args map[string]any) map[string]string {
+	raw, ok := args["env"]
+	if !ok {
+		return nil
+	}
+	rawEnv, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	env := map[string]string{}
+	for key, value := range rawEnv {
+		stringValue, ok := value.(string)
+		if !ok || !validEnvEntry(key, stringValue) {
+			continue
+		}
+		env[key] = stringValue
 	}
 	return env
+}
+
+func validEnvEntry(key, value string) bool {
+	if key == "" || strings.ContainsAny(key, "=\x00") || strings.Contains(value, "\x00") {
+		return false
+	}
+	for index, r := range key {
+		if r == '_' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' || index > 0 && r >= '0' && r <= '9' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (e *Executor) lookupExecutable(name, cwd string) (string, error) {

@@ -178,6 +178,78 @@ describe("default-agent setup contracts", () => {
     expect(parsed.provider).toBe("anthropic");
   });
 
+  const credentialId = "66666666-6666-4666-8666-666666666666";
+
+  it("parses selected-agent requests that reuse a stored credential", () => {
+    const parsed = AgentCredentialConfigurationRequestSchema.parse({
+      agentId: planningAgentId,
+      workspaceId,
+      provider: "anthropic",
+      model: "anthropic/claude-sonnet-4-6",
+      credentialId,
+    });
+
+    expect(parsed.credentialId).toBe(credentialId);
+    expect(parsed.secret).toBeUndefined();
+  });
+
+  it("parses default-agent requests that reuse a stored credential", () => {
+    const parsed = DefaultAgentCredentialApplicationRequestSchema.parse({
+      workspaceId,
+      provider: "openai",
+      credentialId,
+      agentIds: [planningAgentId, codingAgentId],
+    });
+
+    expect(parsed.credentialId).toBe(credentialId);
+    expect(parsed.secret).toBeUndefined();
+  });
+
+  it("rejects credential requests that provide neither a secret nor a credentialId", () => {
+    expect(
+      AgentCredentialConfigurationRequestSchema.safeParse({
+        agentId: planningAgentId,
+        workspaceId,
+        provider: "anthropic",
+        model: "anthropic/claude-sonnet-4-6",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      DefaultAgentCredentialApplicationRequestSchema.safeParse({
+        workspaceId,
+        provider: "openai",
+        agentIds: [planningAgentId],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects credential requests that provide both a secret and a credentialId", () => {
+    expect(
+      AgentCredentialConfigurationRequestSchema.safeParse({
+        agentId: planningAgentId,
+        workspaceId,
+        provider: "anthropic",
+        model: "anthropic/claude-sonnet-4-6",
+        secret: "sk-ant-test",
+        credentialId,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects reuse requests that also carry a keyName", () => {
+    expect(
+      AgentCredentialConfigurationRequestSchema.safeParse({
+        agentId: planningAgentId,
+        workspaceId,
+        provider: "anthropic",
+        model: "anthropic/claude-sonnet-4-6",
+        keyName: "ANTHROPIC_API_KEY",
+        credentialId,
+      }).success,
+    ).toBe(false);
+  });
+
   it("parses credential application responses with refreshed auth state", () => {
     const parsed = DefaultAgentCredentialApplicationResponseSchema.parse({
       authState: {

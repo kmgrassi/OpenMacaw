@@ -17,7 +17,7 @@ const requireFromApi = createRequire(
 const execFileAsync = promisify(execFile);
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:3100";
-const DEFAULT_TOOL = "repo.read_file";
+const DEFAULT_TOOL = "shell.exec";
 const DEFAULT_PATH = "package.json";
 const DEFAULT_TIMEOUT_MS = 90_000;
 const DEFAULT_POLL_MS = 2_000;
@@ -263,8 +263,8 @@ function printHelp() {
 Options:
   --agent-id <id>       Agent to exercise
   --workspace-id <id>   Workspace context
-  --tool <slug>         Expected tool slug (default: repo.read_file)
-  --path <path>         Harmless file path to ask the tool to read (default: package.json)
+  --tool <slug>         Expected tool slug (default: shell.exec)
+  --path <path>         Harmless file path to ask shell.exec to read (default: package.json)
   --api-base-url <url>  Platform API base URL (default: http://127.0.0.1:3100)
   --api-token <token>   Supabase bearer token (or PLATFORM_API_TOKEN/API_AUTH_TOKEN)
   --timeout-ms <ms>     Overall wait timeout (default: 90000)
@@ -288,6 +288,14 @@ function requireArg(value, flag) {
 }
 
 function buildPrompt(input) {
+  if (input.tool === "shell.exec") {
+    return [
+      `Use shell.exec to run this exact command from /workspace: sed -n 1,20p ${input.path}.`,
+      "Do not answer from memory.",
+      "After the tool result is available, respond with a short confirmation that the file was read.",
+    ].join(" ");
+  }
+
   return [
     `Use the ${input.tool} tool to read ${input.path}.`,
     "Do not answer from memory.",

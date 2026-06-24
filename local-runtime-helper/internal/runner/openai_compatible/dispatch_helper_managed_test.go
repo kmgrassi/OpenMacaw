@@ -324,7 +324,7 @@ func TestDispatchHelperManagedDelegatesRuntimeTool(t *testing.T) {
 
 func TestDispatchHelperManagedExecutesHelperAndForwardsRuntimeTools(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"call_helper","type":"function","function":{"name":"repo.search","arguments":"{\"query\":\"TODO\"}"}},{"id":"call_runtime","type":"function","function":{"name":"task.create","arguments":"{\"title\":\"Follow up\"}"}}]},"finish_reason":"tool_calls"}]}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"tool_calls":[{"id":"call_helper","type":"function","function":{"name":"scheduled_task.list","arguments":"{\"query\":\"TODO\"}"}},{"id":"call_runtime","type":"function","function":{"name":"task.create","arguments":"{\"title\":\"Follow up\"}"}}]},"finish_reason":"tool_calls"}]}`))
 	}))
 	defer server.Close()
 
@@ -339,7 +339,7 @@ func TestDispatchHelperManagedExecutesHelperAndForwardsRuntimeTools(t *testing.T
 		Messages:        []runner.ChatMessage{{Role: "user", Content: "plan"}},
 		ToolCallingMode: "helper_managed",
 		ToolDefinitions: []runner.ToolDefinition{{
-			Name:             "repo.search",
+			Name:             "scheduled_task.list",
 			ParametersSchema: map[string]any{"type": "object"},
 			ExecutionKind:    "helper",
 		}, {

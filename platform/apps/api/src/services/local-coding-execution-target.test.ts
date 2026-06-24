@@ -30,13 +30,13 @@ describe("assertLocalCodingToolsUseRuntimeTarget", () => {
     ).not.toThrow();
   });
 
-  it("allows repository tools to use non-helper filesystem execution", () => {
-    expect(hasLocalCodingTool([{ slug: "repo.search" }])).toBe(true);
+  it("allows git.run to use non-helper filesystem execution", () => {
+    expect(hasLocalCodingTool([{ slug: "git.run" }])).toBe(true);
     expect(() =>
       assertLocalCodingToolsUseRuntimeTarget([
         {
           id: "tool-2",
-          slug: "repo.search",
+          slug: "git.run",
           executionKind: "filesystem",
           runnerKind: "local_relay",
         },
@@ -44,12 +44,12 @@ describe("assertLocalCodingToolsUseRuntimeTarget", () => {
     ).not.toThrow();
   });
 
-  it("rejects repository tools configured for Platform database execution", () => {
+  it("rejects git.run configured for Platform database execution", () => {
     expect(() =>
       assertLocalCodingToolsUseRuntimeTarget([
         {
           id: "tool-2",
-          slug: "repo.search",
+          slug: "git.run",
           executionKind: "database",
           runnerKind: "planner",
         },
@@ -70,6 +70,6 @@ describe("hasLocalCodingTool", () => {
   it("returns true when at least one tool slug is a local coding slug", () => {
     expect(hasLocalCodingTool([{ slug: "db.query.run" }, { slug: "shell.exec" }])).toBe(true);
     expect(hasLocalCodingTool([{ slug: "apply_patch" }])).toBe(true);
-    expect(hasLocalCodingTool([{ slug: "repo.read_file" }])).toBe(true);
+    expect(hasLocalCodingTool([{ slug: "shell.exec" }])).toBe(true);
   });
 });
