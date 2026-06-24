@@ -106,9 +106,11 @@ export function AgentModelPolicyCard({
           onConfirm={onConfirmPendingProviderChange}
         />
       )}
-      <h4 className="mb-3 text-sm font-medium text-slate-300">Model Policy</h4>
+      <h4 className="mb-3 text-sm font-medium text-slate-300">
+        Coding Runner
+      </h4>
       {loadingModels || loadingCredentials ? (
-        <LoadingState label="Loading models..." />
+        <LoadingState label="Loading runner settings..." />
       ) : showNoModelsState ? (
         <NoModelsState />
       ) : (
