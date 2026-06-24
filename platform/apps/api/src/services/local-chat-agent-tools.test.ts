@@ -11,10 +11,10 @@ function tool(overrides: Record<string, unknown>) {
   return {
     id: "tool-read",
     workspace_id: null,
-    slug: "repo.read_file",
+    slug: "shell.exec",
     name: "Read File",
     description: "Read a file",
-    function_name: "repo_read_file",
+    function_name: "shell_exec",
     parameters: { type: "object" },
     examples: [],
     type: null,
@@ -49,7 +49,7 @@ describe("local chat agent tools", () => {
           function_name: "plan_create",
           runner_kind: "local_relay",
         }),
-        tool({ id: "tool-search", slug: "repo.search", function_name: "repo_search" }),
+        tool({ id: "tool-search", slug: "scheduled_task.list", function_name: "scheduled_task_list" }),
         tool({
           id: "tool-shell",
           slug: "shell.exec",

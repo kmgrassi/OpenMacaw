@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   CREDENTIAL_PROVIDERS,
   type CredentialProvider,
+  type SavedCredential,
 } from "../../../../../contracts/credentials";
 import { cn } from "../../lib/cn";
 import { devApiKeyForProvider } from "../../lib/dev-credentials";
@@ -11,6 +12,11 @@ import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { ConnectChatGPTButton } from "./ConnectChatGPTButton";
+import {
+  NEW_CREDENTIAL_VALUE,
+  StoredCredentialSelect,
+  storedCredentialId,
+} from "./StoredCredentialSelect";
 
 export type CredentialEditorFormat =
   | "api_key"
@@ -41,7 +47,11 @@ type CredentialEditorProps = {
   successMessage?: string;
   disabledReason?: string | null;
   apiKeyExtraFields?: ReactNode;
+  // Stored credentials for the currently selected provider. When present, the
+  // user can reuse one (shown masked) instead of pasting a new key.
+  existingCredentials?: SavedCredential[];
   onApiKeyCredential?: (input: ApiKeyCredentialInput) => Promise<void>;
+  onUseExistingCredential?: (credentialId: string) => Promise<void>;
   onOAuthConnected?: () => Promise<void> | void;
   onSaved?: () => Promise<void> | void;
 };
@@ -101,7 +111,9 @@ export function CredentialEditor({
   successMessage = "Credentials saved.",
   disabledReason,
   apiKeyExtraFields,
+  existingCredentials,
   onApiKeyCredential,
+  onUseExistingCredential,
   onOAuthConnected,
   onSaved,
 }: CredentialEditorProps) {
@@ -114,10 +126,35 @@ export function CredentialEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  // "" = enter a new key; otherwise the id of the stored credential to reuse.
+  const [selectedExistingId, setSelectedExistingId] =
+    useState<string>(NEW_CREDENTIAL_VALUE);
+
+  const storedCredentials = existingCredentials ?? [];
+  const canReuseExisting =
+    storedCredentials.length > 0 && Boolean(onUseExistingCredential);
 
   useEffect(() => {
     setProvider(initialProvider);
   }, [initialProvider]);
+
+  // When the provider (and therefore the stored-key list) changes, default to
+  // reusing the first available key, or fall back to entering a new one.
+  useEffect(() => {
+    const first = storedCredentials[0];
+    if (!canReuseExisting || !first) {
+      setSelectedExistingId(NEW_CREDENTIAL_VALUE);
+      return;
+    }
+    setSelectedExistingId((current) =>
+      current &&
+      storedCredentials.some(
+        (credential) => storedCredentialId(credential) === current,
+      )
+        ? current
+        : storedCredentialId(first),
+    );
+  }, [canReuseExisting, storedCredentials]);
 
   useEffect(() => {
     if (!enabledFormats.includes(format)) {
@@ -136,27 +173,35 @@ export function CredentialEditor({
     [providerOptions],
   );
 
+  const reusingExistingCredential =
+    canReuseExisting && selectedExistingId !== NEW_CREDENTIAL_VALUE;
+
   const canSubmitApiKey =
     format === "api_key" &&
-    Boolean(onApiKeyCredential) &&
     Boolean(workspaceId) &&
-    secret.trim().length > 0 &&
-    !disabledReason;
+    !disabledReason &&
+    (reusingExistingCredential
+      ? Boolean(onUseExistingCredential)
+      : Boolean(onApiKeyCredential) && secret.trim().length > 0);
 
   async function handleSubmit() {
-    if (!canSubmitApiKey || !onApiKeyCredential) return;
+    if (!canSubmitApiKey) return;
     setSaving(true);
     setError(null);
     setSuccess(false);
     try {
-      await onApiKeyCredential({
-        format: "api_key",
-        provider,
-        secret: secret.trim(),
-        label: label.trim() || undefined,
-        keyName: metadata.envVar,
-      });
-      setSecret("");
+      if (reusingExistingCredential) {
+        await onUseExistingCredential!(selectedExistingId);
+      } else {
+        await onApiKeyCredential!({
+          format: "api_key",
+          provider,
+          secret: secret.trim(),
+          label: label.trim() || undefined,
+          keyName: metadata.envVar,
+        });
+        setSecret("");
+      }
       setSuccess(true);
       await onSaved?.();
       successTimeout(setSuccess);
@@ -219,26 +264,41 @@ export function CredentialEditor({
             ) : null}
           </div>
           {apiKeyExtraFields}
-          <Input
-            className="font-mono"
-            label={metadata.label}
-            type="password"
-            value={secret}
-            onChange={(event) => setSecret(event.target.value)}
-            placeholder={metadata.envVar}
-            autoComplete="off"
-          />
-          {devApiKey && (
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                onClick={() => setSecret(devApiKey)}
-              >
-                Use dev credentials
-              </Button>
-            </div>
+          {canReuseExisting && (
+            <StoredCredentialSelect
+              label={`${metadata.label.replace(/ API key$/, "")} key`}
+              credentials={storedCredentials}
+              value={selectedExistingId}
+              onChange={(next) => {
+                setSelectedExistingId(next);
+                setError(null);
+              }}
+            />
+          )}
+          {!reusingExistingCredential && (
+            <>
+              <Input
+                className="font-mono"
+                label={metadata.label}
+                type="password"
+                value={secret}
+                onChange={(event) => setSecret(event.target.value)}
+                placeholder={metadata.envVar}
+                autoComplete="off"
+              />
+              {devApiKey && (
+                <div className="flex justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setSecret(devApiKey)}
+                  >
+                    Use dev credentials
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

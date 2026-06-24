@@ -15,7 +15,7 @@ import {
 import { getAgentCredentialReferenceRule, upsertAgentCredentialReferenceRule } from "../repositories/routing-rules.js";
 import { listStoredAgentsFromSupabase } from "./stored-agent-management.js";
 import { resolveExecutionProfile } from "./execution-profile-resolver.js";
-import { SCHEDULED_TASK_TOOL_SLUGS } from "./tool-bundles.js";
+import { DEFAULT_CODING_TOOL_SLUGS } from "./tool-bundles.js";
 
 vi.mock("../supabase-client.js", () => ({
   executeSupabaseRows: vi.fn(async (_context: string, query: PromiseLike<{ data: unknown[]; error: unknown }>) => {
@@ -122,19 +122,7 @@ describe("ensureStoredAgentDefaultRouting", () => {
   });
 
   it("repairs default tool grants without requiring a unique conflict constraint", async () => {
-    const toolSlugs = [
-      "repo.read_file",
-      "repo.list",
-      "repo.search",
-      "repo.read_symbols",
-      "plan.create",
-      "task.create",
-      "task.update",
-      "plans.read",
-      "plan.read",
-      "plan.delete",
-      ...SCHEDULED_TASK_TOOL_SLUGS,
-    ];
+    const toolSlugs = [...DEFAULT_CODING_TOOL_SLUGS];
     const db = {
       tool: toolSlugs.map((slug) => ({
         id: slug,
@@ -174,24 +162,8 @@ describe("ensureStoredAgentDefaultRouting", () => {
     });
 
     expect(db.agent_tool).toHaveLength(0);
-    expect(db.agent_tool_grant).toHaveLength(15);
-    expect(db.agent_tool_grant.map((row) => row.tool_id).sort()).toEqual([
-      "plan.create",
-      "plan.delete",
-      "plan.read",
-      "plans.read",
-      "repo.list",
-      "repo.read_file",
-      "repo.read_symbols",
-      "repo.search",
-      "scheduled_task.create",
-      "scheduled_task.delete",
-      "scheduled_task.list",
-      "scheduled_task.read",
-      "scheduled_task.update",
-      "task.create",
-      "task.update",
-    ]);
+    expect(db.agent_tool_grant).toHaveLength(DEFAULT_CODING_TOOL_SLUGS.length);
+    expect(db.agent_tool_grant.map((row) => row.tool_id).sort()).toEqual([...DEFAULT_CODING_TOOL_SLUGS].sort());
     expect(db.agent_tool_grant).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

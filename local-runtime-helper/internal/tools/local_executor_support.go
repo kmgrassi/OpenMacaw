@@ -15,7 +15,9 @@ func (e *Executor) resolveCWD(cwd string) (string, error) {
 		cwd = "."
 	}
 	var candidate string
-	if filepath.IsAbs(cwd) {
+	if workspacePath, ok := e.virtualWorkspacePath(cwd); ok {
+		candidate = workspacePath
+	} else if filepath.IsAbs(cwd) {
 		candidate = cwd
 	} else {
 		candidate = filepath.Join(e.workspaceRoot, cwd)
@@ -28,6 +30,17 @@ func (e *Executor) resolveCWD(cwd string) (string, error) {
 		return "", fmt.Errorf("cwd outside workspace root")
 	}
 	return resolved, nil
+}
+
+func (e *Executor) virtualWorkspacePath(path string) (string, bool) {
+	cleaned := filepath.Clean(path)
+	if cleaned == "/workspace" {
+		return e.workspaceRoot, true
+	}
+	if strings.HasPrefix(cleaned, "/workspace/") {
+		return filepath.Join(e.workspaceRoot, strings.TrimPrefix(cleaned, "/workspace/")), true
+	}
+	return "", false
 }
 
 func canonicalDirectory(path string) (string, error) {

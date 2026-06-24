@@ -474,7 +474,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
 
     # Intentionally omit :tool_definitions so Runner.LocalModelCoding
     # falls through to its default coding-bundle tools (apply_patch,
-    # shell.exec, repo.list, repo.read_file, repo.search) with the
+    # shell.exec and git.run with the
     # local-coding schema stripping already applied. Agent-grant-driven
     # tool filtering can layer on top via ToolRegistry.resolve_for_agent
     # in a follow-up.
@@ -551,13 +551,11 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   end
 
   # Tools whose execution + auth must follow the local model onto the user's
-  # machine: CLI tools shell out with local auth, and repository read tools use
-  # the route's local workspace path instead of a cloud-side checkout. The cloud
-  # loop delegates these by execution_kind (see
+  # machine. The cloud loop delegates these by execution_kind (see
   # ToolCallingLoop.ToolExecutionDispatcher). This is only a *marking* list — a
   # tool is offered only if the agent is actually granted it (or it is in the
   # no-grants fallback below).
-  @local_helper_tools ["git.run", "shell.exec", "repo.list", "repo.read_file", "repo.search"]
+  @local_helper_tools ["git.run", "shell.exec"]
 
   # CLI tools are intentionally absent from the no-grants fallback surface.
   # Broad local CLI access (`git.run`, `shell.exec`) must require an explicit
@@ -657,62 +655,12 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
   defp mark_local_helper_tools(definitions) do
     Enum.map(definitions, fn definition ->
       if is_map(definition) and tool_definition_name(definition) in @local_helper_tools do
-        definition
-        |> Map.put("execution_kind", "helper")
-        |> maybe_add_local_repo_route_inputs()
+        Map.put(definition, "execution_kind", "helper")
       else
         definition
       end
     end)
   end
-
-  defp maybe_add_local_repo_route_inputs(definition) do
-    if tool_definition_name(definition) in ["repo.list", "repo.read_file", "repo.search"] do
-      definition
-      |> update_tool_schema("parameters_schema")
-      |> update_tool_schema("inputSchema")
-      |> update_tool_schema("parameters")
-    else
-      definition
-    end
-  end
-
-  defp update_tool_schema(definition, schema_key) do
-    case Map.get(definition, schema_key) || Map.get(definition, String.to_atom(schema_key)) do
-      schema when is_map(schema) ->
-        Map.put(definition, schema_key, add_repo_route_properties(schema))
-
-      _ ->
-        definition
-    end
-  end
-
-  defp add_repo_route_properties(schema) do
-    properties = Map.get(schema, "properties") || Map.get(schema, :properties) || %{}
-
-    required =
-      schema
-      |> Map.get("required", [])
-      |> Enum.reject(&(&1 in ["workspace_id", "repo_id", "repository_id"]))
-
-    route_properties = %{
-      "repository_path" => %{
-        "type" => ["string", "null"],
-        "description" => "Optional absolute local repository checkout path. If omitted, the runtime-provided local_workspace_root is used."
-      },
-      "cwd" => %{
-        "type" => ["string", "null"],
-        "description" => "Optional alias for repository_path."
-      }
-    }
-
-    schema
-    |> Map.put("properties", properties |> Map.drop(["workspace_id", "repo_id", "repository_id"]) |> Map.merge(route_properties))
-    |> maybe_put_required(required)
-  end
-
-  defp maybe_put_required(schema, []), do: Map.delete(schema, "required")
-  defp maybe_put_required(schema, required), do: Map.put(schema, "required", required)
 
   defp local_workspace_root(profile) do
     profile

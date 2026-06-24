@@ -53,11 +53,13 @@ export function AgentCredentialsPanel({
         <AgentCredentials agent={agent} onSaved={onSaved} />
       )}
 
-      <AgentModelPolicy
-        agent={agent}
-        refreshKey={refreshKey}
-        onSaved={onSaved}
-      />
+      {agent.agentType === "coding" && (
+        <AgentModelPolicy
+          agent={agent}
+          refreshKey={refreshKey}
+          onSaved={onSaved}
+        />
+      )}
     </>
   );
 }

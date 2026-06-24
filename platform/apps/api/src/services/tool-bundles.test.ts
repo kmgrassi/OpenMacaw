@@ -22,10 +22,6 @@ describe("tool bundles", () => {
 
   it("expands planning tools from the canonical bundle", () => {
     expect(toolSlugsForToolProfile({ toolProfile: "planning" })).toEqual([
-      "repo.read_file",
-      "repo.list",
-      "repo.search",
-      "repo.read_symbols",
       "plan.create",
       "task.create",
       "task.update",
@@ -55,9 +51,6 @@ describe("tool bundles", () => {
         runnerKind: "local_model_coding",
       }),
     ).toEqual([
-      "repo.read_file",
-      "repo.list",
-      "repo.search",
       GIT_COMMAND_TOOL_SLUG,
       "shell.exec",
       "apply_patch",

@@ -16,9 +16,6 @@ export const CapabilityRequirementsSchema = z.object({
 });
 
 export const LocalCodingToolSlugSchema = z.enum([
-  "repo.read_file",
-  "repo.list",
-  "repo.search",
   "git.run",
   "shell.exec",
   "apply_patch",
@@ -35,24 +32,6 @@ export const ApplyPatchArgumentsSchema = z.object({
   patch: z.string().trim().min(1),
 });
 
-export const RepoListArgumentsSchema = z.object({
-  path: z.string().trim().optional(),
-  max_depth: z.number().int().min(0).optional(),
-  limit: z.number().int().min(1).optional(),
-});
-
-export const RepoReadFileArgumentsSchema = z.object({
-  path: z.string().trim().min(1),
-  byte_limit: z.number().int().min(1).optional(),
-});
-
-export const RepoSearchArgumentsSchema = z.object({
-  query: z.string().trim().min(1),
-  path: z.string().trim().optional(),
-  limit: z.number().int().min(1).optional(),
-  snippet_chars: z.number().int().min(40).optional(),
-});
-
 export const GitRunArgumentsSchema = z.object({
   command: z.string().trim().min(1),
   cwd: z.string().trim().optional(),
@@ -61,18 +40,6 @@ export const GitRunArgumentsSchema = z.object({
 });
 
 export const LocalCodingToolArgumentsSchema = z.discriminatedUnion("toolSlug", [
-  z.object({
-    toolSlug: z.literal("repo.read_file"),
-    arguments: RepoReadFileArgumentsSchema,
-  }),
-  z.object({
-    toolSlug: z.literal("repo.list"),
-    arguments: RepoListArgumentsSchema,
-  }),
-  z.object({
-    toolSlug: z.literal("repo.search"),
-    arguments: RepoSearchArgumentsSchema,
-  }),
   z.object({
     toolSlug: z.literal("git.run"),
     arguments: GitRunArgumentsSchema,
@@ -123,57 +90,9 @@ export const ApplyPatchResultPayloadSchema = z.object({
   message: z.string().optional(),
 });
 
-export const RepoListEntrySchema = z.object({
-  path: z.string().trim().min(1),
-  type: z.string().trim().min(1),
-  size: z.number().int().nonnegative(),
-});
-
-export const RepoListResultPayloadSchema = z.object({
-  path: z.string().trim().min(1),
-  entries: z.array(RepoListEntrySchema),
-});
-
-export const RepoReadFileResultPayloadSchema = z.object({
-  path: z.string().trim().min(1),
-  content: z.string(),
-  bytesRead: z.number().int().nonnegative(),
-  truncated: z.boolean(),
-});
-
-export const RepoSearchMatchSchema = z.object({
-  path: z.string().trim().min(1),
-  line: z.number().int().positive(),
-  column: z.number().int().positive(),
-  snippet: z.string(),
-});
-
-export const RepoSearchResultPayloadSchema = z.object({
-  query: z.string().trim().min(1),
-  matches: z.array(RepoSearchMatchSchema),
-});
-
 export const LocalCodingToolResultPayloadSchema = z.discriminatedUnion(
   "toolSlug",
   [
-    z.object({
-      toolSlug: z.literal("repo.read_file"),
-      status: LocalCodingToolStatusSchema,
-      result: RepoReadFileResultPayloadSchema.nullable(),
-      errorCode: z.string().trim().min(1).optional(),
-    }),
-    z.object({
-      toolSlug: z.literal("repo.list"),
-      status: LocalCodingToolStatusSchema,
-      result: RepoListResultPayloadSchema.nullable(),
-      errorCode: z.string().trim().min(1).optional(),
-    }),
-    z.object({
-      toolSlug: z.literal("repo.search"),
-      status: LocalCodingToolStatusSchema,
-      result: RepoSearchResultPayloadSchema.nullable(),
-      errorCode: z.string().trim().min(1).optional(),
-    }),
     z.object({
       toolSlug: z.literal("git.run"),
       status: LocalCodingToolStatusSchema,
@@ -248,9 +167,6 @@ export type CapabilityRequirements = z.infer<
 export type LocalCodingToolSlug = z.infer<typeof LocalCodingToolSlugSchema>;
 export type ShellExecArguments = z.infer<typeof ShellExecArgumentsSchema>;
 export type ApplyPatchArguments = z.infer<typeof ApplyPatchArgumentsSchema>;
-export type RepoListArguments = z.infer<typeof RepoListArgumentsSchema>;
-export type RepoReadFileArguments = z.infer<typeof RepoReadFileArgumentsSchema>;
-export type RepoSearchArguments = z.infer<typeof RepoSearchArgumentsSchema>;
 export type LocalCodingToolArguments = z.infer<
   typeof LocalCodingToolArgumentsSchema
 >;
@@ -260,15 +176,6 @@ export type CommandResultPayload = z.infer<typeof CommandResultPayloadSchema>;
 export type FileChange = z.infer<typeof FileChangeSchema>;
 export type ApplyPatchResultPayload = z.infer<
   typeof ApplyPatchResultPayloadSchema
->;
-export type RepoListEntry = z.infer<typeof RepoListEntrySchema>;
-export type RepoListResultPayload = z.infer<typeof RepoListResultPayloadSchema>;
-export type RepoReadFileResultPayload = z.infer<
-  typeof RepoReadFileResultPayloadSchema
->;
-export type RepoSearchMatch = z.infer<typeof RepoSearchMatchSchema>;
-export type RepoSearchResultPayload = z.infer<
-  typeof RepoSearchResultPayloadSchema
 >;
 export type LocalCodingToolResultPayload = z.infer<
   typeof LocalCodingToolResultPayloadSchema

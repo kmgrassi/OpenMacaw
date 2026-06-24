@@ -160,6 +160,31 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.LocalRelayTest do
     assert :ok = Manager.stop_session(session)
   end
 
+  test "keeps explicitly supplied manager local relay shell.exec helper-executed" do
+    {:ok, session} =
+      Manager.start_session(
+        %{
+          "provider" => "local",
+          "model" => "qwen",
+          "workspace_id" => "workspace-1",
+          "tool_definitions" => ToolRegistry.definitions(["snooze", "shell.exec"])
+        },
+        nil
+      )
+
+    assert session.allowed_tools == ["snooze", "shell.exec"]
+
+    shell_spec = Enum.find(session.tool_specs, &(Map.get(&1, "name") == "shell.exec"))
+    assert shell_spec, "expected explicitly supplied shell.exec in session.tool_specs"
+    assert shell_spec["execution_kind"] == "helper"
+
+    snooze_spec = Enum.find(session.tool_specs, &(Map.get(&1, "name") == "snooze"))
+    assert snooze_spec
+    refute Map.get(snooze_spec, "execution_kind") == "helper"
+
+    assert :ok = Manager.stop_session(session)
+  end
+
   test "treats local relay disconnect before continuation as retryable offline" do
     test_pid = self()
     helper = start_disconnect_before_continuation_helper(test_pid)

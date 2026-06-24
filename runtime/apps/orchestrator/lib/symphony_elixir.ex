@@ -36,7 +36,6 @@ defmodule SymphonyElixir.Application do
         SymphonyElixir.LocalRuntime.Registry,
         SymphonyElixir.Cutover.Cooldown,
         SymphonyElixir.CloudExecution.Aws.TaskStore,
-        SymphonyElixir.Planner.RepositoryIndex,
         SymphonyElixir.LocalRelay.Registry,
         SymphonyElixir.Gateway.SessionStore,
         SymphonyElixir.LocalRelay.Presence,

@@ -50,12 +50,12 @@ describe("executeDatabaseTool scheduled_task tools", () => {
         {
           id: "tool-repo-read",
           workspace_id: null,
-          slug: "repo.read_file",
+          slug: "shell.exec",
           name: "Read File",
           description: "Read a file.",
           examples: [{ input: { path: "README.md" } }],
           parameters: {},
-          function_name: "repo.read_file",
+          function_name: "shell.exec",
           execution_kind: "filesystem_read",
           runner_kind: "codex",
           enabled: true,
@@ -313,7 +313,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     const result = await executeDatabaseTool(
       scheduledTaskTool("tool_examples.append"),
       {
-        tool_slug: "repo.read_file",
+        tool_slug: "shell.exec",
         example: {
           when: "Need package metadata.",
           input: { path: "package.json" },
@@ -328,7 +328,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
       exampleCount: 2,
       tool: {
         id: "tool-repo-read",
-        slug: "repo.read_file",
+        slug: "shell.exec",
       },
     });
     expect(tables.tool?.[0]?.examples).toEqual([
@@ -410,12 +410,12 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     tables.tool?.push({
       id: "tool-unassigned",
       workspace_id: null,
-      slug: "repo.search",
+      slug: "scheduled_task.list",
       name: "Search",
       description: "Search files.",
       examples: [],
       parameters: {},
-      function_name: "repo.search",
+      function_name: "scheduled_task.list",
       execution_kind: "filesystem_read",
       runner_kind: "codex",
       enabled: true,
@@ -425,7 +425,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
       executeDatabaseTool(
         scheduledTaskTool("tool_examples.append"),
         {
-          tool_slug: "repo.search",
+          tool_slug: "scheduled_task.list",
           example: { input: { query: "ToolDefinition" } },
         },
         { workspaceId, agentId },
@@ -450,8 +450,8 @@ describe("executeDatabaseTool scheduled_task tools", () => {
       scheduledTaskTool("agent_tool_grant.create"),
       {
         agentId: targetAgentId,
-        toolSlug: "repo.read_file",
-        reason: "operability signature tool:repo.read_file|error:tool_not_granted|agent:coding",
+        toolSlug: "shell.exec",
+        reason: "operability signature tool:shell.exec|error:tool_not_granted|agent:coding",
       },
       { workspaceId, agentId, sessionId: "grant-create-run" },
     );
@@ -464,11 +464,11 @@ describe("executeDatabaseTool scheduled_task tools", () => {
         tool_id: "tool-repo-read",
         mode: "include",
         source: "system",
-        reason: "operability signature tool:repo.read_file|error:tool_not_granted|agent:coding",
+        reason: "operability signature tool:shell.exec|error:tool_not_granted|agent:coding",
         created_by_user_id: null,
       },
       tool: {
-        slug: "repo.read_file",
+        slug: "shell.exec",
       },
     });
     expect(tables.agent_tool_grant).toEqual(
@@ -488,7 +488,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
         scheduledTaskTool("agent_tool_grant.update"),
         {
           agentId: targetAgentId,
-          toolSlug: "repo.read_file",
+          toolSlug: "shell.exec",
           mode: "exclude",
           reason: "Reverse an incorrect grant.",
         },
@@ -516,7 +516,7 @@ describe("executeDatabaseTool scheduled_task tools", () => {
         scheduledTaskTool("agent_tool_grant.create"),
         {
           agentId: targetAgentId,
-          toolSlug: "repo.read_file",
+          toolSlug: "shell.exec",
           reason: "operability signature still recurs",
         },
         { workspaceId, agentId, sessionId: "grant-backoff-run" },

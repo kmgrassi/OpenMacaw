@@ -67,10 +67,10 @@ describe("agent probe contracts", () => {
       status: "failed",
       agentId,
       workspaceId,
-      toolSlug: "repo.read_file",
+      toolSlug: "shell.exec",
       errorCode: "tool_not_granted",
-      message: "repo.read_file is not granted to this agent.",
-      nextStep: "Grant repo.read_file to the agent before rerunning the smoke.",
+      message: "shell.exec is not granted to this agent.",
+      nextStep: "Grant shell.exec to the agent before rerunning the smoke.",
     });
 
     expect(failed.status).toBe("failed");
@@ -93,7 +93,7 @@ describe("agent probe contracts", () => {
       workspaceId: null,
       runnerKind: "local_model_coding",
       provider: "openai",
-      expectedTool: "repo.read_file",
+      expectedTool: "shell.exec",
       expectedDatabaseAssertion: "tool_call_recorded",
       requestId: null,
       messageId: null,
@@ -101,7 +101,7 @@ describe("agent probe contracts", () => {
       toolCallId: null,
       preconditions: ["agentId and workspaceId are supplied by flags"],
       actions: ["send a prompt that asks to inspect package.json"],
-      expectedOutcomes: ["repo.read_file tool call is observed"],
+      expectedOutcomes: ["shell.exec tool call is observed"],
     });
 
     expect(fixture.scenario).toBe("coding-agent-filesystem-read");
@@ -166,7 +166,7 @@ describe("agent probe contracts", () => {
           {
             id: toolId,
             workspaceId,
-            slug: "repo.read_file",
+            slug: "shell.exec",
             name: "Read file",
             description: "Read a workspace file.",
             parameters: { type: "object" },

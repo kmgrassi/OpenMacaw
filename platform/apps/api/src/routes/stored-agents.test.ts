@@ -183,7 +183,7 @@ describe("stored agent default routing", () => {
     vi.mocked(resolveExecutionProfile).mockResolvedValueOnce(resolution("rule-1"));
     vi.mocked(ensureDefaultAgentToolsForAgent).mockResolvedValueOnce({
       changed: true,
-      assignedToolSlugs: ["repo.read_file"],
+      assignedToolSlugs: ["shell.exec"],
       missingToolSlugs: [],
     });
 

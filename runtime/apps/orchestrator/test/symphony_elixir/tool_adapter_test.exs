@@ -5,8 +5,8 @@ defmodule SymphonyElixir.ToolAdapterTest do
   alias SymphonyElixir.ToolAdapter.{Anthropic, OpenAI, OpenAICompatible, PromptBased}
 
   @canonical_cases [
-    %{id: "call-empty", name: "repo.read_file", arguments: %{}},
-    %{id: "call-dotted", name: "repo.search", arguments: %{"query" => "runtime", "limit" => 3}},
+    %{id: "call-empty", name: "shell.exec", arguments: %{}},
+    %{id: "call-dotted", name: "scheduled_task.list", arguments: %{"due_only" => true, "limit" => 3}},
     %{
       id: "call-parallel-a",
       name: "plan.create",
@@ -42,7 +42,7 @@ defmodule SymphonyElixir.ToolAdapterTest do
     assert [
              %{
                id: "call-bad",
-               name: "repo.search",
+               name: "scheduled_task.list",
                arguments: %{},
                raw_arguments: "{\"query\"",
                malformed_arguments?: true
@@ -53,7 +53,7 @@ defmodule SymphonyElixir.ToolAdapterTest do
                  %{
                    "id" => "call-bad",
                    "type" => "function",
-                   "function" => %{"name" => "repo.search", "arguments" => "{\"query\""}
+                   "function" => %{"name" => "scheduled_task.list", "arguments" => "{\"query\""}
                  }
                ]
              })
@@ -62,12 +62,12 @@ defmodule SymphonyElixir.ToolAdapterTest do
   test "prompt-based adapter parses fenced JSON and dotted tool names" do
     text = """
     ```json
-    {"tool_call":{"name":"repo.read_file","arguments":{"path":"README.md"}}}
+    {"tool_call":{"name":"shell.exec","arguments":{"command":"pwd"}}}
     ```
     """
 
     assert [
-             %{id: "call_1", name: "repo.read_file", arguments: %{"path" => "README.md"}}
+             %{id: "call_1", name: "shell.exec", arguments: %{"command" => "pwd"}}
            ] = PromptBased.parse_tool_calls(%{"output_text" => text})
   end
 
@@ -89,10 +89,10 @@ defmodule SymphonyElixir.ToolAdapterTest do
   end
 
   test "tool specs and tool results dispatch through provider adapters" do
-    tool = %{"name" => "repo.read_file", "description" => "Read", "inputSchema" => %{"type" => "object"}}
+    tool = %{"name" => "shell.exec", "description" => "Run command", "inputSchema" => %{"type" => "object"}}
 
-    assert [%{"function" => %{"name" => "repo.read_file"}}] = ToolAdapter.to_tool_specs([tool], :openai_compatible)
-    assert [%{"name" => "repo.read_file", "input_schema" => %{"type" => "object"}}] = ToolAdapter.to_tool_specs([tool], :anthropic)
+    assert [%{"function" => %{"name" => "shell.exec"}}] = ToolAdapter.to_tool_specs([tool], :openai_compatible)
+    assert [%{"name" => "shell.exec", "input_schema" => %{"type" => "object"}}] = ToolAdapter.to_tool_specs([tool], :anthropic)
 
     assert %{"role" => "tool", "tool_call_id" => "call-1", "content" => "ok"} =
              ToolAdapter.format_tool_result("call-1", %{"output" => "ok"}, :openai_compatible)

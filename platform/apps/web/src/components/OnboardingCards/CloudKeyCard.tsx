@@ -1,5 +1,10 @@
+import { useEffect, useMemo, useState } from "react";
+
 import { CREDENTIAL_PROVIDER_REGISTRY } from "../../../../../contracts/credentials";
-import { useApplyDefaultAgentCredentialsMutation } from "../../hooks/useServerStateQueries";
+import {
+  useApplyDefaultAgentCredentialsMutation,
+  useWorkspaceCredentialsQuery,
+} from "../../hooks/useServerStateQueries";
 import { cn } from "../../lib/cn";
 import { useAuthStore } from "../../stores/auth";
 import {
@@ -15,6 +20,12 @@ import { Button } from "../ui/Button";
 import { Card } from "../ui/Card";
 import { Input } from "../ui/Input";
 import { Select } from "../ui/Select";
+import {
+  NEW_CREDENTIAL_VALUE,
+  StoredCredentialSelect,
+  storedCredentialId,
+  storedCredentialsForProvider,
+} from "../settings/StoredCredentialSelect";
 import { useDefaultAgentRows } from "./useDefaultAgentRows";
 
 type Props = {
@@ -62,11 +73,47 @@ export function CloudKeyCard({ onBack, onContinue }: Props) {
   const agentIds = agents
     .map((agent) => agent.agentId)
     .filter((agentId): agentId is string => Boolean(agentId));
+
+  const workspaceCredentialsQuery = useWorkspaceCredentialsQuery(
+    auth.workspaceId,
+  );
+  const existingCredentials = useMemo(
+    () =>
+      storedCredentialsForProvider(
+        workspaceCredentialsQuery.data ?? [],
+        provider,
+      ),
+    [workspaceCredentialsQuery.data, provider],
+  );
+  // "" = enter a new key; otherwise the stored credential id to reuse.
+  const [selectedExistingId, setSelectedExistingId] =
+    useState<string>(NEW_CREDENTIAL_VALUE);
+
+  useEffect(() => {
+    const first = existingCredentials[0];
+    if (!first) {
+      setSelectedExistingId(NEW_CREDENTIAL_VALUE);
+      return;
+    }
+    setSelectedExistingId((current) =>
+      current &&
+      existingCredentials.some(
+        (credential) => storedCredentialId(credential) === current,
+      )
+        ? current
+        : storedCredentialId(first),
+    );
+  }, [existingCredentials]);
+
+  const reusingExistingCredential =
+    existingCredentials.length > 0 &&
+    selectedExistingId !== NEW_CREDENTIAL_VALUE;
+
   const canSubmit =
     Boolean(auth.workspaceId) &&
     missingAgents.length === 0 &&
-    cloudApiKey.trim().length > 0 &&
-    !saving;
+    !saving &&
+    (reusingExistingCredential || cloudApiKey.trim().length > 0);
 
   async function handleSubmit() {
     if (!auth.workspaceId || missingAgents.length > 0) {
@@ -83,9 +130,13 @@ export function CloudKeyCard({ onBack, onContinue }: Props) {
         workspaceId: auth.workspaceId,
         provider,
         model: DEFAULT_MODEL_BY_PROVIDER[provider],
-        keyName: KEY_NAME_BY_PROVIDER[provider],
-        secret: cloudApiKey.trim(),
         agentIds,
+        ...(reusingExistingCredential
+          ? { credentialId: selectedExistingId }
+          : {
+              keyName: KEY_NAME_BY_PROVIDER[provider],
+              secret: cloudApiKey.trim(),
+            }),
       });
       auth.applyAuthState(authState);
       setSelectedAgentIds(agentIds);
@@ -118,14 +169,27 @@ export function CloudKeyCard({ onBack, onContinue }: Props) {
           }
           options={PROVIDER_OPTIONS}
         />
-        <Input
-          label="API Key"
-          type="password"
-          value={cloudApiKey}
-          onChange={(event) => setCloudApiKey(event.target.value)}
-          placeholder={KEY_NAME_BY_PROVIDER[provider]}
-          autoComplete="off"
-        />
+        {existingCredentials.length > 0 && (
+          <StoredCredentialSelect
+            label="API key"
+            credentials={existingCredentials}
+            value={selectedExistingId}
+            onChange={(next) => {
+              setSelectedExistingId(next);
+              setError(null);
+            }}
+          />
+        )}
+        {!reusingExistingCredential && (
+          <Input
+            label="API Key"
+            type="password"
+            value={cloudApiKey}
+            onChange={(event) => setCloudApiKey(event.target.value)}
+            placeholder={KEY_NAME_BY_PROVIDER[provider]}
+            autoComplete="off"
+          />
+        )}
 
         <div className="rounded-lg border border-slate-800 bg-slate-950/55">
           {agents.map((agent, index) => (

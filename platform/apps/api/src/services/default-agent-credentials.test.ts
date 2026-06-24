@@ -228,7 +228,7 @@ describe("applyDefaultAgentCredentials", () => {
     });
     expect(db.agent.find((agent) => agent.id === codingAgentId)?.tool_policy).toMatchObject({
       coding: {
-        tools: expect.arrayContaining(["repo.read_file", "shell.exec", "apply_patch"]),
+        tools: expect.arrayContaining(["shell.exec", "shell.exec", "apply_patch"]),
         execution_kinds: ["filesystem", "shell"],
       },
     });

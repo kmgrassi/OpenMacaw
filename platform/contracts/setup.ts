@@ -273,29 +273,69 @@ export const SetupAuthStateSchema = z.object({
   })),
 });
 
-export const DefaultAgentCredentialApplicationRequestSchema = z.object({
-  workspaceId: z.string().uuid(),
-  provider: CredentialProviderSchema,
-  model: z.string().trim().min(1).optional(),
-  label: z.string().trim().min(1).optional(),
-  keyName: z.string().trim().min(1).optional(),
-  secret: z.string().trim().min(1),
-  agentIds: z.array(z.string().uuid()).min(1),
-});
+// Credential requests may either carry a freshly pasted `secret` or reference
+// an existing stored credential by `credentialId`. Exactly one must be present;
+// `keyName` only applies when a new secret is being saved.
+function requireSecretOrCredentialId(
+  value: { secret?: string; credentialId?: string; keyName?: string },
+  ctx: z.RefinementCtx,
+) {
+  if (!value.secret && !value.credentialId) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["secret"],
+      message: "secret or credentialId is required",
+    });
+  }
+  if (value.secret && value.credentialId) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["credentialId"],
+      message: "Provide either secret or credentialId, not both",
+    });
+  }
+  if (value.credentialId && value.keyName) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["keyName"],
+      message: "keyName cannot be combined with credentialId",
+    });
+  }
+}
+
+export const DefaultAgentCredentialApplicationRequestSchema = z
+  .object({
+    workspaceId: z.string().uuid(),
+    provider: CredentialProviderSchema,
+    model: z.string().trim().min(1).optional(),
+    label: z.string().trim().min(1).optional(),
+    keyName: z.string().trim().min(1).optional(),
+    // Provide exactly one of `secret` (paste a new key) or `credentialId`
+    // (reuse a stored workspace credential for this provider).
+    secret: z.string().trim().min(1).optional(),
+    credentialId: z.string().uuid().optional(),
+    agentIds: z.array(z.string().uuid()).min(1),
+  })
+  .superRefine(requireSecretOrCredentialId);
 
 export const DefaultAgentCredentialApplicationResponseSchema = z.object({
   authState: SetupAuthStateSchema,
 });
 
-export const AgentCredentialConfigurationRequestSchema = z.object({
-  agentId: z.string().uuid(),
-  workspaceId: z.string().uuid(),
-  provider: CredentialProviderSchema,
-  model: z.string().trim().min(1),
-  label: z.string().trim().min(1).optional(),
-  keyName: z.string().trim().min(1),
-  secret: z.string().trim().min(1),
-});
+export const AgentCredentialConfigurationRequestSchema = z
+  .object({
+    agentId: z.string().uuid(),
+    workspaceId: z.string().uuid(),
+    provider: CredentialProviderSchema,
+    model: z.string().trim().min(1),
+    label: z.string().trim().min(1).optional(),
+    keyName: z.string().trim().min(1).optional(),
+    // Provide exactly one of `secret` (paste a new key) or `credentialId`
+    // (reuse a stored workspace credential for this provider).
+    secret: z.string().trim().min(1).optional(),
+    credentialId: z.string().uuid().optional(),
+  })
+  .superRefine(requireSecretOrCredentialId);
 
 export const AgentCredentialConfigurationResponseSchema = z.object({
   setup: SetupResponseSchema,
