@@ -8,6 +8,7 @@ import {
 } from "../../../../contracts/resource-credentials.js";
 import { ApiRouteError, apiRoute, requireQueryParam, requireRouteParam } from "../http.js";
 import {
+  GitHubAppCredentialError,
   listInstallationPullRequests,
   saveGitHubAppInstallationCredentialForWorkspace,
 } from "../services/resource-credentials.js";
@@ -26,6 +27,19 @@ async function requireWorkspaceAccess(userId: string, workspaceId: string) {
     }
     throw error;
   }
+}
+
+// Surface GitHub App configuration problems (not installed, repo not in the
+// installation, missing permission, bad key) with their status + an actionable
+// `remediation` so callers — and ultimately the agent — can tell the user
+// exactly what to do.
+function asGitHubAppRouteError(error: unknown): ApiRouteError {
+  if (error instanceof GitHubAppCredentialError) {
+    return new ApiRouteError(error.status, error.code, error.message, {
+      ...(error.remediation ? { remediation: error.remediation } : {}),
+    });
+  }
+  throw error;
 }
 
 export function registerResourceCredentialRoutes(app: Express) {
@@ -71,6 +85,8 @@ export function registerResourceCredentialRoutes(app: Express) {
           credentialId,
           repo,
           state,
+        }).catch((error) => {
+          throw asGitHubAppRouteError(error);
         });
 
         return res.status(200).json(GitHubAppPullRequestListResponseSchema.parse(result));

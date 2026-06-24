@@ -161,6 +161,91 @@ describe("GitHub App resource credentials", () => {
         credentialId: "credential-1",
         repo: "PopcornReady",
       }),
-    ).rejects.toMatchObject({ code: "github_app_repo_invalid" });
+    ).rejects.toMatchObject({ code: "github_app_repo_invalid", status: 400 });
+  });
+
+  it("reports an actionable not-installed error when the installation is gone", async () => {
+    vi.mocked(getCredentialRowByIdForWorkspace).mockResolvedValue({
+      id: "credential-1",
+      agent_id: null,
+      workspace_id: "workspace-1",
+      user_id: "user-1",
+      format: "github_app_installation",
+      provider: "github",
+      display_name: "GitHub App",
+      key_value: {
+        provider: "github",
+        app_id: "123",
+        installation_id: "456",
+        api_base_url: "https://api.github.test",
+        web_base_url: "https://github.test",
+        private_key_secret_ref: "secret/github-app",
+      },
+      updated_at: "2026-05-19T00:00:00.000Z",
+      validated_at: null,
+      validation_state: "unknown",
+    });
+    vi.mocked(resolveSecretReference).mockResolvedValue("mock-github-app-private-key");
+    const fetchFn = vi.fn(async () => new Response("Not Found", { status: 404 })) as unknown as typeof fetch;
+
+    await expect(
+      listInstallationPullRequests({
+        workspaceId: "workspace-1",
+        credentialId: "credential-1",
+        repo: "kmgrassi/PopcornReady",
+        fetchFn,
+      }),
+    ).rejects.toMatchObject({
+      code: "github_app_not_installed",
+      status: 422,
+      remediation: expect.stringContaining("https://github.test/settings/installations"),
+    });
+  });
+
+  it("reports repo-not-accessible when the App is installed but the repo is not selected", async () => {
+    vi.mocked(getCredentialRowByIdForWorkspace).mockResolvedValue({
+      id: "credential-1",
+      agent_id: null,
+      workspace_id: "workspace-1",
+      user_id: "user-1",
+      format: "github_app_installation",
+      provider: "github",
+      display_name: "GitHub App",
+      key_value: {
+        provider: "github",
+        app_id: "123",
+        installation_id: "456",
+        api_base_url: "https://api.github.test",
+        web_base_url: "https://github.test",
+        private_key_secret_ref: "secret/github-app",
+      },
+      updated_at: "2026-05-19T00:00:00.000Z",
+      validated_at: null,
+      validation_state: "unknown",
+    });
+    vi.mocked(resolveSecretReference).mockResolvedValue("mock-github-app-private-key");
+    const fetchFn = vi.fn(async (url: string | URL | Request) => {
+      const href = typeof url === "string" ? url : url.toString();
+      if (href.endsWith("/access_tokens")) {
+        return new Response(JSON.stringify({ token: "ghs_token", expires_at: "2026-05-19T01:00:00Z" }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("Not Found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    await expect(
+      listInstallationPullRequests({
+        workspaceId: "workspace-1",
+        credentialId: "credential-1",
+        repo: "kmgrassi/PopcornReady",
+        fetchFn,
+      }),
+    ).rejects.toMatchObject({
+      code: "github_app_repo_not_accessible",
+      status: 422,
+      remediation: expect.stringContaining("kmgrassi/PopcornReady"),
+    });
   });
 });

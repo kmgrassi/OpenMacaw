@@ -38,12 +38,23 @@ const GitHubInstallationTokenResponseSchema = z.object({
 
 export class GitHubAppCredentialError extends Error {
   code: string;
+  // HTTP status to surface, and a user/agent-facing next step. `remediation`
+  // is written so an agent can relay it to the user verbatim (e.g. "the App
+  // isn't installed — install it here").
+  status: number;
+  remediation: string | null;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, options?: { status?: number; remediation?: string | null }) {
     super(message);
     this.name = "GitHubAppCredentialError";
     this.code = code;
+    this.status = options?.status ?? 502;
+    this.remediation = options?.remediation ?? null;
   }
+}
+
+function installationsSettingsUrl(webBaseUrl: string): string {
+  return `${webBaseUrl.replace(/\/+$/, "")}/settings/installations`;
 }
 
 export class MintedGitHubInstallationToken {
@@ -51,6 +62,7 @@ export class MintedGitHubInstallationToken {
   readonly workspaceId: string;
   readonly installationId: string;
   readonly apiBaseUrl: string;
+  readonly webBaseUrl: string;
   readonly expiresAt: string;
   readonly repositorySelection: string | null;
   readonly permissions: Record<string, string>;
@@ -61,6 +73,7 @@ export class MintedGitHubInstallationToken {
     workspaceId: string;
     installationId: string;
     apiBaseUrl: string;
+    webBaseUrl: string;
     token: string;
     expiresAt: string;
     repositorySelection: string | null;
@@ -70,6 +83,7 @@ export class MintedGitHubInstallationToken {
     this.workspaceId = input.workspaceId;
     this.installationId = input.installationId;
     this.apiBaseUrl = input.apiBaseUrl;
+    this.webBaseUrl = input.webBaseUrl;
     this.#token = input.token;
     this.expiresAt = input.expiresAt;
     this.repositorySelection = input.repositorySelection;
@@ -86,6 +100,7 @@ export class MintedGitHubInstallationToken {
       workspaceId: this.workspaceId,
       installationId: this.installationId,
       apiBaseUrl: this.apiBaseUrl,
+      webBaseUrl: this.webBaseUrl,
       token: "[redacted]",
       expiresAt: this.expiresAt,
       repositorySelection: this.repositorySelection,
@@ -240,7 +255,14 @@ async function mintGitHubInstallationTokenImpl(input: {
 }): Promise<MintedGitHubInstallationToken> {
   const row = await getCredentialRowByIdForWorkspace(input.credentialId, input.workspaceId);
   if (!row) {
-    throw new GitHubAppCredentialError("github_app_credential_not_found", "GitHub App credential was not found");
+    throw new GitHubAppCredentialError(
+      "github_app_credential_not_found",
+      "No GitHub App credential is configured for this workspace",
+      {
+        status: 404,
+        remediation: "Connect a GitHub App: create/install it on GitHub, then save its credential for this workspace.",
+      },
+    );
   }
 
   const credential = mapGitHubAppCredentialRow(row);
@@ -267,6 +289,30 @@ async function mintGitHubInstallationTokenImpl(input: {
   );
 
   if (!response.ok) {
+    if (response.status === 404) {
+      // The App exists/authenticated (the JWT was accepted) but the
+      // installation id no longer resolves — the App was uninstalled or the
+      // installation was removed.
+      throw new GitHubAppCredentialError(
+        "github_app_not_installed",
+        `The GitHub App installation ${credential.installationId} was not found (the App may have been uninstalled)`,
+        {
+          status: 422,
+          remediation: `Install the GitHub App on the target account/repository, then try again: ${installationsSettingsUrl(credential.webBaseUrl)}`,
+        },
+      );
+    }
+    if (response.status === 401) {
+      throw new GitHubAppCredentialError(
+        "github_app_unauthorized",
+        "GitHub rejected the App credentials (App ID or private key is invalid)",
+        {
+          status: 502,
+          remediation:
+            "Verify the stored GitHub App ID and private key; regenerate the private key on GitHub if needed.",
+        },
+      );
+    }
     throw new GitHubAppCredentialError(
       "github_app_token_rejected",
       `GitHub rejected installation token minting with status ${response.status}`,
@@ -279,6 +325,7 @@ async function mintGitHubInstallationTokenImpl(input: {
     workspaceId: credential.workspaceId,
     installationId: credential.installationId,
     apiBaseUrl: credential.apiBaseUrl,
+    webBaseUrl: credential.webBaseUrl,
     token: parsed.token,
     expiresAt: parsed.expires_at,
     repositorySelection: parsed.repository_selection ?? null,
@@ -335,7 +382,10 @@ async function listInstallationPullRequestsImpl(input: {
 }): Promise<GitHubAppPullRequestListResponse> {
   const repo = input.repo.trim();
   if (!REPO_SLUG_PATTERN.test(repo)) {
-    throw new GitHubAppCredentialError("github_app_repo_invalid", "Repository must be in owner/name form");
+    throw new GitHubAppCredentialError("github_app_repo_invalid", "Repository must be in owner/name form", {
+      status: 400,
+      remediation: "Provide the repository as owner/name, e.g. kmgrassi/PopcornReady.",
+    });
   }
   const state: GitHubPullRequestState = input.state ?? "open";
   const fetchFn = input.fetchFn ?? fetch;
@@ -360,6 +410,29 @@ async function listInstallationPullRequestsImpl(input: {
   );
 
   if (!response.ok) {
+    if (response.status === 404) {
+      // The installation token minted (App is installed) but the repo isn't
+      // visible to it — not selected for the installation, or wrong name.
+      throw new GitHubAppCredentialError(
+        "github_app_repo_not_accessible",
+        `The GitHub App cannot access ${repo} (it is not part of the installation, or the name is wrong)`,
+        {
+          status: 422,
+          remediation: `Add ${repo} to the GitHub App installation (or verify the owner/name): ${installationsSettingsUrl(minted.webBaseUrl)}`,
+        },
+      );
+    }
+    if (response.status === 403) {
+      throw new GitHubAppCredentialError(
+        "github_app_forbidden",
+        `The GitHub App lacks permission to read pull requests on ${repo}`,
+        {
+          status: 403,
+          remediation:
+            "Grant the GitHub App the 'Pull requests: Read' repository permission, then re-approve the installation.",
+        },
+      );
+    }
     throw new GitHubAppCredentialError(
       "github_app_pull_request_list_failed",
       `GitHub rejected pull request listing with status ${response.status}`,
