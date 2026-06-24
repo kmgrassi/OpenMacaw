@@ -76,6 +76,7 @@ defmodule SymphonyElixir.Manager.ModelClient.LocalRelay do
       "target_runner_kind" => target_runner_kind(session),
       "provider" => session.provider || "local",
       "model" => session.model,
+      "agent_context" => Map.get(session, :agent_context),
       "prompt" => due_tasks_payload,
       "messages" => initial_messages(session, due_tasks_payload),
       "work_item" => work_item_context(work_item),

@@ -362,11 +362,18 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert %{"type" => "function", "function" => %{"name" => "shell_exec"}} =
              Enum.find(request["tools"], &(get_in(&1, ["function", "name"]) == "shell_exec"))
 
+    assert Enum.any?(
+             request["messages"],
+             &(Map.get(&1, "role") == "system" and
+                 String.contains?(Map.get(&1, "content", ""), "Coordinate the workspace"))
+           )
+
     assert_receive {:gateway_runner_complete, "agent:manager-1:main", "run-manager-profile", {:ok, result}}
 
     assert result["output_text"] == "manager response"
     assert result["model"] == "qwen-manager"
     assert result["provider"] == "openai_compatible"
+    assert result["agent_context_snapshot"]["text"] == "Coordinate the workspace"
 
     refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
   end
@@ -529,6 +536,7 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert frame["tool_calling_mode"] == "runtime_managed"
     assert frame["provider"] == "local"
     assert frame["model"] == "qwen-manager"
+    assert frame["agent_context"] == "Coordinate the workspace"
 
     assert %{"name" => "git.run", "execution_kind" => "helper"} =
              Enum.find(frame["tool_definitions"], &(&1["name"] == "git.run"))
@@ -547,6 +555,7 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTest do
     assert result["output_text"] == "local manager response"
     assert result["model"] == "qwen-manager"
     assert result["provider"] == "local"
+    assert result["agent_context_snapshot"]["text"] == "Coordinate the workspace"
 
     refute_received {:gateway_runner_failed, _session_key, _run_id, _reason}
   end

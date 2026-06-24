@@ -28,7 +28,8 @@ defmodule SymphonyElixir.Gateway.ChatRunnerTestSupport do
          name: "Manager",
          workspace_id: "workspace-1",
          type: "manager",
-         created_by_user_id: "user-1"
+         created_by_user_id: "user-1",
+         context: "Coordinate the workspace"
        }}
     end
 

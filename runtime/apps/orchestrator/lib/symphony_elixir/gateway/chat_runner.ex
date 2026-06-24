@@ -103,6 +103,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         result
         |> Map.put_new("model", agent_model(agent))
         |> Map.put_new("provider", agent_provider(agent) || "openai")
+        |> put_agent_context_snapshot(agent)
 
       send(owner_pid, {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}})
     else
@@ -144,6 +145,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
         result
         |> Map.put_new("model", Map.get(session, :model) || agent_model(agent))
         |> Map.put_new("provider", agent_provider(agent) || "openai")
+        |> put_agent_context_snapshot(agent)
 
       send(owner_pid, {:gateway_runner_complete, scope.session_key, run_id, {:ok, enriched}})
     else
@@ -193,6 +195,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
                 result
                 |> Map.put_new("model", model)
                 |> Map.put_new("provider", provider)
+                |> put_agent_context_snapshot(agent)
 
               send(
                 owner_pid,
@@ -349,6 +352,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
       "agent_type" => Map.get(profile, :agent_type) || "manager",
       "tool_bundle" => Map.get(profile, :agent_type) || "manager",
       "base_url" => default_base_url(profile),
+      "agent_context" => Map.get(profile, :context),
       "trace_id" => Process.get(:symphony_trace_id),
       "history_window" => Map.get(scope, :history_window) || Map.get(scope, "history_window"),
       message_recorder_scope: scope
@@ -440,6 +444,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
               result
               |> Map.put_new("model", Map.get(session, :model))
               |> Map.put_new("provider", Map.get(session, :provider))
+              |> put_agent_context_snapshot(agent)
 
             send(
               owner_pid,
@@ -526,6 +531,7 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
               result
               |> Map.put_new("model", Map.get(session, :model))
               |> Map.put_new("provider", Map.get(session, :provider))
+              |> put_agent_context_snapshot(agent)
 
             send(
               owner_pid,
@@ -605,6 +611,20 @@ defmodule SymphonyElixir.Gateway.ChatRunner do
 
       _ ->
         nil
+    end
+  end
+
+  defp put_agent_context_snapshot(result, agent) when is_map(result) do
+    case agent_context(agent) do
+      context when is_binary(context) ->
+        Map.put_new(result, "agent_context_snapshot", %{
+          "text" => context,
+          "chars" => String.length(context),
+          "sha256" => :crypto.hash(:sha256, context) |> Base.encode16(case: :lower)
+        })
+
+      _ ->
+        result
     end
   end
 

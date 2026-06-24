@@ -5,6 +5,10 @@ import type { AgentMessageToolCall } from "../../../../contracts/messages";
 import { copyTextToClipboard } from "../lib/clipboard";
 import { getManagerSchedulerMessageDisplay } from "../lib/manager-message-rendering";
 import {
+  getMessageContextDisplay,
+  type MessageContextDisplay,
+} from "../lib/message-context-rendering";
+import {
   formatPersistedToolCalls,
   type ToolCallDisplay,
 } from "../lib/tool-call-rendering";
@@ -106,6 +110,34 @@ function ToolCallList({ toolCalls }: { toolCalls: ToolCallDisplay[] }) {
   );
 }
 
+function MessageContextDisclosure({
+  context,
+}: {
+  context: MessageContextDisplay;
+}) {
+  return (
+    <details className="group/context mb-2 rounded border border-slate-800 bg-black/20">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 px-2 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200">
+        <span className="text-[10px] text-slate-500 transition-transform group-open/context:rotate-90">
+          ▶
+        </span>
+        <span className="rounded border border-amber-400/20 bg-amber-400/10 px-1 font-mono text-[10px] uppercase tracking-wide text-amber-200">
+          ctx
+        </span>
+        <span>{context.label}</span>
+        {context.sha256 && (
+          <span className="font-mono text-[10px] text-slate-500">
+            {context.sha256.slice(0, 10)}
+          </span>
+        )}
+      </summary>
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap px-2 pb-2 text-xs leading-relaxed text-slate-300">
+        {context.text}
+      </pre>
+    </details>
+  );
+}
+
 function CopyIcon() {
   return (
     <svg
@@ -139,6 +171,10 @@ export function ChatMessage({
   const persistedToolCallDisplay = useMemo(
     () => (managerDisplay ? [] : formatPersistedToolCalls(toolCalls)),
     [managerDisplay, toolCalls],
+  );
+  const contextDisplay = useMemo(
+    () => getMessageContextDisplay(metadata),
+    [metadata],
   );
   const html = useMemo(() => {
     if (pending) return "";
@@ -200,6 +236,9 @@ export function ChatMessage({
           </div>
         ) : managerDisplay ? (
           <div className="space-y-2">
+            {contextDisplay && (
+              <MessageContextDisclosure context={contextDisplay} />
+            )}
             <div className="font-medium text-slate-100">
               {managerDisplay.summary}
             </div>
@@ -227,10 +266,15 @@ export function ChatMessage({
             )}
           </div>
         ) : (
-          <div
-            className="prose prose-sm prose-invert max-w-none [overflow-wrap:anywhere] [&_a]:text-blue-200 [&_a]:underline [&_a]:decoration-blue-300/50 [&_code]:text-xs [&_ol]:my-2 [&_p]:my-0 [&_p+p]:mt-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-black/30 [&_pre]:p-3 [&_ul]:my-2"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+          <>
+            {contextDisplay && (
+              <MessageContextDisclosure context={contextDisplay} />
+            )}
+            <div
+              className="prose prose-sm prose-invert max-w-none [overflow-wrap:anywhere] [&_a]:text-blue-200 [&_a]:underline [&_a]:decoration-blue-300/50 [&_code]:text-xs [&_ol]:my-2 [&_p]:my-0 [&_p+p]:mt-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-black/30 [&_pre]:p-3 [&_ul]:my-2"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </>
         )}
         {!pending && persistedToolCallDisplay.length > 0 && (
           <ToolCallList toolCalls={persistedToolCallDisplay} />
