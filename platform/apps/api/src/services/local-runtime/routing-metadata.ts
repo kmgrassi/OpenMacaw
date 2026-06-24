@@ -141,8 +141,12 @@ export async function getLocalRuntimeMachineDetails(
   const runners: LocalRuntimeRunnerDetails[] = [];
   for (const rule of parsedRules) {
     const ruleMatches = matchesByRule.get(rule.id) ?? [];
-    const endpoint = matchValue(ruleMatches, "local_endpoint", "url");
-    if (!endpoint) continue;
+    const endpoint = requireMatchValue(
+      ruleMatches,
+      "local_endpoint",
+      "url",
+      "read routing rule matches for local runtime machine",
+    );
     const registrationKind = registrationKindForRule(rule);
     const ruleWorkspaceRoot = matchValue(ruleMatches, "local_workspace_root", "path");
     if (ruleWorkspaceRoot && !workspaceRoot) {
@@ -246,15 +250,8 @@ export async function getLocalRuntimeRuleDetails(
   }
 
   const ruleMatches = parseSupabaseRows("load local runtime routing metadata", RoutingRuleMatchRowSchema, matches);
-  const endpoint = matchValue(ruleMatches, "local_endpoint", "url");
-  const machineId = matchValue(ruleMatches, "local_machine", "id");
-  if (!endpoint || !machineId) {
-    throw new ApiRouteError(
-      409,
-      "local_runtime_incomplete",
-      "Local runtime registration is missing endpoint or machine metadata",
-    );
-  }
+  const endpoint = requireMatchValue(ruleMatches, "local_endpoint", "url", "load local runtime routing metadata");
+  const machineId = requireMatchValue(ruleMatches, "local_machine", "id", "load local runtime routing metadata");
 
   const { data: machine, error: machineError } = await supabase
     .from("local_runtime_machine")

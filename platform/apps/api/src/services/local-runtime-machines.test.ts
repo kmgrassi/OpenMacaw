@@ -19,6 +19,7 @@ vi.mock("./runtime-target.js", async (importOriginal) => {
 
 const {
   deleteLocalRuntimeForWorkspace,
+  getLocalRuntimeConfigForWorkspace,
   listLocalRuntimesForWorkspace,
   registerLocalRuntimeForWorkspace,
   testLocalRuntimeDispatchForWorkspace,
@@ -570,6 +571,60 @@ describe("listLocalRuntimesForWorkspace", () => {
           ],
         },
       ],
+    });
+  });
+});
+
+describe("getLocalRuntimeConfigForWorkspace", () => {
+  it("rejects malformed required endpoint metadata instead of silently dropping a runner", async () => {
+    const workspaceId = "workspace-1";
+    const tables = {
+      local_runtime_machine: [
+        {
+          id: "machine-1",
+          workspace_id: workspaceId,
+          user_id: "user-1",
+          display_name: "qwen3-coder:30b@127.0.0.1:11434",
+          runner_kinds: ["openai_compatible"],
+          advertised_runner_kinds: ["openai_compatible"],
+          last_seen_at: null,
+          revoked_at: null,
+        },
+      ],
+      routing_rule: [
+        {
+          id: "rule-1",
+          workspace_id: workspaceId,
+          name: "local:qwen3-coder:30b",
+          runner_kind: "local_relay",
+          model: "qwen3-coder:30b",
+          provider: "openai_compatible",
+        },
+      ],
+      routing_rule_match: [
+        {
+          id: "machine-match",
+          workspace_id: workspaceId,
+          rule_id: "rule-1",
+          kind: "local_machine",
+          key: "id",
+          value: "machine-1",
+        },
+        {
+          id: "endpoint-match",
+          workspace_id: workspaceId,
+          rule_id: "rule-1",
+          kind: "local_endpoint",
+          key: "url",
+          value: null,
+        },
+      ],
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(createMockSupabaseClient(tables) as never);
+
+    await expect(getLocalRuntimeConfigForWorkspace(workspaceId, "machine-1")).rejects.toMatchObject({
+      name: "SupabaseRowParseError",
+      code: "invalid_supabase_row",
     });
   });
 });
