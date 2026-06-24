@@ -9,6 +9,10 @@ export const LocalRuntimeMachineIdRowSchema = z.object({
   id: z.string(),
 });
 
+export const LocalRuntimeMachineValueRowSchema = z.object({
+  value: z.string(),
+});
+
 export const LocalRuntimeMachineRowSchema = z.object({
   id: z.string(),
   display_name: z.string(),
@@ -41,7 +45,7 @@ export const RoutingRuleMatchRowSchema = z.object({
   rule_id: z.string(),
   kind: z.string(),
   key: z.string().nullable(),
-  value: z.string(),
+  value: z.string().nullable().default(null),
 });
 
 export const LocalRuntimeModelRowSchema = z.object({
@@ -65,6 +69,7 @@ export const LocalRuntimeEventRowSchema = z.object({
 
 export type LocalRuntimeAgentRow = z.infer<typeof LocalRuntimeAgentRowSchema>;
 export type LocalRuntimeMachineRowRecord = z.infer<typeof LocalRuntimeMachineRowSchema>;
+export type LocalRuntimeMachineValueRow = z.infer<typeof LocalRuntimeMachineValueRowSchema>;
 export type LocalRuntimeModelRowRecord = z.infer<typeof LocalRuntimeModelRowSchema>;
 export type LocalRuntimeEventRowRecord = z.infer<typeof LocalRuntimeEventRowSchema>;
 export type LocalRuntimeRoutingRuleListRow = z.infer<typeof LocalRuntimeRoutingRuleListRowSchema>;

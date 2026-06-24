@@ -15,6 +15,7 @@ export type NarrowSupabaseQuery<Row = JsonRecord> = NarrowSupabaseResult<Row> & 
   gte(column: string, value: unknown): NarrowSupabaseQuery<Row>;
   in(column: string, values: unknown[]): NarrowSupabaseQuery<Row>;
   is(column: string, value: unknown): NarrowSupabaseQuery<Row>;
+  like(column: string, pattern: string): NarrowSupabaseQuery<Row>;
   or(expression: string): NarrowSupabaseQuery<Row>;
   order(column: string, options?: { ascending?: boolean }): NarrowSupabaseQuery<Row>;
   limit(count: number): NarrowSupabaseQuery<Row>;

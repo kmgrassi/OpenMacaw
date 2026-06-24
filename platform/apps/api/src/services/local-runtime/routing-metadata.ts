@@ -2,8 +2,9 @@ import type {
   LocalRuntimeRegistrationRunnerKind,
   LocalToolCallCapability,
 } from "../../../../../contracts/local-runtime.js";
+import { z } from "zod";
 import { ApiRouteError } from "../../http.js";
-import { parseSupabaseRow, parseSupabaseRows } from "../../lib/supabase-row-parsers.js";
+import { SupabaseRowParseError, parseSupabaseRow, parseSupabaseRows } from "../../lib/supabase-row-parsers.js";
 import { assertSupabaseSuccess } from "../../lib/supabase-errors.js";
 import { getServiceRoleSupabase } from "../../supabase-client.js";
 import { normalizeToolCallCapability } from "./config-snippet.js";
@@ -194,6 +195,15 @@ export function matchValue(matches: RoutingRuleMatchRow[], kind: string, key?: s
   return (
     matches.find((match) => match.kind === kind && (key === undefined || match.key === key))?.value?.trim() || null
   );
+}
+
+export function requireMatchValue(matches: RoutingRuleMatchRow[], kind: string, key: string, context: string) {
+  const value = matches.find((match) => match.kind === kind && match.key === key)?.value;
+  const parsed = z.string().trim().min(1).safeParse(value);
+  if (!parsed.success) {
+    throw new SupabaseRowParseError(context, parsed.error);
+  }
+  return parsed.data;
 }
 
 export function registrationKindForRule(rule: {

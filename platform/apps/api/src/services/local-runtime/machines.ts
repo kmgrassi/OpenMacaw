@@ -1,7 +1,15 @@
 import type { Tables, TablesInsert, TablesUpdate } from "@kmgrassi/supabase-schema";
 import { assertSupabaseSuccess } from "../../lib/supabase-errors.js";
+import { narrowSupabase } from "../../lib/narrow-supabase.js";
+import { parseSupabaseRows } from "../../lib/supabase-row-parsers.js";
 import type { getServiceRoleSupabase } from "../../supabase-client.js";
 import { revokeActiveMachineTokens } from "./tokens.js";
+import {
+  LocalRuntimeMachineIdRowSchema,
+  LocalRuntimeMachineValueRowSchema,
+  RoutingRuleMatchRowSchema,
+  type RoutingRuleMatchRowRecord,
+} from "./row-schemas.js";
 
 import type { LocalRuntimeRegistrationRunnerKind } from "../../../../../contracts/local-runtime.js";
 
@@ -19,8 +27,7 @@ export function machineRunnerKindsForRegistration(kinds: readonly LocalRuntimeRe
 }
 
 type SupabaseClient = ReturnType<typeof getServiceRoleSupabase>;
-type RoutingRuleRow = Pick<Tables<"routing_rule">, "id">;
-type RoutingRuleMatchRow = Pick<Tables<"routing_rule_match">, "rule_id" | "kind" | "key" | "value">;
+type RoutingRuleMatchRow = RoutingRuleMatchRowRecord;
 
 function mergeRunnerKinds(existing: string[], adding: readonly string[]) {
   return Array.from(new Set([...existing, ...adding]));
@@ -101,8 +108,10 @@ export async function ensureLocalMachineMatchesForWorkspace(input: {
   workspaceId: string;
   machineId: string;
 }) {
-  const { data: rules, error: rulesError } = await input.supabase
-    .from("routing_rule")
+  const supabase = narrowSupabase(input.supabase);
+
+  const { data: rules, error: rulesError } = await supabase
+    .from<Tables<"routing_rule">>("routing_rule")
     .select("id")
     .eq("workspace_id", input.workspaceId)
     .eq("runner_kind", "local_relay")
@@ -113,11 +122,15 @@ export async function ensureLocalMachineMatchesForWorkspace(input: {
     assertSupabaseSuccess("list local runtime rules for machine metadata repair", rules, rulesError);
   }
 
-  const ruleIds = ((rules ?? []) as RoutingRuleRow[]).map((rule) => rule.id);
+  const ruleIds = parseSupabaseRows(
+    "list local runtime rules for machine metadata repair",
+    LocalRuntimeMachineIdRowSchema,
+    Array.isArray(rules) ? rules : rules ? [rules] : null,
+  ).map((rule) => rule.id);
   if (ruleIds.length === 0) return;
 
-  const { data: matches, error: matchesError } = await input.supabase
-    .from("routing_rule_match")
+  const { data: matches, error: matchesError } = await supabase
+    .from<RoutingRuleMatchRow>("routing_rule_match")
     .select("rule_id, kind, key, value")
     .eq("workspace_id", input.workspaceId)
     .in("rule_id", ruleIds)
@@ -128,7 +141,11 @@ export async function ensureLocalMachineMatchesForWorkspace(input: {
   }
 
   const matchesByRule = new Map<string, RoutingRuleMatchRow[]>();
-  for (const match of (matches ?? []) as RoutingRuleMatchRow[]) {
+  for (const match of parseSupabaseRows(
+    "list local runtime rule metadata for machine repair",
+    RoutingRuleMatchRowSchema,
+    Array.isArray(matches) ? matches : matches ? [matches] : null,
+  )) {
     const current = matchesByRule.get(match.rule_id) ?? [];
     current.push(match);
     matchesByRule.set(match.rule_id, current);
@@ -138,10 +155,10 @@ export async function ensureLocalMachineMatchesForWorkspace(input: {
     .filter((ruleId) => {
       const ruleMatches = matchesByRule.get(ruleId) ?? [];
       const hasWorkspaceRoot = ruleMatches.some(
-        (match) => match.kind === "local_workspace_root" && match.key === "path" && match.value.trim(),
+        (match) => match.kind === "local_workspace_root" && match.key === "path" && match.value?.trim(),
       );
       const hasMachineMatch = ruleMatches.some(
-        (match) => match.kind === "local_machine" && match.key === "id" && match.value.trim(),
+        (match) => match.kind === "local_machine" && match.key === "id" && match.value?.trim(),
       );
       return hasWorkspaceRoot && !hasMachineMatch;
     })
@@ -203,8 +220,8 @@ async function revokeOtherWorkspaceMachines(input: {
   workspaceId: string;
   exceptMachineId: string | null;
 }) {
-  const { data: machines, error } = await input.supabase
-    .from("local_runtime_machine")
+  const { data: machines, error } = await narrowSupabase(input.supabase)
+    .from<Tables<"local_runtime_machine">>("local_runtime_machine")
     .select("id")
     .eq("workspace_id", input.workspaceId)
     .is("revoked_at", null);
@@ -213,7 +230,11 @@ async function revokeOtherWorkspaceMachines(input: {
     assertSupabaseSuccess("list active local runtime machines for revocation", machines, error);
   }
 
-  const machineIds = ((machines ?? []) as Array<{ id: string }>)
+  const machineIds = parseSupabaseRows(
+    "list active local runtime machines for revocation",
+    LocalRuntimeMachineIdRowSchema,
+    Array.isArray(machines) ? machines : machines ? [machines] : null,
+  )
     .map((machine) => machine.id)
     .filter((id) => id !== input.exceptMachineId);
 
@@ -232,8 +253,8 @@ export async function unreferencedMachineIdsAfterLocalRuntimeDelete(input: {
   const machineIds = Array.from(new Set(input.machineIds.filter((id) => id.trim().length > 0)));
   if (machineIds.length === 0) return [];
 
-  const { data: remainingMatches, error } = await input.supabase
-    .from("routing_rule_match")
+  const { data: remainingMatches, error } = await narrowSupabase(input.supabase)
+    .from<Tables<"routing_rule_match">>("routing_rule_match")
     .select("value")
     .eq("workspace_id", input.workspaceId)
     .eq("kind", "local_machine")
@@ -245,7 +266,13 @@ export async function unreferencedMachineIdsAfterLocalRuntimeDelete(input: {
   }
 
   const referencedMachineIds = new Set(
-    ((remainingMatches ?? []) as Array<{ value: string }>).map((match) => match.value),
+    parseSupabaseRows(
+      "read remaining local runtime machine references",
+      LocalRuntimeMachineValueRowSchema,
+      Array.isArray(remainingMatches) ? remainingMatches : remainingMatches ? [remainingMatches] : null,
+    )
+      .map((match) => match.value?.trim())
+      .filter((value): value is string => Boolean(value)),
   );
   return machineIds.filter((machineId) => !referencedMachineIds.has(machineId));
 }
