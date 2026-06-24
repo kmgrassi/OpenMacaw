@@ -6,8 +6,11 @@ import { z } from "zod";
 import { asRecord } from "../../../../contracts/agent-helpers.js";
 import {
   GitHubAppInstallationCredentialSchema,
+  GitHubAppPullRequestListResponseSchema,
   type GitHubAppInstallationCredential,
   type GitHubAppInstallationCredentialRequest,
+  type GitHubAppPullRequestListResponse,
+  type GitHubPullRequestState,
 } from "../../../../contracts/resource-credentials.js";
 import type { Json } from "@kmgrassi/supabase-schema";
 import {
@@ -47,6 +50,7 @@ export class MintedGitHubInstallationToken {
   readonly credentialId: string;
   readonly workspaceId: string;
   readonly installationId: string;
+  readonly apiBaseUrl: string;
   readonly expiresAt: string;
   readonly repositorySelection: string | null;
   readonly permissions: Record<string, string>;
@@ -56,6 +60,7 @@ export class MintedGitHubInstallationToken {
     credentialId: string;
     workspaceId: string;
     installationId: string;
+    apiBaseUrl: string;
     token: string;
     expiresAt: string;
     repositorySelection: string | null;
@@ -64,6 +69,7 @@ export class MintedGitHubInstallationToken {
     this.credentialId = input.credentialId;
     this.workspaceId = input.workspaceId;
     this.installationId = input.installationId;
+    this.apiBaseUrl = input.apiBaseUrl;
     this.#token = input.token;
     this.expiresAt = input.expiresAt;
     this.repositorySelection = input.repositorySelection;
@@ -79,6 +85,7 @@ export class MintedGitHubInstallationToken {
       credentialId: this.credentialId,
       workspaceId: this.workspaceId,
       installationId: this.installationId,
+      apiBaseUrl: this.apiBaseUrl,
       token: "[redacted]",
       expiresAt: this.expiresAt,
       repositorySelection: this.repositorySelection,
@@ -271,10 +278,107 @@ async function mintGitHubInstallationTokenImpl(input: {
     credentialId: credential.credentialId,
     workspaceId: credential.workspaceId,
     installationId: credential.installationId,
+    apiBaseUrl: credential.apiBaseUrl,
     token: parsed.token,
     expiresAt: parsed.expires_at,
     repositorySelection: parsed.repository_selection ?? null,
     permissions: parsed.permissions,
+  });
+}
+
+const REPO_SLUG_PATTERN = /^[^/\s]+\/[^/\s]+$/;
+
+const GitHubPullRequestApiEntrySchema = z.object({
+  number: z.number().int(),
+  title: z.string(),
+  state: z.string(),
+  html_url: z.string(),
+  draft: z.boolean().optional().default(false),
+  updated_at: z.string(),
+  user: z.object({ login: z.string() }).nullish(),
+});
+const GitHubPullRequestApiListSchema = z.array(GitHubPullRequestApiEntrySchema);
+
+// Lists pull requests for `owner/repo` using a freshly minted installation
+// token. This is the first consumer of the GitHub App credential and doubles
+// as the proof-of-life that a cloud (AWS) process can authenticate to the
+// installed App and call the GitHub API.
+export async function listInstallationPullRequests(input: {
+  workspaceId: string;
+  credentialId: string;
+  repo: string;
+  state?: GitHubPullRequestState;
+  fetchFn?: typeof fetch;
+  nowMs?: number;
+}): Promise<GitHubAppPullRequestListResponse> {
+  return withServiceLogging(
+    {
+      operation: "resource_credentials.github_app.list_pull_requests",
+      inputSummary: {
+        workspace_id: input.workspaceId,
+        credential_id: input.credentialId,
+        repo: input.repo,
+        state: input.state ?? "open",
+      },
+    },
+    () => listInstallationPullRequestsImpl(input),
+  );
+}
+
+async function listInstallationPullRequestsImpl(input: {
+  workspaceId: string;
+  credentialId: string;
+  repo: string;
+  state?: GitHubPullRequestState;
+  fetchFn?: typeof fetch;
+  nowMs?: number;
+}): Promise<GitHubAppPullRequestListResponse> {
+  const repo = input.repo.trim();
+  if (!REPO_SLUG_PATTERN.test(repo)) {
+    throw new GitHubAppCredentialError("github_app_repo_invalid", "Repository must be in owner/name form");
+  }
+  const state: GitHubPullRequestState = input.state ?? "open";
+  const fetchFn = input.fetchFn ?? fetch;
+
+  const minted = await mintGitHubInstallationToken({
+    workspaceId: input.workspaceId,
+    credentialId: input.credentialId,
+    fetchFn,
+    nowMs: input.nowMs,
+  });
+
+  const response = await fetchFn(
+    `${minted.apiBaseUrl}/repos/${repo}/pulls?state=${encodeURIComponent(state)}&per_page=50`,
+    {
+      method: "GET",
+      headers: {
+        accept: "application/vnd.github+json",
+        authorization: `Bearer ${minted.tokenValue}`,
+        "x-github-api-version": "2022-11-28",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new GitHubAppCredentialError(
+      "github_app_pull_request_list_failed",
+      `GitHub rejected pull request listing with status ${response.status}`,
+    );
+  }
+
+  const entries = GitHubPullRequestApiListSchema.parse(await response.json());
+  return GitHubAppPullRequestListResponseSchema.parse({
+    repo,
+    state,
+    pullRequests: entries.map((entry) => ({
+      number: entry.number,
+      title: entry.title,
+      state: entry.state,
+      url: entry.html_url,
+      author: entry.user?.login ?? null,
+      draft: entry.draft,
+      updatedAt: entry.updated_at,
+    })),
   });
 }
 

@@ -3,9 +3,14 @@ import type { Express } from "express";
 import {
   GitHubAppInstallationCredentialRequestSchema,
   GitHubAppInstallationCredentialResponseSchema,
+  GitHubAppPullRequestListResponseSchema,
+  GitHubPullRequestStateSchema,
 } from "../../../../contracts/resource-credentials.js";
-import { ApiRouteError, apiRoute } from "../http.js";
-import { saveGitHubAppInstallationCredentialForWorkspace } from "../services/resource-credentials.js";
+import { ApiRouteError, apiRoute, requireQueryParam, requireRouteParam } from "../http.js";
+import {
+  listInstallationPullRequests,
+  saveGitHubAppInstallationCredentialForWorkspace,
+} from "../services/resource-credentials.js";
 import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
 
 async function requireWorkspaceAccess(userId: string, workspaceId: string) {
@@ -42,6 +47,33 @@ export function registerResourceCredentialRoutes(app: Express) {
             credential,
           }),
         );
+      },
+    }),
+  );
+
+  app.get(
+    "/api/resource-credentials/github-app-installations/:credentialId/pulls",
+    apiRoute({
+      requireAuth: true,
+      handler: async ({ req, res, userId }) => {
+        const credentialId = requireRouteParam(req, "credentialId");
+        const workspaceId = requireQueryParam(req, "workspaceId");
+        const repo = requireQueryParam(req, "repo");
+        const stateParam = req.query.state;
+        const state =
+          typeof stateParam === "string" && stateParam.trim().length > 0
+            ? GitHubPullRequestStateSchema.parse(stateParam.trim())
+            : undefined;
+
+        await requireWorkspaceAccess(userId, workspaceId);
+        const result = await listInstallationPullRequests({
+          workspaceId,
+          credentialId,
+          repo,
+          state,
+        });
+
+        return res.status(200).json(GitHubAppPullRequestListResponseSchema.parse(result));
       },
     }),
   );
