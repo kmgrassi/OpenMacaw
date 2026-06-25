@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { type CredentialProvider } from "../../../../../contracts/credentials";
 import { ApiClientError } from "../../api/client";
 import {
   listGitHubAppInstallationCredentials,
@@ -172,17 +173,59 @@ function ConnectionsContent({ workspaceId }: { workspaceId: string }) {
 
 function ApiKeyConnectionForm({ workspaceId }: { workspaceId: string }) {
   const credentialMutations = useCredentialMutations(null, workspaceId);
+  // Azure is the one provider whose validation requires an endpoint (+ optional
+  // API version). Carry those through like the Models page does, so saving an
+  // Azure key here doesn't fail with "Azure OpenAI endpoint is required".
+  const [provider, setProvider] = useState<CredentialProvider>("openai");
+  const [endpoint, setEndpoint] = useState("");
+  const [apiVersion, setApiVersion] = useState("");
+  const requiresEndpoint = provider === "azure";
+
   return (
     <CredentialEditor
       workspaceId={workspaceId}
       enabledFormats={["api_key"]}
       submitLabel="Save connection"
       successMessage="Connection saved."
+      onProviderChange={(next) => {
+        setProvider(next);
+        setEndpoint("");
+        setApiVersion("");
+      }}
+      disabledReason={
+        requiresEndpoint && !endpoint.trim()
+          ? "Azure OpenAI endpoint is required."
+          : null
+      }
+      apiKeyExtraFields={
+        requiresEndpoint ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            <Input
+              label="Azure endpoint"
+              value={endpoint}
+              onChange={(event) => setEndpoint(event.target.value)}
+              placeholder="https://my-resource.openai.azure.com"
+            />
+            <Input
+              label="API version (optional)"
+              value={apiVersion}
+              onChange={(event) => setApiVersion(event.target.value)}
+              placeholder="2024-02-01"
+            />
+          </div>
+        ) : null
+      }
       onApiKeyCredential={async (credential) => {
         await credentialMutations.saveStored.mutateAsync({
           scope: { kind: "workspace", workspaceId },
           provider: credential.provider,
           apiKey: credential.secret,
+          ...(requiresEndpoint
+            ? {
+                endpoint: endpoint.trim(),
+                apiVersion: apiVersion.trim() || undefined,
+              }
+            : {}),
         });
       }}
     />
