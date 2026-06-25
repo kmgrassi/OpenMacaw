@@ -96,6 +96,28 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     assert :ok = ClaudeCode.stop_session(session)
   end
 
+  test "sends normalized input through the coding runner I/O contract", %{workspace: workspace} do
+    bridge = fake_bridge!("echo_prompt")
+
+    assert {:ok, session} =
+             ClaudeCode.start_session(%{"bridge_command" => "node #{shell_escape(bridge)}"}, workspace)
+
+    assert {:ok, result} = ClaudeCode.send_input(session, %{"message" => "follow up"}, work_item(), [])
+    assert result.result == "follow up"
+
+    assert :ok = ClaudeCode.stop_session(session)
+  end
+
+  test "advertises streaming I/O capabilities" do
+    assert %{
+             input: :turn,
+             output_stream: :runner_events,
+             interrupt: :unsupported,
+             tool_activity: true,
+             metadata: %{backend: "claude_agent_bridge"}
+           } = ClaudeCode.stream_capabilities()
+  end
+
   test "rejects a configured cwd that differs from the workspace", %{workspace: workspace, root: root} do
     other = Path.join(root, "other")
     File.mkdir_p!(other)
@@ -177,6 +199,11 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
       if (message.method === 'turn/start') {
         if (mode === 'turn_failure') {
           write({ id: message.id, error: { reason: 'turn failed', retryable: true } });
+          return;
+        }
+
+        if (mode === 'echo_prompt') {
+          write({ id: message.id, result: { result: message.params.prompt, sessionId: 'fake-session' } });
           return;
         }
 

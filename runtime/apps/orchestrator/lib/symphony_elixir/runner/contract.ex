@@ -9,6 +9,16 @@ defmodule SymphonyElixir.Runner.Contract do
 
   @type runner_type :: String.t()
 
+  @type coding_input :: String.t() | %{optional(:message) => String.t(), optional(:prompt) => String.t(), optional(String.t()) => term()}
+
+  @type coding_capabilities :: %{
+          required(:input) => :turn,
+          required(:output_stream) => :runner_events,
+          required(:interrupt) => :supported | :unsupported,
+          required(:tool_activity) => boolean(),
+          optional(:metadata) => map()
+        }
+
   @type session :: %{
           required(:runner) => runner_type(),
           optional(:session_id) => String.t(),
@@ -114,6 +124,41 @@ defmodule SymphonyElixir.Runner.Contract do
   """
   @spec event_names() :: [event_name()]
   def event_names, do: @event_names
+
+  @doc """
+  Builds a backend-neutral coding-runner capability map.
+  """
+  @spec coding_capabilities(keyword()) :: coding_capabilities()
+  def coding_capabilities(opts \\ []) when is_list(opts) do
+    %{
+      input: Keyword.get(opts, :input, :turn),
+      output_stream: Keyword.get(opts, :output_stream, :runner_events),
+      interrupt: Keyword.get(opts, :interrupt, :unsupported),
+      tool_activity: Keyword.get(opts, :tool_activity, true)
+    }
+    |> maybe_put(:metadata, Keyword.get(opts, :metadata))
+  end
+
+  @doc """
+  Normalizes live coding input to a prompt string.
+  """
+  @spec normalize_coding_input(coding_input()) :: {:ok, String.t()} | {:error, :invalid_coding_input}
+  def normalize_coding_input(input) when is_binary(input) do
+    input
+    |> String.trim()
+    |> case do
+      "" -> {:error, :invalid_coding_input}
+      prompt -> {:ok, prompt}
+    end
+  end
+
+  def normalize_coding_input(input) when is_map(input) do
+    input
+    |> first_present([:message, "message", :prompt, "prompt", :text, "text"])
+    |> normalize_coding_input()
+  end
+
+  def normalize_coding_input(_input), do: {:error, :invalid_coding_input}
 
   @doc """
   Builds a normalized session view from an adapter session map.
@@ -249,4 +294,7 @@ defmodule SymphonyElixir.Runner.Contract do
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
   end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end

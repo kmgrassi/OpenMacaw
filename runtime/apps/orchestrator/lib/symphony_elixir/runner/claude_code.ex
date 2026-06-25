@@ -8,8 +8,10 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
   """
 
   @behaviour SymphonyElixir.Runner
+  @behaviour SymphonyElixir.Runner.CodingRunner
 
   alias SymphonyElixir.{ClaudeCode.Bridge, Config, PathSafety, WorkItem}
+  alias SymphonyElixir.Runner.Contract
   alias SymphonyElixir.Runner.SkillMaterializer
   alias SymphonyElixir.Runner.WorkerBridgeRouting
 
@@ -57,6 +59,29 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  @impl SymphonyElixir.Runner.CodingRunner
+  def send_input(session, input, work_item, opts) when is_map(session) and is_list(opts) do
+    with {:ok, prompt} <- Contract.normalize_coding_input(input) do
+      session
+      |> maybe_put_on_message(Keyword.get(opts, :on_message))
+      |> run_turn(prompt, work_item)
+    end
+  end
+
+  @impl SymphonyElixir.Runner.CodingRunner
+  def interrupt(_session, _opts), do: {:error, :interrupt_not_supported}
+
+  @impl SymphonyElixir.Runner.CodingRunner
+  def stream_capabilities do
+    Contract.coding_capabilities(
+      input: :turn,
+      output_stream: :runner_events,
+      interrupt: :unsupported,
+      tool_activity: true,
+      metadata: %{backend: "claude_agent_bridge"}
+    )
   end
 
   @impl true
@@ -134,6 +159,14 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
     |> stringify_keys()
     |> Map.put_new("permission_mode", "acceptEdits")
   end
+
+  defp maybe_put_on_message(session, nil), do: session
+
+  defp maybe_put_on_message(%{options: options} = session, on_message) when is_function(on_message, 1) do
+    Map.put(session, :options, Map.put(options, "on_message", on_message))
+  end
+
+  defp maybe_put_on_message(session, _on_message), do: session
 
   defp default_bridge_path do
     :code.priv_dir(:symphony_elixir)

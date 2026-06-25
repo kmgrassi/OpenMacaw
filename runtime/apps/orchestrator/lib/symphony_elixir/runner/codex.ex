@@ -22,9 +22,11 @@ defmodule SymphonyElixir.Runner.Codex do
   """
 
   @behaviour SymphonyElixir.Runner
+  @behaviour SymphonyElixir.Runner.CodingRunner
 
   alias SymphonyElixir.Cutover
   alias SymphonyElixir.Codex.AppServer
+  alias SymphonyElixir.Runner.Contract
   alias SymphonyElixir.Runner.Observability
   alias SymphonyElixir.Runner.SkillMaterializer
   alias SymphonyElixir.Runner.WorkerBridgeRouting
@@ -62,6 +64,29 @@ defmodule SymphonyElixir.Runner.Codex do
         run_turn_link(link_session, prompt, work_item, attempt)
       end)
     end
+  end
+
+  @impl SymphonyElixir.Runner.CodingRunner
+  def send_input(session, input, work_item, opts) when is_map(session) and is_list(opts) do
+    with {:ok, prompt} <- Contract.normalize_coding_input(input) do
+      session
+      |> maybe_put_on_message(Keyword.get(opts, :on_message))
+      |> run_turn(prompt, work_item)
+    end
+  end
+
+  @impl SymphonyElixir.Runner.CodingRunner
+  def interrupt(_session, _opts), do: {:error, :interrupt_not_supported}
+
+  @impl SymphonyElixir.Runner.CodingRunner
+  def stream_capabilities do
+    Contract.coding_capabilities(
+      input: :turn,
+      output_stream: :runner_events,
+      interrupt: :unsupported,
+      tool_activity: true,
+      metadata: %{backend: "codex_app_server"}
+    )
   end
 
   @impl true
@@ -155,6 +180,10 @@ defmodule SymphonyElixir.Runner.Codex do
   end
 
   defp app_server_module(session), do: Map.get(session, :app_server_module, AppServer)
+
+  defp maybe_put_on_message(session, nil), do: session
+  defp maybe_put_on_message(session, on_message) when is_function(on_message, 1), do: Map.put(session, :on_message, on_message)
+  defp maybe_put_on_message(session, _on_message), do: session
 
   defp provider_context(session, work_item, attempt) do
     %{
