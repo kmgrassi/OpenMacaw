@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   listOrchestratorSessions,
   type OrchestratorSessionsResult,
 } from "../../api/orchestrator-sessions";
 import { useGatewayContext } from "../../context/GatewayContext";
+import { useLoadOnConnect } from "../../hooks/useLoadOnConnect";
 import { Alert } from "../ui/Alert";
 import { Card } from "../ui/Card";
 import { Badge } from "../ui/Badge";
@@ -31,10 +32,7 @@ export function SessionsSection() {
     }
   };
 
-  useEffect(() => {
-    void loadSessions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected]);
+  useLoadOnConnect(connected, loadSessions);
 
   const handleDelete = async (key: string) => {
     if (
