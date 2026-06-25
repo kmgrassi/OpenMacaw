@@ -304,6 +304,77 @@ describe("createPlanDraftFromPrompt", () => {
     });
   });
 
+  it("accepts nested runtime draft envelopes", async () => {
+    runtimeRequest.mockResolvedValue({
+      status: 200,
+      body: { data: { plan: validDraft } },
+      headers: {},
+    });
+
+    await expect(
+      createPlanDraftFromPrompt({
+        accessToken: "access-token",
+        userId: "11111111-1111-4111-8111-111111111111",
+        request: {
+          workspaceId,
+          prompt: "Create an endpoint",
+        },
+        launcherRequest,
+        requestTimeoutMs: 500,
+      }),
+    ).resolves.toEqual({ draft: validDraft });
+  });
+
+  it("reads nested runtime validation details envelopes", async () => {
+    runtimeRequest.mockResolvedValue({
+      status: 422,
+      body: {
+        error: {
+          details: [{ path: "/title", message: "Title is required", keyword: "required" }],
+        },
+      },
+      headers: {},
+    });
+
+    await expect(
+      createPlanDraftFromPrompt({
+        accessToken: "access-token",
+        userId: "11111111-1111-4111-8111-111111111111",
+        request: {
+          workspaceId,
+          prompt: "Create an endpoint",
+        },
+        launcherRequest,
+        requestTimeoutMs: 500,
+      }),
+    ).rejects.toMatchObject({
+      errors: [{ path: "/title", message: "Title is required", code: "required" }],
+    });
+  });
+
+  it("falls back to stringifying non-object runtime validation entries", async () => {
+    runtimeRequest.mockResolvedValue({
+      status: 422,
+      body: { errors: ["planner returned malformed validation metadata"] },
+      headers: {},
+    });
+
+    await expect(
+      createPlanDraftFromPrompt({
+        accessToken: "access-token",
+        userId: "11111111-1111-4111-8111-111111111111",
+        request: {
+          workspaceId,
+          prompt: "Create an endpoint",
+        },
+        launcherRequest,
+        requestTimeoutMs: 500,
+      }),
+    ).rejects.toMatchObject({
+      errors: [{ path: "/", message: "planner returned malformed validation metadata" }],
+    });
+  });
+
   it("rejects workspaces outside the authenticated user's membership", async () => {
     vi.mocked(listSetupAuthState).mockResolvedValue(authState({ workspaces: [workspace("other", "Other")] }));
 

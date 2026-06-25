@@ -4,6 +4,7 @@ import {
   type PlanDraftFromPromptRequest,
   type PlanDraftFromPromptResponse,
 } from "../../../../contracts/plans.js";
+import { z } from "zod";
 import { ApiRouteError } from "../http.js";
 import { getDefaultAgentStatusForWorkspace, listSetupAuthState } from "./setup.js";
 import { redactOutboundPromptForWorkspace } from "./prompt-redaction.js";
@@ -36,6 +37,34 @@ export class PlanDraftValidationError extends Error {
   }
 }
 
+const RuntimeValidationErrorEntrySchema = z.object({
+  path: z.string().optional(),
+  instancePath: z.string().optional(),
+  message: z.string().optional(),
+  code: z.string().optional(),
+  keyword: z.string().optional(),
+});
+
+const RuntimeValidationErrorEnvelopeSchema = z.union([
+  z.object({ errors: z.array(z.unknown()) }),
+  z.object({
+    error: z.object({
+      details: z.array(z.unknown()),
+    }),
+  }),
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasOwnKey<Key extends string>(
+  value: unknown,
+  key: Key,
+): value is Record<Key, unknown> & Record<string, unknown> {
+  return isRecord(value) && Object.prototype.hasOwnProperty.call(value, key);
+}
+
 function toValidationErrors(error: { issues: Array<{ path: PropertyKey[]; message: string; code: string }> }) {
   return error.issues.map((issue) => ({
     path: issue.path.length > 0 ? `/${issue.path.map(String).join("/")}` : "/",
@@ -45,45 +74,32 @@ function toValidationErrors(error: { issues: Array<{ path: PropertyKey[]; messag
 }
 
 function extractRuntimeValidationErrors(body: unknown): PlanValidationError[] | null {
-  if (!body || typeof body !== "object") return null;
-  const candidate = body as { errors?: unknown; error?: { details?: unknown } };
-  const errors = Array.isArray(candidate.errors)
-    ? candidate.errors
-    : Array.isArray(candidate.error?.details)
-      ? candidate.error.details
-      : null;
-  if (!errors) return null;
+  const parsedEnvelope = RuntimeValidationErrorEnvelopeSchema.safeParse(body);
+  if (!parsedEnvelope.success) return null;
+
+  const errors = "errors" in parsedEnvelope.data ? parsedEnvelope.data.errors : parsedEnvelope.data.error.details;
 
   return errors.map((entry) => {
-    if (!entry || typeof entry !== "object") {
+    const parsedEntry = RuntimeValidationErrorEntrySchema.safeParse(entry);
+    if (!parsedEntry.success) {
       return { path: "/", message: String(entry) };
     }
-    const record = entry as Record<string, unknown>;
+
+    const record = parsedEntry.data;
     return {
-      path:
-        typeof record.path === "string"
-          ? record.path
-          : typeof record.instancePath === "string"
-            ? record.instancePath
-            : "/",
-      message: typeof record.message === "string" ? record.message : "Invalid plan draft",
-      code:
-        typeof record.code === "string" ? record.code : typeof record.keyword === "string" ? record.keyword : undefined,
+      path: record.path ?? record.instancePath ?? "/",
+      message: record.message ?? "Invalid plan draft",
+      code: record.code ?? record.keyword,
     };
   });
 }
 
 function extractDraftPlan(body: unknown): unknown {
-  if (!body || typeof body !== "object") return body;
-  const record = body as Record<string, unknown>;
-  if ("draft" in record) return record.draft;
-  if ("plan" in record) return record.plan;
-  if (record.data && typeof record.data === "object" && "draft" in record.data) {
-    return (record.data as Record<string, unknown>).draft;
-  }
-  if (record.data && typeof record.data === "object" && "plan" in record.data) {
-    return (record.data as Record<string, unknown>).plan;
-  }
+  if (hasOwnKey(body, "draft")) return body.draft;
+  if (hasOwnKey(body, "plan")) return body.plan;
+  if (!hasOwnKey(body, "data")) return body;
+  if (hasOwnKey(body.data, "draft")) return body.data.draft;
+  if (hasOwnKey(body.data, "plan")) return body.data.plan;
   return body;
 }
 
