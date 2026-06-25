@@ -54,10 +54,20 @@ sits on top of it.
 
 ### Proposed external API surface
 
-- `POST /api/agents/:id/messages` — inject a user message into the running session.
+- `POST /api/agents/:id/input` — inject a user message into the running session.
 - `POST /api/agents/:id/interrupt` — stop the current turn.
 - `GET|WS /api/agents/:id/stream` — live output (text deltas, `ToolActivity`,
   usage, turn boundaries). Reuse the existing agent WS gateway if it fits.
+
+> **Do not reuse `POST /api/agents/:id/messages`.** That path already exists as
+> the **structured agent-control** contract (`platform/apps/api/src/routes/agent-control.ts`
+> → `createStructuredAgentMessage`; `GET` returns history via `getAgentMessages`),
+> which the shipped message-store scope preserves. The live-input surface uses a
+> distinct path (`/input`) so existing control-message callers/tests keep
+> working. If we later want to unify the two onto one path, that needs an
+> explicit backward-compatible content-negotiation contract, documented here
+> first — not an implicit overload. (`/interrupt` and `/stream` are currently
+> unused on `/api/agents/:id`.)
 
 ## Cost & session lifecycle
 
