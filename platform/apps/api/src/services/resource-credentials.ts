@@ -16,6 +16,7 @@ import type { Json } from "@kmgrassi/supabase-schema";
 import {
   createWorkspaceResourceCredential,
   getCredentialRowByIdForWorkspace,
+  listWorkspaceModelProviderCredentialRows,
   type CredentialProjection,
   type CredentialRow,
 } from "../repositories/credentials.js";
@@ -195,6 +196,18 @@ export async function saveGitHubAppInstallationCredentialForWorkspace(input: {
   }
 
   return mapGitHubAppCredentialRow(row);
+}
+
+// Lists the workspace's stored GitHub App installation credentials (no secrets).
+// The general /api/credentials listing only surfaces model-provider API keys,
+// so the Connections UI reads these separately.
+export async function listGitHubAppInstallationCredentialsForWorkspace(
+  workspaceId: string,
+): Promise<GitHubAppInstallationCredential[]> {
+  const rows = await listWorkspaceModelProviderCredentialRows(workspaceId);
+  return rows
+    .filter((row) => row.provider === "github" && row.format === "github_app_installation")
+    .map((row) => mapGitHubAppCredentialRow(row));
 }
 
 async function resolveGitHubPrivateKey(raw: JsonObject): Promise<string> {
