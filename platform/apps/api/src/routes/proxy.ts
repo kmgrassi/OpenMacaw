@@ -1,6 +1,7 @@
 import type { Express } from "express";
 
 import { registerAgentControlRoutes } from "./agent-control.js";
+import { registerAgentLiveIoRoutes } from "./agent-live-io.js";
 import { registerAgentProxyRoutes } from "./agent-proxy.js";
 import type { LauncherClient } from "../services/launcher.js";
 import type { UpstreamResponse } from "../services/upstream.js";
@@ -12,5 +13,6 @@ export function registerProxyRoutes(
   requestTimeoutMs: number,
 ) {
   registerAgentControlRoutes(app, launcherClient);
+  registerAgentLiveIoRoutes(app, launcherRequest, requestTimeoutMs);
   registerAgentProxyRoutes(app, launcherRequest, requestTimeoutMs);
 }

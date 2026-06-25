@@ -11,6 +11,14 @@ import {
   UpdateToolDefinitionRequestSchema,
   UpsertAgentToolGrantRequestSchema,
 } from "./tool-definition.js";
+import {
+  AgentLiveInputRequestSchema,
+  AgentLiveInputResponseSchema,
+  AgentLiveInterruptRequestSchema,
+  AgentLiveInterruptResponseSchema,
+  AgentLiveStreamQuerySchema,
+  AgentLiveStreamEventSchema,
+} from "./agent-live-io.js";
 
 const WorkspaceQuerySchema = z.object({
   workspaceId: z.string().uuid(),
@@ -62,6 +70,27 @@ export const PlatformApiContracts = {
     pathParams: z.object({ agentId: z.string().uuid() }),
     body: ReorderAgentToolsRequestSchema,
     response: z.object({ toolIds: z.array(z.string().uuid()) }),
+  },
+  sendAgentLiveInput: {
+    method: "POST",
+    path: "/api/agents/:agentId/input",
+    pathParams: z.object({ agentId: z.string().uuid() }),
+    body: AgentLiveInputRequestSchema,
+    response: AgentLiveInputResponseSchema,
+  },
+  interruptAgentLiveSession: {
+    method: "POST",
+    path: "/api/agents/:agentId/interrupt",
+    pathParams: z.object({ agentId: z.string().uuid() }),
+    body: AgentLiveInterruptRequestSchema,
+    response: AgentLiveInterruptResponseSchema,
+  },
+  streamAgentLiveEvents: {
+    method: "GET",
+    path: "/api/agents/:agentId/stream",
+    pathParams: z.object({ agentId: z.string().uuid() }),
+    query: AgentLiveStreamQuerySchema,
+    response: AgentLiveStreamEventSchema,
   },
   listTools: {
     method: "GET",

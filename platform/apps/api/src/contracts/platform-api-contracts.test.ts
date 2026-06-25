@@ -47,4 +47,10 @@ describe("Platform API route contracts", () => {
 
     expect(new Set(keys).size).toBe(keys.length);
   });
+
+  it("includes agent live I/O route contracts", () => {
+    expect(PlatformApiContracts.sendAgentLiveInput.path).toBe("/api/agents/:agentId/input");
+    expect(PlatformApiContracts.interruptAgentLiveSession.path).toBe("/api/agents/:agentId/interrupt");
+    expect(PlatformApiContracts.streamAgentLiveEvents.path).toBe("/api/agents/:agentId/stream");
+  });
 });
