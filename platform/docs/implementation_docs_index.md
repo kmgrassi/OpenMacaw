@@ -221,6 +221,11 @@ Durable design and process docs.
   — Schema diagnostic tool reference.
 - [reference/resolver-routing-note.md](reference/resolver-routing-note.md) —
   External reference and platform notes for resolver-style routing.
+- [reference/secretless-credential-proxy-scope.md](reference/secretless-credential-proxy-scope.md)
+  — Exploratory (not scheduled): how Omnigent keeps cloud credentials out of
+  the agent's reach via a forced-egress MITM proxy, how it relates to our
+  worker isolation + GitHub App token minting, and what emulating it would
+  take.
 - [reference/hardening-and-reuse-opportunities.md](reference/hardening-and-reuse-opportunities.md)
   — Catalog of follow-up hardening and reuse opportunities.
 - [reference/oq-04-credentials-pr-plan.md](reference/oq-04-credentials-pr-plan.md)
