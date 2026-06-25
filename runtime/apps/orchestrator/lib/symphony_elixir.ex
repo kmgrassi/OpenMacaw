@@ -41,6 +41,7 @@ defmodule SymphonyElixir.Application do
         SymphonyElixir.LocalRelay.Registry,
         SymphonyElixir.Codex.SessionRegistry,
         SymphonyElixir.Gateway.SessionStore,
+        SymphonyElixir.AgentLiveIo,
         SymphonyElixir.LocalRelay.Presence,
         SymphonyElixir.Manager.Supervisor,
         SymphonyElixir.Manager.Bootstrapper,

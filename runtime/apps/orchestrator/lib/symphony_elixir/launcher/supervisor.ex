@@ -55,6 +55,7 @@ defmodule SymphonyElixir.Launcher.Supervisor do
         SymphonyElixir.Orchestrator.WorkerSlotReservations,
         SymphonyElixir.RuntimeLease.Registry,
         SymphonyElixir.Gateway.SessionStore,
+        SymphonyElixir.AgentLiveIo,
         # The relay lives in the launcher — the always-on control plane — so the
         # manager (which also runs here and dispatches via
         # LocalRelay.Registry.lookup) shares a node with the helper sockets.

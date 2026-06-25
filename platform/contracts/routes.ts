@@ -37,6 +37,9 @@ export const StoredAgentRouteTemplates = {
 export const AgentRouteTemplates = {
   runtimeProfile: `${AGENTS_PREFIX}/:agentId/runtime-profile`,
   assignLocalModel: `${AGENTS_PREFIX}/:agentId/assign-local-model`,
+  liveInput: `${AGENTS_PREFIX}/:agentId/input`,
+  liveInterrupt: `${AGENTS_PREFIX}/:agentId/interrupt`,
+  liveStream: `${AGENTS_PREFIX}/:agentId/stream`,
 } as const;
 
 export const LocalRuntimeRouteTemplates = {
@@ -111,6 +114,24 @@ export function agentAssignLocalModelRoute(
     `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/assign-local-model`,
     workspaceId,
   );
+}
+
+export function agentLiveInputRoute(agentId: string) {
+  return `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/input`;
+}
+
+export function agentLiveInterruptRoute(agentId: string) {
+  return `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/interrupt`;
+}
+
+export function agentLiveStreamRoute(
+  agentId: string,
+  options: { workspaceId?: string | null; sessionKey?: string | null } = {},
+) {
+  return appendQuery(`${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/stream`, {
+    workspaceId: options.workspaceId,
+    sessionKey: options.sessionKey,
+  });
 }
 
 export function localRuntimeRoute(machineId: string) {
