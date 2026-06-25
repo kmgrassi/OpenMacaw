@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { z } from "zod";
 
 export type OnboardingCard =
   | "choose-path"
@@ -8,6 +9,17 @@ export type OnboardingCard =
   | "launch";
 export type OnboardingPath = "cloud" | "local" | null;
 export type OnboardingCloudProvider = "openai" | "anthropic";
+
+const OnboardingCardSchema = z.enum([
+  "choose-path",
+  "cloud-key",
+  "local-runtime-relay",
+  "launch",
+]);
+
+const OnboardingPathSchema = z.enum(["cloud", "local"]).nullable();
+
+const OnboardingCloudProviderSchema = z.enum(["openai", "anthropic"]);
 
 export const ONBOARDING_CLOUD_PROVIDERS: OnboardingCloudProvider[] = [
   "openai",
@@ -32,6 +44,15 @@ const STORAGE_KEYS_TO_SANITIZE = [
   PERSISTED_STORAGE_KEY,
   "parallel-agent-onboarding",
 ];
+
+const PersistedOnboardingEnvelopeSchema = z.object({
+  state: z.record(z.string(), z.unknown()).optional(),
+  version: z.number().optional(),
+});
+
+type PersistedOnboardingEnvelope = z.infer<
+  typeof PersistedOnboardingEnvelopeSchema
+>;
 
 type OnboardingState = {
   currentCard: OnboardingCard;
@@ -71,33 +92,46 @@ const CLOUD_CARD_ORDER: OnboardingCard[] = [
 export function normalizePersistedOnboardingCard(
   value: unknown,
 ): OnboardingCard {
-  if (
-    value === "choose-path" ||
-    value === "cloud-key" ||
-    value === "local-runtime-relay" ||
-    value === "launch"
-  ) {
-    return value;
-  }
-  return "choose-path";
+  return OnboardingCardSchema.safeParse(value).data ?? "choose-path";
 }
 
-export function sanitizePersistedOnboardingEnvelope(parsed: {
-  state?: Record<string, unknown>;
-  version?: number;
-}): {
-  state?: Record<string, unknown>;
-  version?: number;
-} {
+export function sanitizePersistedOnboardingEnvelope(
+  parsed: PersistedOnboardingEnvelope,
+): PersistedOnboardingEnvelope {
   if (!parsed.state) return parsed;
 
   const { cloudApiKey: _cloudApiKey, ...state } = parsed.state;
+  const sanitizedState: Record<string, unknown> = {
+    currentCard: normalizePersistedOnboardingCard(state.currentCard),
+  };
+
+  const path = OnboardingPathSchema.safeParse(state.path);
+  if (path.success) sanitizedState.path = path.data;
+
+  const selectedAgentIds = z
+    .array(z.string())
+    .safeParse(state.selectedAgentIds);
+  if (selectedAgentIds.success) {
+    sanitizedState.selectedAgentIds = selectedAgentIds.data;
+  }
+
+  const provider = OnboardingCloudProviderSchema.safeParse(state.provider);
+  if (provider.success) sanitizedState.provider = provider.data;
+
+  const localEndpoint = z.string().safeParse(state.localEndpoint);
+  if (localEndpoint.success) sanitizedState.localEndpoint = localEndpoint.data;
+
+  const localModel = z.string().safeParse(state.localModel);
+  if (localModel.success) sanitizedState.localModel = localModel.data;
+
+  const localRepositoryPath = z.string().safeParse(state.localRepositoryPath);
+  if (localRepositoryPath.success) {
+    sanitizedState.localRepositoryPath = localRepositoryPath.data;
+  }
+
   return {
     ...parsed,
-    state: {
-      ...state,
-      currentCard: normalizePersistedOnboardingCard(state.currentCard),
-    },
+    state: sanitizedState,
   };
 }
 
@@ -173,11 +207,15 @@ function sanitizePersistedOnboardingState() {
     if (!raw) continue;
 
     try {
-      const parsed = JSON.parse(raw) as {
-        state?: Record<string, unknown>;
-        version?: number;
-      };
-      const sanitized = sanitizePersistedOnboardingEnvelope(parsed);
+      const parsed = PersistedOnboardingEnvelopeSchema.safeParse(
+        JSON.parse(raw),
+      );
+      if (!parsed.success) {
+        globalThis.localStorage.removeItem(storageKey);
+        continue;
+      }
+
+      const sanitized = sanitizePersistedOnboardingEnvelope(parsed.data);
       globalThis.localStorage.setItem(storageKey, JSON.stringify(sanitized));
     } catch {
       globalThis.localStorage.removeItem(storageKey);
