@@ -37,14 +37,6 @@ export class PlanDraftValidationError extends Error {
   }
 }
 
-const RuntimeValidationErrorEntrySchema = z.object({
-  path: z.string().optional(),
-  instancePath: z.string().optional(),
-  message: z.string().optional(),
-  code: z.string().optional(),
-  keyword: z.string().optional(),
-});
-
 const RuntimeValidationErrorEnvelopeSchema = z.union([
   z.object({ errors: z.array(z.unknown()) }),
   z.object({
@@ -65,6 +57,10 @@ function hasOwnKey<Key extends string>(
   return isRecord(value) && Object.prototype.hasOwnProperty.call(value, key);
 }
 
+function stringField(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 function toValidationErrors(error: { issues: Array<{ path: PropertyKey[]; message: string; code: string }> }) {
   return error.issues.map((issue) => ({
     path: issue.path.length > 0 ? `/${issue.path.map(String).join("/")}` : "/",
@@ -80,16 +76,14 @@ function extractRuntimeValidationErrors(body: unknown): PlanValidationError[] | 
   const errors = "errors" in parsedEnvelope.data ? parsedEnvelope.data.errors : parsedEnvelope.data.error.details;
 
   return errors.map((entry) => {
-    const parsedEntry = RuntimeValidationErrorEntrySchema.safeParse(entry);
-    if (!parsedEntry.success) {
+    if (!isRecord(entry)) {
       return { path: "/", message: String(entry) };
     }
 
-    const record = parsedEntry.data;
     return {
-      path: record.path ?? record.instancePath ?? "/",
-      message: record.message ?? "Invalid plan draft",
-      code: record.code ?? record.keyword,
+      path: stringField(entry.path) ?? stringField(entry.instancePath) ?? "/",
+      message: stringField(entry.message) ?? "Invalid plan draft",
+      code: stringField(entry.code) ?? stringField(entry.keyword),
     };
   });
 }
