@@ -2,6 +2,7 @@ defmodule SymphonyElixir.Runner.CodexTest do
   use SymphonyElixir.TestSupport
 
   alias SymphonyElixir.Runner.Codex
+  alias SymphonyElixir.WorkItem
 
   describe "requires_workspace?/0" do
     test "returns true" do
@@ -74,6 +75,39 @@ defmodule SymphonyElixir.Runner.CodexTest do
       assert {:ok, %{model: "fallback-model"}} = Codex.run_turn(session, "do work", %{id: "work-1"})
     end
   end
+
+  describe "coding runner I/O contract" do
+    test "sends normalized input through the existing turn path" do
+      session = %{app_server_module: SymphonyElixir.Runner.CodexTest.EchoAppServer}
+      work_item = work_item()
+
+      assert {:ok, %{prompt: "follow up", work_item: ^work_item}} =
+               Codex.send_input(session, %{"message" => "follow up"}, work_item, [])
+    end
+
+    test "advertises streaming I/O capabilities" do
+      assert %{
+               input: :turn,
+               output_stream: :runner_events,
+               interrupt: :unsupported,
+               tool_activity: true,
+               metadata: %{backend: "codex_app_server"}
+             } = Codex.stream_capabilities()
+    end
+  end
+
+  defp work_item do
+    %WorkItem{
+      id: "work-1",
+      identifier: "TEST-1",
+      title: "Test work item",
+      description: "Test",
+      state: "Todo",
+      source: "test",
+      labels: [],
+      metadata: %{}
+    }
+  end
 end
 
 defmodule SymphonyElixir.Runner.CodexTest.FakeAppServer do
@@ -86,5 +120,14 @@ defmodule SymphonyElixir.Runner.CodexTest.FakeAppServer do
 
   def run_turn(%{model: "fallback-model"}, _prompt, _work_item, _opts) do
     {:ok, %{model: "fallback-model"}}
+  end
+end
+
+defmodule SymphonyElixir.Runner.CodexTest.EchoAppServer do
+  @moduledoc false
+
+  @spec run_turn(map(), String.t(), map(), keyword()) :: {:ok, map()}
+  def run_turn(_session, prompt, work_item, _opts) do
+    {:ok, %{prompt: prompt, work_item: work_item}}
   end
 end

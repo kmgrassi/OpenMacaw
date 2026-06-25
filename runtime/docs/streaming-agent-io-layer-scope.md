@@ -140,6 +140,10 @@ by an idle timeout, not a token meter.
 
 **Phase D — Converge with the shared `CodingRunner` abstraction (#295).**
 - Both runners implement one session/IO contract; a new vendor is a thin adapter.
+  Runtime implementation: `SymphonyElixir.Runner.CodingRunner` defines the
+  shared session/input/interrupt/capability surface, and the Codex and Claude
+  Code adapters implement it by routing live input through their existing
+  persistent session turn path.
 
 ## Local testing
 
