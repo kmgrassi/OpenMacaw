@@ -5,7 +5,7 @@ defmodule SymphonyElixir.Codex.SessionRegistry do
 
   use GenServer
 
-  alias SymphonyElixir.Codex.AppServer
+  alias SymphonyElixir.Codex.{AppServer, PortProtocol}
   alias SymphonyElixir.WorkItem
 
   @type session_id :: String.t()
@@ -37,6 +37,7 @@ defmodule SymphonyElixir.Codex.SessionRegistry do
 
   @impl true
   def init(_) do
+    Process.flag(:trap_exit, true)
     {:ok, %{sessions: %{}}}
   end
 
@@ -111,7 +112,7 @@ defmodule SymphonyElixir.Codex.SessionRegistry do
         {:reply, {:error, :session_not_found}, state}
 
       {entry, sessions} ->
-        _ = AppServer.stop_session(entry.session)
+        stop_entry(entry)
         {:reply, :ok, %{state | sessions: sessions}}
     end
   end
@@ -144,6 +145,19 @@ defmodule SymphonyElixir.Codex.SessionRegistry do
       {:error, _} ->
         {:noreply, state}
     end
+  end
+
+  def handle_info({port, {:exit_status, _status}}, state) when is_port(port) do
+    {:noreply, remove_session_by_port(state, port)}
+  end
+
+  def handle_info({:EXIT, port, _reason}, state) when is_port(port) do
+    {:noreply, remove_session_by_port(state, port)}
+  end
+
+  def handle_info({port, {:data, {_line_state, chunk}}}, state) when is_port(port) do
+    PortProtocol.log_non_json_stream_line(chunk, "idle session stream")
+    {:noreply, state}
   end
 
   defp run_turn(registry) do
@@ -229,6 +243,27 @@ defmodule SymphonyElixir.Codex.SessionRegistry do
 
   defp find_session_by_ref(%{sessions: sessions}, ref) do
     Enum.find(sessions, {nil, nil}, fn {_session_id, entry} -> entry.task_ref == ref end)
+  end
+
+  defp remove_session_by_port(%{sessions: sessions} = state, port) do
+    sessions =
+      sessions
+      |> Enum.reject(fn {_session_id, entry} -> entry.session.port == port end)
+      |> Map.new()
+
+    %{state | sessions: sessions}
+  end
+
+  defp stop_entry(%{task: task} = entry) when is_pid(task) do
+    # The registry remains linked to ports it opened even while the connected
+    # owner is the turn task, so close the port here and then clean up the task.
+    _ = AppServer.stop_session(entry.session)
+    Process.exit(task, :kill)
+    :ok
+  end
+
+  defp stop_entry(%{session: session}) do
+    AppServer.stop_session(session)
   end
 
   defp public_entry(session_id, entry) do
