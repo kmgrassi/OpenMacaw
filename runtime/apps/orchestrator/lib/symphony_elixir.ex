@@ -38,6 +38,7 @@ defmodule SymphonyElixir.Application do
         SymphonyElixir.CloudExecution.Aws.TaskStore,
         SymphonyElixir.LocalRelay.Registry,
         SymphonyElixir.Gateway.SessionStore,
+        SymphonyElixir.AgentLiveIo,
         SymphonyElixir.LocalRelay.Presence,
         SymphonyElixir.Manager.Supervisor,
         SymphonyElixir.Manager.Bootstrapper,

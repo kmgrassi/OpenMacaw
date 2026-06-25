@@ -297,6 +297,18 @@ defmodule SymphonyElixir.Launcher.Router do
     end
   end
 
+  post "/agents/:id/runtime/api/v1/agents/:runtime_agent_id/input" do
+    SymphonyElixirWeb.AgentLiveIoController.input(conn, Map.put(conn.params, "id", runtime_agent_id))
+  end
+
+  post "/agents/:id/runtime/api/v1/agents/:runtime_agent_id/interrupt" do
+    SymphonyElixirWeb.AgentLiveIoController.interrupt(conn, Map.put(conn.params, "id", runtime_agent_id))
+  end
+
+  get "/agents/:id/runtime/api/v1/agents/:runtime_agent_id/stream" do
+    SymphonyElixirWeb.AgentLiveIoController.stream(conn, Map.put(conn.params, "id", runtime_agent_id))
+  end
+
   post "/agents/:id/runtime/api/v1/plans/draft-from-prompt" do
     case plan_draft_adapter().draft_for_agent(id, conn.body_params) do
       {:ok, payload} ->
