@@ -59,6 +59,54 @@ sits on top of it.
 - `GET|WS /api/agents/:id/stream` — live output (text deltas, `ToolActivity`,
   usage, turn boundaries). Reuse the existing agent WS gateway if it fits.
 
+## Cost & session lifecycle
+
+**The feed does not cost tokens.** LLM billing is per *inference request* — input
+tokens (the context sent) + output tokens (generated) — charged only when a turn
+actually runs. There is no per-connection or per-time billing. So:
+
+- An **idle** persistent session (a connected `ClaudeSDKClient` / live Codex
+  thread waiting for the next message) bills **nothing** — it holds a process and
+  a socket, not inference.
+- **Streaming output is not extra tokens** — incremental SSE delivery vs a single
+  batch is the same generation, same tokens.
+- **Visibility/governance is free** token-wise — `can_use_tool`, tool-activity
+  events, and `getContextUsage()` are local callbacks, not model calls.
+- The only token cost is the **agent actually working** (a turn that thinks/calls
+  tools/loops), which costs the same with or without the persistent feed. A long
+  *conversation* grows its input context per turn (true today too — we already
+  `resume` the same growing context), mitigated by prompt caching / compaction;
+  that's a function of conversation length, not of the stream being open.
+
+**The genuinely new cost is infra, not tokens:** a live session keeps a
+subprocess + orchestrator session + socket alive (RAM/CPU/process slots). Many
+idle live sessions is a resource-exhaustion concern, not a token bill — and it is
+what the lifecycle below controls.
+
+**Lifecycle rule — decouple two things:**
+
+- **The conversation** — durable, persisted, *resumable* by session/thread id.
+  Cheap; always "exists."
+- **The live streaming process** — ephemeral; started on demand, torn down when
+  idle.
+
+Then:
+
+- **Start** the live session when there's a reason: a turn/message arrives, or a
+  viewer attaches to the stream.
+- **Stop** it on: idle timeout (no message and no active turn for N minutes),
+  turn completion with no attached viewer, or explicit stop/interrupt.
+- **Resume cheaply** on the next message — teardown loses no conversation (the
+  transcript + session id persist), it just drops the warm process; the SDK's
+  `resume` / Codex's thread id rehydrate context.
+- **Cap** concurrent live sessions.
+
+This is what we effectively do today (no process is held between turns), made
+smarter: keep the live process only while actively in use. Persistence buys
+**latency** (instant next turn, no re-spawn) and **live control**
+(interrupt/inject) at the price of *optionally* keeping a process warm — bounded
+by an idle timeout, not a token meter.
+
 ## Phasing
 
 **Phase A — Persistent streaming session in the runner.**
