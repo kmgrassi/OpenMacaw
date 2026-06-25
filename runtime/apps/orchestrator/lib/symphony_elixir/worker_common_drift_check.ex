@@ -22,8 +22,8 @@ defmodule SymphonyElixir.WorkerCommonDriftCheck do
       left: "lib/symphony_elixir/codex/app_server.ex",
       right: "../../workers/common/symphony_elixir/codex/app_server.ex",
       status: :intentional_drift,
-      left_sha256: "5748718326b7f1c3cd57ecdd4735513904935ddb52c0915903c32cae9ffed86c",
-      right_sha256: "b3b42f53c2a27cbe0f2d5c8e350932be83bfe573ae04edfc4b0a7a17c6876431",
+      left_sha256: "130cd2edf433cb0c7262a1f41f7096ba8cbbd9f8a67241e1d1c73534fec725c9",
+      right_sha256: "830e94ba441da778fb013f88e6f8935eceea56ad9d02e28b457c18be0c399445",
       reason: "orchestrator copy already uses PortProtocol and TurnEventDispatcher while worker common now delegates transport and approvals into smaller helper modules"
     },
     %{
