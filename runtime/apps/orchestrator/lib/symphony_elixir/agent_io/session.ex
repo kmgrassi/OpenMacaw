@@ -207,9 +207,11 @@ defmodule SymphonyElixir.AgentIO.Session do
     {:noreply, state}
   end
 
-  def handle_info(:idle_timeout, state) do
+  def handle_info({:timeout, ref, :idle_timeout}, %{idle_timer_ref: ref, active_task: nil} = state) do
     {:noreply, %{stop_runner_session(state) | idle_timer_ref: nil}}
   end
+
+  def handle_info({:timeout, _ref, :idle_timeout}, state), do: {:noreply, state}
 
   def handle_info(_message, state), do: {:noreply, state}
 
@@ -302,12 +304,12 @@ defmodule SymphonyElixir.AgentIO.Session do
 
   defp schedule_idle_timeout(state) do
     state = cancel_idle_timer(state)
-    ref = Process.send_after(self(), :idle_timeout, state.idle_timeout_ms)
+    ref = :erlang.start_timer(state.idle_timeout_ms, self(), :idle_timeout)
     %{state | idle_timer_ref: ref}
   end
 
   defp cancel_idle_timer(%{idle_timer_ref: ref} = state) when is_reference(ref) do
-    Process.cancel_timer(ref)
+    :erlang.cancel_timer(ref)
     %{state | idle_timer_ref: nil}
   end
 

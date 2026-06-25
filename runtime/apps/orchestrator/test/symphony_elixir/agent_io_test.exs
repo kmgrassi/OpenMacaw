@@ -101,6 +101,34 @@ defmodule SymphonyElixir.AgentIOTest do
     assert_receive {:agent_io_event, ^key, %{event: :turn_ended_with_error, turn_id: ^turn_id, payload: %{"reason" => "interrupted"}}}
   end
 
+  test "stale idle timeout messages do not stop an active runner session" do
+    key = unique_key()
+
+    assert {:ok, pid} =
+             AgentIO.ensure_session(key,
+               runner: SlowRunner,
+               config: %{owner: self()},
+               idle_timeout_ms: 60_000
+             )
+
+    assert {:ok, _snapshot} = AgentIO.subscribe(key, self())
+    assert {:error, :no_active_turn} = AgentIO.interrupt(key)
+
+    %{idle_timer_ref: stale_ref} = :sys.get_state(pid)
+    assert is_reference(stale_ref)
+
+    assert {:ok, _turn} = AgentIO.send_message(key, "active")
+    assert_receive {:slow_run_turn, "active"}
+
+    send(pid, {:timeout, stale_ref, :idle_timeout})
+
+    refute_receive {:slow_stop_session, "slow-session-1"}, 100
+    assert {:error, :turn_already_active} = AgentIO.send_message(key, "still active")
+
+    assert :ok = AgentIO.interrupt(key)
+    assert_receive {:slow_stop_session, "slow-session-1"}
+  end
+
   defp unique_key do
     "agent-io-test-#{System.unique_integer([:positive])}"
   end
