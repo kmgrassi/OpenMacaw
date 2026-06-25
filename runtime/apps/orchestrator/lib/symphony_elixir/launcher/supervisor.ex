@@ -48,6 +48,8 @@ defmodule SymphonyElixir.Launcher.Supervisor do
       [
         {Phoenix.PubSub, name: SymphonyElixir.PubSub},
         {Task.Supervisor, name: SymphonyElixir.TaskSupervisor},
+        {Registry, keys: :unique, name: SymphonyElixir.AgentIO.SessionRegistry},
+        {DynamicSupervisor, name: SymphonyElixir.AgentIO.SessionSupervisor, strategy: :one_for_one},
         SymphonyElixir.Launcher.ConfigRegistry,
         SymphonyElixir.WorkflowStore,
         SymphonyElixir.Orchestrator.WorkerSlotReservations,

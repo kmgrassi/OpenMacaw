@@ -28,6 +28,8 @@ defmodule SymphonyElixir.Application do
       [
         {Phoenix.PubSub, name: SymphonyElixir.PubSub},
         {Task.Supervisor, name: SymphonyElixir.TaskSupervisor},
+        {Registry, keys: :unique, name: SymphonyElixir.AgentIO.SessionRegistry},
+        {DynamicSupervisor, name: SymphonyElixir.AgentIO.SessionSupervisor, strategy: :one_for_one},
         {Registry, keys: :unique, name: SymphonyElixir.Manager.Scheduler.Registry},
         SymphonyElixir.WorkflowStore,
         SymphonyElixir.RepoCache.Registry,
@@ -37,6 +39,7 @@ defmodule SymphonyElixir.Application do
         SymphonyElixir.Cutover.Cooldown,
         SymphonyElixir.CloudExecution.Aws.TaskStore,
         SymphonyElixir.LocalRelay.Registry,
+        SymphonyElixir.Codex.SessionRegistry,
         SymphonyElixir.Gateway.SessionStore,
         SymphonyElixir.AgentLiveIo,
         SymphonyElixir.LocalRelay.Presence,

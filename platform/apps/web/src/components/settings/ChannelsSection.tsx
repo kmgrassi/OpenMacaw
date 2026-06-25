@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useGatewayContext } from "../../context/GatewayContext";
+import { useLoadOnConnect } from "../../hooks/useLoadOnConnect";
 import { Alert } from "../ui/Alert";
 import { Card } from "../ui/Card";
 import { Badge } from "../ui/Badge";
@@ -53,10 +54,7 @@ export function ChannelsSection() {
     }
   };
 
-  useEffect(() => {
-    void loadChannels();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected]);
+  useLoadOnConnect(connected, loadChannels);
 
   const startWhatsAppLogin = async () => {
     setWaBusy(true);

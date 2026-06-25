@@ -190,6 +190,28 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
   end
 
+  @spec send_message(session(), String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def send_message(session, prompt, issue, opts \\ []) do
+    run_turn(session, prompt, issue, opts)
+  end
+
+  @spec interrupt_turn(session(), String.t()) :: :ok | {:error, term()}
+  def interrupt_turn(%{port: port, thread_id: thread_id}, turn_id)
+      when is_port(port) and is_binary(thread_id) and is_binary(turn_id) and turn_id != "" do
+    case PortProtocol.send_message(port, %{
+           "method" => "turn/interrupt",
+           "params" => %{
+             "threadId" => thread_id,
+             "turnId" => turn_id
+           }
+         }) do
+      true -> :ok
+      false -> {:error, :port_closed}
+    end
+  end
+
+  def interrupt_turn(_session, _turn_id), do: {:error, :invalid_turn}
+
   @spec stop_session(session()) :: :ok
   def stop_session(%{port: port}) when is_port(port) do
     stop_port(port)
