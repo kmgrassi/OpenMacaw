@@ -18,7 +18,7 @@ defmodule SymphonyElixir.Runner.CodingRunner do
   @type input :: Contract.coding_input()
   @type capabilities :: Contract.coding_capabilities()
 
-  @callback send_input(session(), input(), WorkItem.t() | map(), keyword()) ::
+  @callback send_input(session(), input(), WorkItem.t(), keyword()) ::
               {:ok, result()} | {:error, term()}
 
   @callback interrupt(session(), keyword()) :: :ok | {:error, term()}
@@ -36,7 +36,7 @@ defmodule SymphonyElixir.Runner.CodingRunner do
   @doc """
   Sends user input into an existing coding session through a concrete adapter.
   """
-  @spec send_input(module(), session(), input(), WorkItem.t() | map(), keyword()) ::
+  @spec send_input(module(), session(), input(), WorkItem.t(), keyword()) ::
           {:ok, result()} | {:error, term()}
   def send_input(adapter, session, input, work_item, opts \\ []) when is_atom(adapter) do
     adapter.send_input(session, input, work_item, opts)
