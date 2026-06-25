@@ -124,7 +124,11 @@ describe("resolveDefaultAgentId", () => {
       },
     ]);
 
-    await expect(resolveDefaultAgentId()).resolves.toBe("coding-agent");
+    await expect(resolveDefaultAgentId("user-token")).resolves.toBe("coding-agent");
+    expect(mockedListStoredAgentsFromSupabase).toHaveBeenCalledWith({
+      accessToken: "user-token",
+      userId: "",
+    });
   });
 });
 
