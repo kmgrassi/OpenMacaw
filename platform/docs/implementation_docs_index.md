@@ -156,11 +156,6 @@ In-flight work. Each entry should map to one or more open PRs.
   for 4.1, 4.3, and 4.5.
 - [active/production-container-tool-execution-scope.md](active/production-container-tool-execution-scope.md)
   — Production container execution for tool calls.
-- [active/secretless-credential-proxy-scope.md](active/secretless-credential-proxy-scope.md)
-  — Exploratory (not scheduled): how Omnigent keeps cloud credentials out of
-  the agent's reach via a forced-egress MITM proxy, how it relates to our
-  worker isolation + GitHub App token minting, and what emulating it would
-  take.
 - [active/query-invalidation-large-file-refactor.md](active/query-invalidation-large-file-refactor.md)
   — Split the frontend query invalidation module into focused helpers while
   keeping the public facade stable.
@@ -226,6 +221,11 @@ Durable design and process docs.
   — Schema diagnostic tool reference.
 - [reference/resolver-routing-note.md](reference/resolver-routing-note.md) —
   External reference and platform notes for resolver-style routing.
+- [reference/secretless-credential-proxy-scope.md](reference/secretless-credential-proxy-scope.md)
+  — Exploratory (not scheduled): how Omnigent keeps cloud credentials out of
+  the agent's reach via a forced-egress MITM proxy, how it relates to our
+  worker isolation + GitHub App token minting, and what emulating it would
+  take.
 - [reference/hardening-and-reuse-opportunities.md](reference/hardening-and-reuse-opportunities.md)
   — Catalog of follow-up hardening and reuse opportunities.
 - [reference/oq-04-credentials-pr-plan.md](reference/oq-04-credentials-pr-plan.md)

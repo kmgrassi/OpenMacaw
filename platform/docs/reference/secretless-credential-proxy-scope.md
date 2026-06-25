@@ -10,7 +10,7 @@
 > Related: [`oq-04-per-task-model-overrides-credentials`](../open-questions/oq-04-per-task-model-overrides-credentials.md),
 > [`oq-11-oauth-for-runners`](../open-questions/oq-11-oauth-for-runners.md),
 > [`oq-12-git-and-source-control`](../open-questions/oq-12-git-and-source-control.md),
-> [`production-container-tool-execution-scope`](./production-container-tool-execution-scope.md).
+> [`production-container-tool-execution-scope`](../active/production-container-tool-execution-scope.md).
 > Implemented credential plumbing: GitHub App installation credential +
 > JIT token minting (`platform/apps/api/src/services/resource-credentials.ts`,
 > PRs #290 / #293).
