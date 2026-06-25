@@ -46,6 +46,7 @@ vi.mock("../services/resource-dispatch-resolution.js", () => ({
 
 vi.mock("../repositories/agents.js", () => ({
   findSetupAgentById: vi.fn(),
+  findStoredAgentRowById: vi.fn(),
 }));
 
 vi.mock("../services/upstream.js", () => ({
@@ -61,7 +62,7 @@ const { assertLocalCodingToolsUseRuntimeTarget, resolveLocalCodingExecutionTarge
   await import("../services/local-coding-execution-target.js"),
 );
 const { resolveContainerDispatchResources } = vi.mocked(await import("../services/resource-dispatch-resolution.js"));
-const { findSetupAgentById } = vi.mocked(await import("../repositories/agents.js"));
+const { findSetupAgentById, findStoredAgentRowById } = vi.mocked(await import("../repositories/agents.js"));
 
 const agentId = "11111111-1111-4111-8111-111111111111";
 const workspaceId = "22222222-2222-4222-8222-222222222222";
@@ -229,6 +230,15 @@ describe("runtime dispatch proxy contract", () => {
     });
 
     resolveRequestAgentId.mockResolvedValue(agentId);
+    findStoredAgentRowById.mockResolvedValue({
+      id: agentId,
+      workspace_id: workspaceId,
+      name: "Coding Agent",
+      type: "coding",
+      context: null,
+      model_settings: {},
+      tool_policy: {},
+    });
     resolveExecutionProfile.mockResolvedValue(localCodingProfile());
     getToolsForAgent.mockResolvedValue([shellTool()]);
     assertLocalCodingToolsUseRuntimeTarget.mockReturnValue(undefined);
@@ -474,6 +484,23 @@ describe("runtime dispatch proxy contract", () => {
         details: { command: "rm -rf /tmp/outside" },
       },
     });
+  });
+
+  it("rejects runtime proxy requests for agents outside the caller scope", async () => {
+    findStoredAgentRowById.mockResolvedValueOnce(null);
+
+    const response = await fetch(`${baseUrl}/api/agents/${agentId}/runs`, {
+      headers: { authorization: "Bearer test-token" },
+    });
+
+    expect(response.status, await response.clone().text()).toBe(404);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "agent_not_found",
+        message: "Agent was not found",
+      },
+    });
+    expect(resolveRuntimeTargetForAgent).not.toHaveBeenCalled();
   });
 
   it("passes container execution target metadata through runtime dispatch", async () => {

@@ -9,6 +9,7 @@ import {
   requireAccessToken,
   requireVerifiedUser,
 } from "../http.js";
+import { findStoredAgentRowById } from "../repositories/agents.js";
 import { attachRuntimeDispatchContext, buildRuntimeDispatchContext } from "./runtime-dispatch-context.js";
 import { internalServiceRoleHeaders } from "./internal-service-auth.js";
 import { resolveRequestAgentId, resolveRuntimeTargetForAgent } from "./runtime-target.js";
@@ -113,9 +114,10 @@ export async function proxyResolvedRuntimeRequest(init: {
 }) {
   const { req, res, launcherRequest, requestTimeoutMs } = init;
   const upstreamPath = resolveAgentProxyPath(req);
+  const accessToken = requireAccessToken(req);
 
   try {
-    const agentId = await resolveRequestAgentId(req);
+    const agentId = await resolveRequestAgentId(req, accessToken);
     if (!agentId) {
       return res.status(400).json({
         error: {
@@ -123,6 +125,9 @@ export async function proxyResolvedRuntimeRequest(init: {
           message: "agent_id is required to resolve a runtime target",
         },
       });
+    }
+    if (!(await findStoredAgentRowById(accessToken, agentId))) {
+      throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
     }
 
     let target = await resolveRuntimeTargetForAgent(agentId, launcherRequest);
@@ -143,7 +148,7 @@ export async function proxyResolvedRuntimeRequest(init: {
       req.method === "GET" || req.method === "HEAD"
         ? null
         : await buildRuntimeDispatchContext({
-            accessToken: requireAccessToken(req),
+            accessToken,
             requesterUserId: requireVerifiedUser(req),
             agentId,
             requestBody: req.body ?? {},

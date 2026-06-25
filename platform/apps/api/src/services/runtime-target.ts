@@ -271,8 +271,8 @@ async function resolveRuntimeTargetForAgentImpl(
   throw runtimeMissing(agentId);
 }
 
-export async function resolveDefaultAgentId(): Promise<string | null> {
-  const agents = await listStoredAgentsFromSupabase();
+export async function resolveDefaultAgentId(accessToken: string): Promise<string | null> {
+  const agents = await listStoredAgentsFromSupabase({ accessToken, userId: "" });
   return (
     agents.find((agent) => agent.isResolved && isStoredAgentRuntimeSelectable(agent))?.id ??
     agents.find(isStoredAgentRuntimeSelectable)?.id ??
@@ -311,6 +311,6 @@ export function requestAgentId(req: Request): string | null {
   );
 }
 
-export async function resolveRequestAgentId(req: Request): Promise<string | null> {
-  return requestAgentId(req) ?? (await resolveDefaultAgentId());
+export async function resolveRequestAgentId(req: Request, accessToken: string): Promise<string | null> {
+  return requestAgentId(req) ?? (await resolveDefaultAgentId(accessToken));
 }
