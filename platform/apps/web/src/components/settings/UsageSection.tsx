@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useGatewayContext } from "../../context/GatewayContext";
 import { fetchLearningCost } from "../../api/learning-cost";
 import type { LearningCostResponse } from "../../../../../contracts/learning-cost";
+import { useLoadOnConnect } from "../../hooks/useLoadOnConnect";
 import { Alert } from "../ui/Alert";
 import { Card } from "../ui/Card";
 import { Badge } from "../ui/Badge";
@@ -116,10 +117,7 @@ export function UsageSection() {
     }
   };
 
-  useEffect(() => {
-    void loadUsage();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connected]);
+  useLoadOnConnect(connected, loadUsage);
 
   return (
     <div className="space-y-4">
