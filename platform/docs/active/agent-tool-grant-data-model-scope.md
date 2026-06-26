@@ -186,7 +186,6 @@ Files:
 - `apps/web/src/api/generated/platform-api-client.ts`
 - `apps/web/src/components/agent-settings/ToolDefinitionsPanel.tsx`
 - `apps/web/src/components/agent-settings/ToolDefinitionList.tsx`
-- `apps/web/src/components/agent-settings/ToolDefinitionEditor.tsx`
 - `apps/web/src/components/settings/AgentDetail.tsx`
 
 Changes:

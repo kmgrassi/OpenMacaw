@@ -297,7 +297,6 @@ Affected areas:
 - `apps/web/src/hooks/useToolDefinitions.ts`
 - `apps/web/src/components/agent-settings/ToolDefinitionsPanel.tsx`
 - `apps/web/src/components/agent-settings/ToolDefinitionsPanel/**`
-- `apps/web/src/components/agent-settings/ToolDefinitionEditor.tsx`
 
 Acceptance:
 

@@ -282,7 +282,6 @@ forms and must not alter submit behavior.
 - [apps/web/src/routes/WorkspaceItems/utils.tsx](../../apps/web/src/routes/WorkspaceItems/utils.tsx)
 - [apps/web/src/components/settings/RuntimeSection.tsx](../../apps/web/src/components/settings/RuntimeSection.tsx)
 - [apps/web/src/components/dashboard/ConfigurationStatusCard.tsx](../../apps/web/src/components/dashboard/ConfigurationStatusCard.tsx)
-- [apps/web/src/components/ConnectionHealth.tsx](../../apps/web/src/components/ConnectionHealth.tsx)
 - [apps/web/src/components/AgentList.tsx](../../apps/web/src/components/AgentList.tsx)
 - [apps/web/src/components/AppShell.tsx](../../apps/web/src/components/AppShell.tsx)
 
@@ -318,7 +317,6 @@ standardize presentation.
 
 - [apps/web/src/pages/plans/NewPlan.tsx](../../apps/web/src/pages/plans/NewPlan.tsx)
 - [apps/web/src/components/ChatComposer.tsx](../../apps/web/src/components/ChatComposer.tsx)
-- [apps/web/src/components/agent-settings/ToolDefinitionEditor.tsx](../../apps/web/src/components/agent-settings/ToolDefinitionEditor.tsx)
 - [apps/web/src/components/agent-settings/ToolDefinitionsPanel/ToolCatalog.tsx](../../apps/web/src/components/agent-settings/ToolDefinitionsPanel/ToolCatalog.tsx)
 - [apps/web/src/components/settings/ConfigSection.tsx](../../apps/web/src/components/settings/ConfigSection.tsx)
 - [apps/web/src/components/settings/ManagerAgentSection/ManagerAgentOverrides.tsx](../../apps/web/src/components/settings/ManagerAgentSection/ManagerAgentOverrides.tsx)
