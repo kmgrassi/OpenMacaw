@@ -9,8 +9,15 @@ defmodule SymphonyElixir.AgentLiveIo do
 
   use GenServer
 
+  alias SymphonyElixir.AgentIO
+  alias SymphonyElixir.AgentInventory.Agent
   alias SymphonyElixir.ChatGateway
+  alias SymphonyElixir.ExecutionProfile
+  alias SymphonyElixir.Gateway.AgentExecutionProfile
   alias SymphonyElixir.Gateway.SessionStore
+  alias SymphonyElixir.WorkItem
+  alias SymphonyElixir.Workspace
+  alias SymphonyElixirWeb.Gateway.Middleware
 
   @type scope :: %{
           required(:agent_id) => String.t(),
@@ -28,17 +35,48 @@ defmodule SymphonyElixir.AgentLiveIo do
 
   @spec post_message(scope(), String.t(), keyword()) :: ChatGateway.post_result()
   def post_message(scope, message, opts \\ []) when is_map(scope) and is_binary(message) do
-    ChatGateway.post_message(scope, message,
-      run_id: Keyword.get_lazy(opts, :run_id, &Ecto.UUID.generate/0),
-      owner_pid: owner_pid(),
-      metadata: Keyword.get(opts, :metadata, %{}),
-      workflow_path: Keyword.get(opts, :workflow_path),
-      trace_id: Keyword.get(opts, :trace_id)
-    )
+    with {:ok, route} <- route(scope, opts) do
+      case route do
+        {:agent_io, agent, profile} ->
+          with {:ok, agent_io_opts} <- agent_io_opts(scope, agent, profile, opts),
+               {:ok, %{turn_id: turn_id}} <- AgentIO.send_message(scope.session_key, message, agent_io_opts) do
+            {:ok, turn_id}
+          end
+
+        :chat_gateway ->
+          ChatGateway.post_message(scope, message,
+            run_id: Keyword.get_lazy(opts, :run_id, &Ecto.UUID.generate/0),
+            owner_pid: owner_pid(),
+            metadata: Keyword.get(opts, :metadata, %{}),
+            workflow_path: Keyword.get(opts, :workflow_path),
+            trace_id: Keyword.get(opts, :trace_id)
+          )
+      end
+    end
   end
 
-  @spec interrupt(String.t(), String.t() | nil) :: {:ok, event()} | {:error, term()}
-  def interrupt(session_key, run_id \\ nil) when is_binary(session_key) do
+  @spec interrupt(scope() | String.t(), String.t() | nil, keyword()) :: {:ok, event()} | {:error, term()}
+  def interrupt(scope_or_session_key, run_id \\ nil, opts \\ [])
+
+  def interrupt(%{session_key: session_key} = scope, run_id, opts) when is_binary(session_key) do
+    with {:ok, route} <- route(scope, opts) do
+      case route do
+        {:agent_io, _agent, _profile} ->
+          with :ok <- AgentIO.interrupt(session_key) do
+            event =
+              base_event("turn_interrupted", scope, session_key, run_id)
+              |> Map.put("payload", %{"reason" => "interrupted"})
+
+            {:ok, event}
+          end
+
+        :chat_gateway ->
+          interrupt(session_key, run_id, opts)
+      end
+    end
+  end
+
+  def interrupt(session_key, run_id, _opts) when is_binary(session_key) do
     case SessionStore.abort_run(session_key, run_id) do
       {:ok, session} ->
         event =
@@ -53,14 +91,71 @@ defmodule SymphonyElixir.AgentLiveIo do
     end
   end
 
-  @spec subscribe(String.t()) :: :ok
-  def subscribe(session_key) when is_binary(session_key) do
+  @spec subscribe(scope() | String.t(), keyword()) :: :ok | {:error, term()}
+  def subscribe(scope_or_session_key, opts \\ [])
+
+  def subscribe(%{session_key: session_key} = scope, opts) when is_binary(session_key) do
+    with {:ok, route} <- route(scope, opts) do
+      case route do
+        {:agent_io, agent, profile} ->
+          with {:ok, agent_io_opts} <- agent_io_opts(scope, agent, profile, opts),
+               {:ok, _snapshot} <- AgentIO.subscribe(session_key, self(), agent_io_opts) do
+            :ok
+          end
+
+        :chat_gateway ->
+          subscribe(session_key, opts)
+      end
+    end
+  end
+
+  def subscribe(session_key, _opts) when is_binary(session_key) do
     GenServer.call(__MODULE__, {:subscribe, session_key, self()})
   end
 
   @spec unsubscribe(String.t()) :: :ok
   def unsubscribe(session_key) when is_binary(session_key) do
     GenServer.cast(__MODULE__, {:unsubscribe, session_key, self()})
+  end
+
+  @spec stream_event(scope(), map()) :: event() | nil
+  def stream_event(scope, %{event: event} = message) when is_map(scope) do
+    session_key = Map.get(message, :session_key) || scope.session_key
+    turn_id = Map.get(message, :turn_id) || get_in(message, [:payload, "turnId"]) || get_in(message, [:payload, :turn_id])
+    payload = Map.get(message, :payload) || %{}
+
+    case event do
+      :turn_started ->
+        base_event("turn_started", scope, session_key, turn_id)
+        |> Map.put("payload", payload)
+
+      :notification ->
+        notification_event(scope, session_key, turn_id, payload)
+
+      :turn_completed ->
+        base_event("turn_completed", scope, session_key, turn_id)
+        |> Map.put("payload", payload)
+
+      :turn_ended_with_error ->
+        if interrupted_payload?(payload) do
+          base_event("turn_interrupted", scope, session_key, turn_id)
+          |> Map.put("payload", payload)
+        else
+          base_event("error", scope, session_key, turn_id)
+          |> Map.put("payload", payload)
+        end
+
+      :startup_failed ->
+        base_event("error", scope, session_key, turn_id)
+        |> Map.put("payload", payload)
+
+      event when event in [:tool_call_started, :tool_call_completed, :tool_call_failed] ->
+        base_event("tool_activity", scope, session_key, turn_id)
+        |> Map.put("payload", payload)
+
+      _other ->
+        nil
+    end
   end
 
   @impl true
@@ -149,6 +244,136 @@ defmodule SymphonyElixir.AgentLiveIo do
   end
 
   def handle_info(_message, state), do: {:noreply, state}
+
+  defp route(scope, opts) do
+    if Keyword.has_key?(opts, :agent_live_io_route) do
+      {:ok, Keyword.fetch!(opts, :agent_live_io_route)}
+    else
+      with {:ok, agent} <- fetch_agent(scope, opts) do
+        case profile_resolver().resolve_route(scope.agent_id, scope.workspace_id) do
+          {:ok, profile} ->
+            if coding_agent_io_profile?(profile) do
+              {:ok, {:agent_io, agent, profile}}
+            else
+              {:ok, :chat_gateway}
+            end
+
+          {:error, _reason} ->
+            {:ok, :chat_gateway}
+        end
+      end
+    end
+  end
+
+  defp fetch_agent(scope, opts) do
+    case Keyword.get(opts, :agent) do
+      nil -> Middleware.fetch_agent(scope.agent_id)
+      agent -> {:ok, agent}
+    end
+  end
+
+  defp profile_resolver do
+    Application.get_env(:symphony_elixir, :agent_live_io_profile_resolver, AgentExecutionProfile)
+  end
+
+  defp coding_agent_io_profile?(profile) when is_map(profile) do
+    ExecutionProfile.runner_kind(profile) == "codex"
+  end
+
+  defp coding_agent_io_profile?(_profile), do: false
+
+  defp agent_io_opts(scope, agent, profile, opts) do
+    work_item = work_item(scope, agent, profile, Keyword.get(opts, :metadata, %{}))
+    runner = Keyword.get(opts, :runner, Application.get_env(:symphony_elixir, :agent_live_io_coding_runner, SymphonyElixir.Runner.Codex))
+    config = runner_config(agent, profile, scope, opts)
+
+    with {:ok, workspace} <- workspace_for(work_item, opts) do
+      {:ok,
+       [
+         runner: runner,
+         config: config,
+         workspace: workspace,
+         work_item: work_item
+       ]}
+    end
+  end
+
+  defp runner_config(agent, profile, scope, opts) do
+    base_config =
+      agent
+      |> agent_model_settings()
+      |> Map.put_new("agent_id", scope.agent_id)
+      |> Map.put_new("workspace_id", scope.workspace_id)
+      |> Map.put_new("user_id", scope.user_id)
+      |> maybe_put("agent_context", agent_context(agent))
+      |> maybe_put("trace_id", Keyword.get(opts, :trace_id))
+
+    ExecutionProfile.runner_config(profile, base_config)
+  end
+
+  defp workspace_for(%WorkItem{} = work_item, opts) do
+    case Keyword.fetch(opts, :workspace) do
+      {:ok, workspace} when is_binary(workspace) -> {:ok, workspace}
+      _ -> Workspace.create_for_issue(work_item.identifier || work_item.id)
+    end
+  end
+
+  defp work_item(scope, agent, profile, metadata) do
+    %WorkItem{
+      id: scope.session_key,
+      identifier: agent_slug(agent) || agent_id(agent) || scope.agent_id,
+      title: agent_name(agent) || "Streaming Agent Session",
+      description: agent_context(agent),
+      source: "agent_live_io",
+      runner_type: ExecutionProfile.runner_kind(profile),
+      metadata: metadata || %{}
+    }
+  end
+
+  defp notification_event(scope, session_key, turn_id, payload) do
+    case get_in(payload, ["params", "textDelta"]) do
+      delta when is_binary(delta) ->
+        base_event("text_delta", scope, session_key, turn_id)
+        |> Map.put("payload", %{"text" => delta})
+
+      _ ->
+        nil
+    end
+  end
+
+  defp interrupted_payload?(payload) when is_map(payload) do
+    reason = Map.get(payload, "reason") || Map.get(payload, :reason)
+    reason == "interrupted" or reason == :interrupted
+  end
+
+  defp interrupted_payload?(_payload), do: false
+
+  defp agent_model_settings(%Agent{model_settings: settings}) when is_map(settings), do: settings
+  defp agent_model_settings(%{model_settings: settings}) when is_map(settings), do: settings
+  defp agent_model_settings(_agent), do: %{}
+
+  defp agent_id(%Agent{id: id}), do: id
+  defp agent_id(%{id: id}), do: id
+  defp agent_id(%{"id" => id}), do: id
+  defp agent_id(_agent), do: nil
+
+  defp agent_name(%Agent{name: name}), do: name
+  defp agent_name(%{name: name}), do: name
+  defp agent_name(%{"name" => name}), do: name
+  defp agent_name(_agent), do: nil
+
+  defp agent_slug(%Agent{slug: slug}), do: slug
+  defp agent_slug(%{slug: slug}), do: slug
+  defp agent_slug(%{"slug" => slug}), do: slug
+  defp agent_slug(_agent), do: nil
+
+  defp agent_context(%Agent{context: context}), do: context
+  defp agent_context(%{context: context}), do: context
+  defp agent_context(%{"context" => context}), do: context
+  defp agent_context(_agent), do: nil
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp owner_pid do
     case Process.whereis(__MODULE__) do

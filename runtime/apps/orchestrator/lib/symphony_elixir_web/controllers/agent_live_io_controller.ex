@@ -39,7 +39,7 @@ defmodule SymphonyElixirWeb.AgentLiveIoController do
     params = conn.body_params
 
     with {:ok, scope} <- scope(agent_id, params),
-         {:ok, event} <- AgentLiveIo.interrupt(scope.session_key, string_field(params, "turn_id")) do
+         {:ok, event} <- AgentLiveIo.interrupt(scope, string_field(params, "turn_id")) do
       conn
       |> put_status(202)
       |> json(%{
@@ -65,16 +65,16 @@ defmodule SymphonyElixirWeb.AgentLiveIoController do
       |> Map.put("agent_id", agent_id)
       |> Map.put_new("user_id", Map.get(conn.query_params, "user_id"))
 
-    with {:ok, scope} <- scope(agent_id, params) do
+    with {:ok, scope} <- scope(agent_id, params),
+         :ok <- AgentLiveIo.subscribe(scope) do
       conn =
         conn
         |> put_resp_content_type("text/event-stream")
         |> put_resp_header("cache-control", "no-cache")
         |> send_chunked(200)
 
-      AgentLiveIo.subscribe(scope.session_key)
       {:ok, conn} = chunk(conn, ": connected\n\n")
-      stream_loop(conn, scope.session_key)
+      stream_loop(conn, scope)
     else
       {:error, reason} -> error(conn, reason)
     end
@@ -82,17 +82,39 @@ defmodule SymphonyElixirWeb.AgentLiveIoController do
 
   def stream(conn, _params), do: error(conn, :agent_not_found)
 
-  defp stream_loop(conn, session_key) do
+  defp stream_loop(conn, %{session_key: session_key} = scope) do
     receive do
       {:agent_live_io_event, ^session_key, event} ->
         case chunk(conn, "data: #{Jason.encode!(event)}\n\n") do
-          {:ok, conn} -> stream_loop(conn, session_key)
+          {:ok, conn} -> stream_loop(conn, scope)
           {:error, _reason} -> AgentLiveIo.unsubscribe(session_key)
         end
+
+      {:agent_io_event, ^session_key, event} ->
+        with public_event when is_map(public_event) <- AgentLiveIo.stream_event(scope, event) do
+          case chunk(conn, "data: #{Jason.encode!(public_event)}\n\n") do
+            {:ok, conn} -> stream_loop(conn, scope)
+            {:error, _reason} -> :ok
+          end
+        else
+          _ -> stream_loop(conn, scope)
+        end
+
+      {:agent_io_event, _other_session_key, _event} ->
+        stream_loop(conn, scope)
+
+      {:agent_live_io_event, _other_session_key, _event} ->
+        stream_loop(conn, scope)
+
+      {:DOWN, _ref, :process, _pid, _reason} ->
+        stream_loop(conn, scope)
+
+      _message ->
+        stream_loop(conn, scope)
     after
       @stream_heartbeat_ms ->
         case chunk(conn, ": heartbeat\n\n") do
-          {:ok, conn} -> stream_loop(conn, session_key)
+          {:ok, conn} -> stream_loop(conn, scope)
           {:error, _reason} -> AgentLiveIo.unsubscribe(session_key)
         end
     end

@@ -29,6 +29,49 @@ defmodule SymphonyElixirWeb.AgentLiveIoControllerTest do
     end
   end
 
+  defmodule CodexProfileResolver do
+    def resolve_route(_agent_id, _workspace_id) do
+      {:ok,
+       %{
+         "role" => "coding",
+         "runner_kind" => "codex",
+         "provider" => "openai_codex",
+         "model" => "fake-codex",
+         "adapter_config" => %{}
+       }}
+    end
+  end
+
+  defmodule FakeCodexRunner do
+    def start_session(config, workspace) do
+      send(owner(), {:fake_codex_start_session, config, workspace})
+      {:ok, %{runner: "codex", session_id: "fake-codex-session", owner: owner()}}
+    end
+
+    def run_turn(session, "interrupt me", _work_item) do
+      send(session.owner, :fake_codex_turn_started)
+
+      receive do
+        :release -> {:ok, %{"output_text" => "released"}}
+      after
+        60_000 -> {:ok, %{"output_text" => "late"}}
+      end
+    end
+
+    def run_turn(session, prompt, work_item) do
+      send(session.owner, {:fake_codex_run_turn, prompt, work_item})
+      session.on_message.(%{event: :notification, payload: %{"params" => %{"textDelta" => "hello from codex"}}})
+      {:ok, %{"output_text" => "hello from codex", "model" => "fake-codex", "provider" => "openai_codex"}}
+    end
+
+    def stop_session(session) do
+      send(session.owner, {:fake_codex_stop_session, session.session_id})
+      :ok
+    end
+
+    defp owner, do: Application.fetch_env!(:symphony_elixir, :agent_live_io_test_owner)
+  end
+
   setup do
     start_test_endpoint()
     put_system_env("SUPABASE_SERVICE_ROLE_KEY", @service_role_key)
@@ -63,6 +106,93 @@ defmodule SymphonyElixirWeb.AgentLiveIoControllerTest do
 
       assert Enum.any?(messages, &(&1["role"] == "assistant" and &1["content"] == "hello Stub Agent"))
     end)
+  end
+
+  test "Codex runner agents route through AgentIO and stream public contract events" do
+    put_app_env(:symphony_elixir, :agent_live_io_profile_resolver, CodexProfileResolver)
+    put_app_env(:symphony_elixir, :agent_live_io_coding_runner, FakeCodexRunner)
+    put_app_env(:symphony_elixir, :agent_live_io_test_owner, self())
+
+    session_key = default_session_key() <> ":codex"
+    scope = %{agent_id: @agent_id, workspace_id: @workspace_id, user_id: @user_id, session_key: session_key}
+
+    assert :ok = SymphonyElixir.AgentLiveIo.subscribe(scope)
+
+    conn =
+      authed_conn()
+      |> post("/api/v1/agents/#{@agent_id}/input", %{
+        "workspace_id" => @workspace_id,
+        "user_id" => @user_id,
+        "message" => "Ping",
+        "session_key" => session_key
+      })
+
+    assert %{
+             "accepted" => true,
+             "agentId" => @agent_id,
+             "workspaceId" => @workspace_id,
+             "sessionKey" => ^session_key,
+             "turnId" => turn_id
+           } = json_response(conn, 202)
+
+    assert_receive {:fake_codex_start_session, %{"model" => "fake-codex", "model_provider" => "openai_codex"}, workspace}
+    assert is_binary(workspace)
+    assert_receive {:fake_codex_run_turn, "Ping", %{id: ^session_key, runner_type: "codex"}}
+
+    assert_receive {:agent_io_event, ^session_key, %{event: :turn_started, turn_id: ^turn_id} = event}
+
+    assert %{"type" => "turn_started", "agentId" => @agent_id, "workspaceId" => @workspace_id} =
+             SymphonyElixir.AgentLiveIo.stream_event(scope, event)
+
+    assert_receive {:agent_io_event, ^session_key, %{event: :notification, turn_id: ^turn_id} = event}
+
+    assert %{"type" => "text_delta", "payload" => %{"text" => "hello from codex"}} =
+             SymphonyElixir.AgentLiveIo.stream_event(scope, event)
+
+    assert_receive {:agent_io_event, ^session_key, %{event: :turn_completed, turn_id: ^turn_id} = event}
+
+    assert %{"type" => "turn_completed", "turnId" => ^turn_id} =
+             SymphonyElixir.AgentLiveIo.stream_event(scope, event)
+
+    refute_received {:message_log_user_message, _, _, "Ping", _}
+  end
+
+  test "Codex runner interrupts become turn_interrupted stream events" do
+    put_app_env(:symphony_elixir, :agent_live_io_profile_resolver, CodexProfileResolver)
+    put_app_env(:symphony_elixir, :agent_live_io_coding_runner, FakeCodexRunner)
+    put_app_env(:symphony_elixir, :agent_live_io_test_owner, self())
+
+    session_key = default_session_key() <> ":codex-interrupt"
+    scope = %{agent_id: @agent_id, workspace_id: @workspace_id, user_id: @user_id, session_key: session_key}
+
+    assert :ok = SymphonyElixir.AgentLiveIo.subscribe(scope)
+
+    conn =
+      authed_conn()
+      |> post("/api/v1/agents/#{@agent_id}/input", %{
+        "workspace_id" => @workspace_id,
+        "user_id" => @user_id,
+        "message" => "interrupt me",
+        "session_key" => session_key
+      })
+
+    assert %{"turnId" => turn_id} = json_response(conn, 202)
+    assert_receive :fake_codex_turn_started
+
+    conn =
+      authed_conn()
+      |> post("/api/v1/agents/#{@agent_id}/interrupt", %{
+        "workspace_id" => @workspace_id,
+        "user_id" => @user_id,
+        "session_key" => session_key
+      })
+
+    assert %{"interrupted" => true, "sessionKey" => ^session_key} = json_response(conn, 202)
+    assert_receive {:fake_codex_stop_session, "fake-codex-session"}
+    assert_receive {:agent_io_event, ^session_key, %{event: :turn_ended_with_error, turn_id: ^turn_id} = event}
+
+    assert %{"type" => "turn_interrupted", "turnId" => ^turn_id, "payload" => %{"reason" => "interrupted"}} =
+             SymphonyElixir.AgentLiveIo.stream_event(scope, event)
   end
 
   test "POST /api/v1/agents/:id/interrupt aborts the active live I/O run" do
