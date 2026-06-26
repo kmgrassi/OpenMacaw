@@ -63,11 +63,18 @@ ToolActivity {
 
 Both runners feed it:
 
-- **Claude Code:** wire the SDK's **`can_use_tool`** callback in `bridge.js`
-  (and surface it over the bridge protocol) → the SDK pauses before each tool
-  call; the orchestrator records a `ToolActivity{phase: request}`, applies the
-  governance decision, and returns allow/deny. (Mirrors Omnigent's
-  `claude_sdk_executor._can_use_tool_for_permission`.)
+- **Claude Code:** for **complete visibility**, wire the SDK's
+  **`PreToolUse`/`PostToolUse` hooks** in `bridge.js` (surfaced over the bridge
+  protocol) — they fire for **every** tool call and emit
+  `ToolActivity{phase: request|result}`. **Don't use `canUseTool` for the
+  activity stream:** the TS Agent SDK only invokes `canUseTool` for tools left
+  *unresolved* by allow/deny/permission-mode rules, and our bridge defaults to
+  `permissionMode: "acceptEdits"` (and may pass `allowedTools`), so auto-approved
+  edits/tools never reach it — a partial stream. `canUseTool` (TS camelCase;
+  Python SDK = `can_use_tool`) is the interactive **ask** path, used for
+  governance in Phase 2 — and `PreToolUse` can itself deny, covering tools
+  `canUseTool` skips. (Omnigent likewise uses the SDK's permission surface for
+  governance and the event stream for observation.)
 - **Codex:** already routes `dynamic/tool` through `ToolRegistry`; emit the same
   `ToolActivity` from that path.
 
@@ -78,8 +85,10 @@ shared abstraction.
 ## Phasing
 
 **Phase 0 — Tool visibility (keystone, bounded).**
-- Wire `can_use_tool` for Claude Code in `bridge.js` + bridge protocol; emit
-  `ToolActivity` from both Claude Code and the existing Codex path.
+- Wire Claude Code's **`PreToolUse`/`PostToolUse` hooks** in `bridge.js` + bridge
+  protocol (they fire for *every* tool — unlike `canUseTool`, which auto-approved
+  edits/tools skip under `permissionMode: "acceptEdits"`); emit `ToolActivity`
+  from both Claude Code and the existing Codex path.
 - Persist/stream it; expose a read API (see Testing below). Default decision =
   allow (no behavior change yet) — this phase is *observe*, not *gate*.
 - **Delivers the user-visible "see what Claude Code & Codex are running."**
@@ -90,9 +99,11 @@ shared abstraction.
   emitting `ToolActivity` like Codex. Now both runners share a tool model.
 
 **Phase 2 — Govern.**
-- Turn the Phase 0 hook from observe → enforce: `can_use_tool` / `dynamic/tool`
-  consult the tool policy (allow / deny / **ask**), reusing tool grants. Uniform
-  governance across both runners.
+- Turn the Phase 0 hook from observe → enforce: the **`PreToolUse` hook** (which
+  can deny and fires for every tool) / Codex `dynamic/tool` consult the tool
+  policy (allow / deny / **ask**), reusing tool grants; `canUseTool` backs the
+  interactive **ask** prompt for tools the permission rules leave unresolved.
+  Uniform governance across both runners.
 
 **Phase 3 — Refactor behind a shared `CodingRunner` behaviour.**
 - Generalize the contract into one Elixir behaviour (events in, `ToolActivity`
@@ -128,9 +139,10 @@ asserts on — visibility and testability are the same feature.
 
 - Persistence of `ToolActivity` — reuse the messages/run tables, or a dedicated
   table? Retention?
-- Does the bridge protocol need a request/response round-trip for
-  `can_use_tool` (it must block the SDK until OpenMacaw answers)? Confirm the
-  bridge is full-duplex enough; today it is mostly one-way streaming.
+- Does the bridge protocol need a request/response round-trip for the
+  **`PreToolUse` hook** / `canUseTool` (governance must block the SDK until
+  OpenMacaw answers)? Confirm the bridge is full-duplex enough; today it is
+  mostly one-way streaming. (Pure `PostToolUse` observation doesn't block.)
 - Codex tool model vs Claude Code MCP tool model — reconcile names/inputs in the
   normalized event.
 - Where the shared behaviour lives and how it coexists with the broader `Runner`
