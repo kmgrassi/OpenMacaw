@@ -94,6 +94,6 @@ export async function probeRegisteredLocalRuntimeForWorkspace(workspaceId: strin
         ? null
         : online
           ? `Helper is online, but it is not advertising ${details.registrationRunnerKind}`
-          : "Local runtime helper is not currently online",
+          : "Local runtime relay is not currently online",
   });
 }

@@ -21,7 +21,7 @@ type Props = {
 
 /**
  * Renders a dropdown picking the `provider` field of a local_relay routing
- * rule — i.e. which runner kind the registered relay helper should dispatch
+ * rule — i.e. which runner kind the registered workspace relay should dispatch
  * to. The options are the union of the kinds advertised by an online relay
  * for this workspace and the canonical runtime-family identifiers from
  * contracts/provider-registry.
@@ -84,7 +84,7 @@ export function LocalRelayTargetSelector({
       error={
         value
           ? undefined
-          : "Pick which runner the registered relay helper should dispatch to."
+          : "Pick which runner the registered workspace relay should dispatch to."
       }
     />
   );

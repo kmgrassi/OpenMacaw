@@ -92,7 +92,7 @@ export function ToolDefinitionsPanel({ agentId, workspaceId }: Props) {
       )}
       {workspaceId && !localExecutionReady && (
         <Alert tone="warning" className="mb-4">
-          Register a local runtime helper with a workspace root before assigning
+          Connect a local runtime relay with a workspace root before assigning
           local coding tools.
         </Alert>
       )}

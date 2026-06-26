@@ -42,8 +42,8 @@ export function CredentialPickerMessages({
 
       {credentiallessRunner && (
         <p className="text-xs text-slate-500">
-          This runner uses the registered local runtime helper and does not
-          require a stored API key.
+          This runner dispatches through the registered local runtime relay and
+          does not require a stored API key.
         </p>
       )}
 

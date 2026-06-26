@@ -441,7 +441,7 @@ describe("runtime dispatch proxy contract", () => {
       new ApiRouteError(
         409,
         "local_coding_execution_target_missing",
-        "No local runtime helper is registered for local coding in this workspace",
+        "No local runtime relay is registered for local coding in this workspace",
         { workspace_id: workspaceId },
       ),
     );

@@ -63,8 +63,8 @@ export function LocalCodingRunnerPanel({
           </div>
           <div className="mt-1 text-xs text-slate-500">
             Local model coding runs shell and patch tools in a workspace-write
-            runtime. Local relay dispatches via the registered relay helper to
-            another runner kind (e.g. OpenClaw).
+            runtime. Local relay dispatches through the registered workspace
+            relay to another runner kind such as OpenClaw.
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
