@@ -1,6 +1,7 @@
 import { ModelSettingsSchema } from "../../../../../contracts/agents.js";
 import { ApiRouteError } from "../../http.js";
 import { narrowSupabase } from "../../lib/narrow-supabase.js";
+import { parseNullableSupabaseRow, parseSupabaseRows } from "../../lib/supabase-row-parsers.js";
 import { getServiceRoleSupabase, getUserScopedSupabase, normalizeSupabaseError } from "../../supabase-client.js";
 import { hasCredentialForAgent } from "../credentials/agent-scope.js";
 import type {
@@ -12,6 +13,15 @@ import type {
   RoutingRuleFallbackRow,
   RoutingRuleMatchRow,
   RoutingRuleRow,
+} from "./types.js";
+import {
+  AgentProfileRowSchema,
+  CredentialAliasRowSchema,
+  CredentialProfileRowSchema,
+  GatewayConfigProfileRowSchema,
+  RoutingRuleFallbackRowSchema,
+  RoutingRuleMatchRowSchema,
+  RoutingRuleRowSchema,
 } from "./types.js";
 
 function clientForAccessToken(accessToken?: string) {
@@ -31,7 +41,7 @@ export async function getAgent(input: ResolveExecutionProfileInput): Promise<Age
     .limit(1);
   if (error) throw normalizeSupabaseError("agent query", error);
 
-  const agent = firstRow<AgentProfileRow>(data);
+  const agent = parseNullableSupabaseRow("agent query", AgentProfileRowSchema, firstRow(data));
   if (!agent) {
     throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
   }
@@ -50,7 +60,7 @@ export async function getAgentGatewayConfig(
     .limit(1);
   if (error) throw normalizeSupabaseError("gateway_config query", error);
 
-  return firstRow<GatewayConfigProfileRow>(data);
+  return parseNullableSupabaseRow("gateway_config query", GatewayConfigProfileRowSchema, firstRow(data));
 }
 
 export async function getRoutingRules(workspaceId: string, accessToken?: string): Promise<RoutingRuleRow[]> {
@@ -63,7 +73,8 @@ export async function getRoutingRules(workspaceId: string, accessToken?: string)
     .order("created_at", { ascending: true });
   if (error) throw normalizeSupabaseError("routing_rule query", error);
 
-  return ((data ?? []) as unknown as RoutingRuleRow[]).sort((left, right) => right.priority - left.priority);
+  const rows = parseSupabaseRows("routing_rule query", RoutingRuleRowSchema, Array.isArray(data) ? data : []);
+  return rows.sort((left, right) => right.priority - left.priority);
 }
 
 export async function getRuleMatches(
@@ -79,7 +90,7 @@ export async function getRuleMatches(
     .in("rule_id", ruleIds);
   if (error) throw normalizeSupabaseError("routing_rule_match query", error);
 
-  return (data ?? []) as RoutingRuleMatchRow[];
+  return parseSupabaseRows("routing_rule_match query", RoutingRuleMatchRowSchema, Array.isArray(data) ? data : []);
 }
 
 export async function getRoutingRuleFallbacks(
@@ -96,7 +107,11 @@ export async function getRoutingRuleFallbacks(
     .order("position", { ascending: true });
   if (error) throw normalizeSupabaseError("routing_rule_fallback query", error);
 
-  return data as RoutingRuleFallbackRow[];
+  return parseSupabaseRows(
+    "routing_rule_fallback query",
+    RoutingRuleFallbackRowSchema,
+    Array.isArray(data) ? data : [],
+  );
 }
 
 export async function resolveCredentialAlias(
@@ -112,7 +127,7 @@ export async function resolveCredentialAlias(
     .limit(1);
   if (error) throw normalizeSupabaseError("credential_alias query", error);
 
-  const match = firstRow<CredentialAliasRow>(data);
+  const match = parseNullableSupabaseRow("credential_alias query", CredentialAliasRowSchema, firstRow(data));
   return match?.credential_id ?? null;
 }
 
@@ -128,7 +143,7 @@ export async function getAgentCredentialId(
     .eq("workspace_id", workspaceId);
   if (error) throw normalizeSupabaseError("credential query", error);
 
-  const rows = (data ?? []) as CredentialProfileRow[];
+  const rows = parseSupabaseRows("credential query", CredentialProfileRowSchema, Array.isArray(data) ? data : []);
   const match = rows.find((row) => {
     const value = row.key_value;
     if (!value || typeof value !== "object" || Array.isArray(value)) return false;
