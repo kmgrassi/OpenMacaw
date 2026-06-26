@@ -62,7 +62,7 @@ export function assertLocalCodingToolsUseRuntimeTarget(tools: ToolExecutionTarge
       throw new ApiRouteError(
         422,
         "invalid_local_coding_tool_execution_target",
-        "Local coding tools must execute through the local runtime helper target",
+        "Local coding tools must execute through the local runtime relay target",
         {
           tool_id: tool.id,
           tool_slug: tool.slug,
@@ -102,7 +102,7 @@ export async function resolveLocalCodingExecutionTarget(input: {
     throw new ApiRouteError(
       409,
       "local_coding_execution_target_missing",
-      `No local runtime helper is registered for ${runnerKind} in this workspace`,
+      `No local runtime relay is registered for ${runnerKind} in this workspace`,
       {
         workspace_id: input.workspaceId,
         required_runner_kind: runnerKind,

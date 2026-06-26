@@ -313,12 +313,12 @@ export function AgentRuntimeEditor({
             runtimeProfile &&
             !runtimeProfile.localHelperRegistered && (
               <p className="mt-2 text-xs text-amber-400">
-                No local runtime relay helper is registered for this workspace.{" "}
+                No local runtime relay is connected for this workspace yet.{" "}
                 <Link
                   to="/settings/local-runtimes"
                   className="underline hover:text-amber-300"
                 >
-                  Open local runtimes
+                  Open Local runtimes
                 </Link>
               </p>
             )}

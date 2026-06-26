@@ -82,6 +82,6 @@ export async function assertLocalCodingToolsAllowed(input: {
   throw new ApiRouteError(
     409,
     "local_coding_execution_target_required",
-    "Configure a container execution target or register a local runtime helper with a workspace root before enabling local coding tools",
+    "Configure a container execution target or connect a local runtime relay with a workspace root before enabling local coding tools",
   );
 }

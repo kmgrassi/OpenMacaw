@@ -30,9 +30,9 @@ export function LocalRuntimeRegistrationCard({
           Set up local runtime
         </h3>
         <p className="mt-1 text-xs text-slate-500">
-          One local runtime relay can advertise more than one runner kind.
-          Select every kind you want this relay to handle — the install command
-          will write all selected stanzas into runtime.toml.
+          One local runtime relay daemon can advertise more than one runner
+          kind. Select every kind you want this workspace relay to handle; the
+          install command will write all selected stanzas into `runtime.toml`.
         </p>
       </div>
 
@@ -101,9 +101,7 @@ export function LocalRuntimeRegistrationCard({
                     type="button"
                     variant="secondary"
                     loading={registration.pickingRepositoryPath}
-                    onClick={() =>
-                      void registration.handlePickRepositoryPath()
-                    }
+                    onClick={() => void registration.handlePickRepositoryPath()}
                   >
                     Browse...
                   </Button>
@@ -111,8 +109,8 @@ export function LocalRuntimeRegistrationCard({
               </div>
               <p className="text-xs text-slate-500">
                 Paste an absolute path or choose a directory through the local
-                runtime helper. The local agent can read and write under this
-                root.
+                relay daemon on this computer. The local agent can read and
+                write under this root.
               </p>
             </div>
             <Select
@@ -170,7 +168,7 @@ export function LocalRuntimeRegistrationCard({
         <div className="min-h-4 text-xs">
           {noneSelected && (
             <span className="text-amber-300">
-              Select at least one runner kind to register this relay.
+              Select at least one runner kind before registering this relay.
             </span>
           )}
           {!noneSelected && registration.registerError && (
@@ -179,20 +177,20 @@ export function LocalRuntimeRegistrationCard({
           {registration.draftProbeAvailable &&
             registration.modelEnabled &&
             registration.draftProbe && (
-            <span
-              className={
-                registration.draftProbe.reachable &&
+              <span
+                className={
+                  registration.draftProbe.reachable &&
+                  registration.draftProbe.modelFound
+                    ? "text-green-300"
+                    : "text-amber-300"
+                }
+              >
+                {registration.draftProbe.reachable &&
                 registration.draftProbe.modelFound
-                  ? "text-green-300"
-                  : "text-amber-300"
-              }
-            >
-              {registration.draftProbe.reachable &&
-              registration.draftProbe.modelFound
-                ? "Probe succeeded."
-                : registration.draftProbe.error}
-            </span>
-          )}
+                  ? "Probe succeeded."
+                  : registration.draftProbe.error}
+              </span>
+            )}
         </div>
         <div className="flex items-center gap-2">
           {registration.draftProbeAvailable && registration.modelEnabled && (
@@ -215,7 +213,7 @@ export function LocalRuntimeRegistrationCard({
             disabled={!registration.canSubmit}
             onClick={() => void registration.handleRegister()}
           >
-            Set up local computer
+            Register local relay
           </Button>
         </div>
       </div>

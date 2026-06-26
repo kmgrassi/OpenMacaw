@@ -49,9 +49,9 @@ export function LocalRuntimesSection() {
             Local runtimes
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-slate-400">
-            Connect one local runtime relay to this workspace. A single relay
+            Connect a local runtime relay daemon to this workspace. One relay
             can advertise more than one runner kind, so bind each agent to the
-            exact runner it should dispatch to.
+            exact runtime it should dispatch to.
           </p>
         </div>
         <Button
@@ -97,7 +97,7 @@ export function LocalRuntimesSection() {
                 </h3>
                 <p className="mt-1 text-xs text-amber-200/80">
                   This page is polling every 2 seconds and will continue once a
-                  fresh heartbeat advertises every selected runner kind.
+                  fresh relay heartbeat advertises every selected runner kind.
                 </p>
               </div>
               {currentRuntime && (

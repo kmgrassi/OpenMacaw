@@ -45,10 +45,10 @@ export function buildBlockers(sections: {
 
   if (sections.localRuntime) {
     if (!sections.localRuntime.machineFound) {
-      blockers.push("No registered local runtime relay helper found for this workspace");
+      blockers.push("No registered local runtime relay is connected for this workspace");
     }
     if (sections.localRuntime.endpointReachable === false) {
-      blockers.push("Local model endpoint is not reachable (Ollama may not be running)");
+      blockers.push("The local model endpoint is unreachable (for example Ollama is not running)");
     }
   }
 

@@ -120,10 +120,10 @@ describe("agent diagnostic — canChat / blockers logic", () => {
       launcherHealthy: true,
     });
 
-    expect(blockers).toContain("No registered local runtime relay helper found for this workspace");
+    expect(blockers).toContain("No registered local runtime relay is connected for this workspace");
   });
 
-  it("reports relay helper and local model endpoint blockers separately without legacy helper ports", () => {
+  it("reports relay and local model endpoint blockers separately without legacy helper ports", () => {
     const blockers = buildBlockers({
       agentFound: true,
       resolutionMissing: [],
@@ -136,8 +136,8 @@ describe("agent diagnostic — canChat / blockers logic", () => {
       launcherHealthy: true,
     });
 
-    expect(blockers).toContain("No registered local runtime relay helper found for this workspace");
-    expect(blockers).toContain("Local model endpoint is not reachable (Ollama may not be running)");
+    expect(blockers).toContain("No registered local runtime relay is connected for this workspace");
+    expect(blockers).toContain("The local model endpoint is unreachable (for example Ollama is not running)");
     expect(JSON.stringify(blockers)).not.toContain("17654");
   });
 

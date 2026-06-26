@@ -1,9 +1,9 @@
 /**
  * Web-side helpers for local workspace-directory actions.
  *
- * Directory picking runs through the local runtime helper because the selected
+ * Directory picking calls the direct localhost helper API because the selected
  * absolute path only has meaning on the user's machine. Workspace-path
- * persistence/validation endpoints below are still platform API routes.
+ * persistence/validation endpoints below still go through platform API routes.
  */
 import { brokerFetch } from "./broker-fetch";
 
@@ -39,7 +39,7 @@ export async function pickDirectory(opts?: {
     body: JSON.stringify(opts ?? {}),
   }).catch((error) => {
     throw new Error(
-      `Could not reach local runtime helper at ${base}. Start the helper, then try Browse again. (${error instanceof Error ? error.message : String(error)})`,
+      `Could not reach the local directory-picker helper at ${base}. Start the helper on this computer, then try Browse again. (${error instanceof Error ? error.message : String(error)})`,
     );
   });
   if (!res.ok) {
