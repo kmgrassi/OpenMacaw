@@ -6,6 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { clearModelCatalogCacheForTests } from "../services/model-catalog.js";
 import { registerModelCatalogRoutes } from "./models.js";
+import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
+
+vi.mock("../services/work-item-ingest.js", () => ({
+  assertWorkspaceMembership: vi.fn(),
+}));
 
 const realFetch = globalThis.fetch;
 
@@ -23,6 +28,7 @@ describe("model catalog routes", () => {
   beforeEach(async () => {
     clearModelCatalogCacheForTests();
     delete process.env.OPENAI_API_KEY;
+    vi.mocked(assertWorkspaceMembership).mockResolvedValue(undefined);
 
     const app = express();
     app.use(express.json());
@@ -70,6 +76,39 @@ describe("model catalog routes", () => {
         message: "workspaceId is required",
       },
     });
+  });
+
+  it("rejects model provider credential saves for unauthorized workspaces before validating the credential", async () => {
+    vi.mocked(assertWorkspaceMembership).mockRejectedValueOnce(new Error("not authorized for workspace"));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.startsWith(baseUrl)) {
+        return realFetch(input, init);
+      }
+      throw new Error(`Unexpected upstream fetch ${url}`);
+    });
+
+    const response = await fetch(`${baseUrl}/api/model-providers/openai/credentials`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        apiKey: "sk-test",
+      }),
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "workspace_forbidden",
+        message: "Authenticated user is not authorized for the requested workspace",
+      },
+    });
+    expect(assertWorkspaceMembership).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111", "workspace-1");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("returns provider models when a provider credential is configured", async () => {
