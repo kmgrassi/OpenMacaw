@@ -65,9 +65,20 @@ ChatGateway→AgentIO switch can be dialed in.
   existing `ChatGateway` (unchanged). The Codex `CodingRunner` adapter
   (`runner/codex.ex`) drives `SessionRegistry` under the session, passing the
   session's `on_message` so `turn_event_dispatcher` events broadcast to `/stream`.
+- **Map internal events to the public stream contract.** `AgentIO.Session`
+  broadcasts internal names (e.g. `:turn_ended_with_error` on interrupt); the
+  external `/stream` must emit only `AgentLiveStreamEventSchema` types
+  (`platform/contracts/agent-live-io.ts`): `text_delta`, `turn_started`,
+  `turn_completed`, `turn_interrupted`, `error` (and `tool_activity`, added in
+  PR2). PR1 owns the turn/text/error mapping (`:turn_ended_with_error` → either
+  `turn_interrupted` for an interrupt or `error` for a failure) so public streams
+  validate against the contract — this can't wait for PR2. Add a contract field
+  if a needed event has no home rather than leaking internal names.
 - **Acceptance:** fake-Codex test — `/input` then a `/stream` subscriber receives
-  turn_started → tool_call_started → text → turn_completed; `/interrupt` →
-  turn_ended_with_error. No regression for ChatGateway (planner/manager) agents.
+  contract-valid events (`turn_started` → `text_delta` → `turn_completed`);
+  `/interrupt` → a `turn_interrupted` event (validated against
+  `AgentLiveStreamEventSchema`). No regression for ChatGateway (planner/manager)
+  agents.
 - **Also:** the session-affinity investigation above.
 - **Deps:** none (builds on #299). **Risk:** medium (live routing) — mitigated by
   the runner-kind branch + tests + per-workspace flag.
