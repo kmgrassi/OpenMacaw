@@ -1,4 +1,5 @@
 import type { GatewayErrorCode } from "./errors";
+import type { RuntimeMessageContent } from "./message-content";
 import type { SessionKey, WsScopeFields } from "./scope";
 
 /**
@@ -33,7 +34,7 @@ export type ChatEventPayload = {
   runId: string;
   sessionKey: SessionKey;
   state: ChatEventState;
-  message?: unknown;
+  message?: RuntimeMessageContent;
   errorMessage?: string;
   /** Machine-readable error code for run failures (e.g. provider_not_configured_for_agent). */
   errorCode?: GatewayErrorCode | string;
