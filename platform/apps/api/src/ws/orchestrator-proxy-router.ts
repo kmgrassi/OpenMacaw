@@ -35,6 +35,29 @@ function closeEventName(code: number) {
   return code === 1000 ? "gateway_ws_closed" : "gateway_ws_abnormal_closed";
 }
 
+function closeEventPayload(
+  connectionSide: "client" | "upstream",
+  agentId: string | null,
+  code: number,
+  reason: Buffer,
+  counters: {
+    downstream_message_count: number;
+    downstream_byte_count: number;
+    upstream_message_count: number;
+    upstream_byte_count: number;
+  },
+) {
+  return {
+    event: closeEventName(code),
+    connection_side: connectionSide,
+    agent_id: agentId,
+    close_code: code,
+    close_reason: formatCloseReason(reason),
+    abnormal: code !== 1000,
+    ...counters,
+  } satisfies Parameters<typeof logWebSocketEvent>[1];
+}
+
 export function bindWebSocketPair(
   clientSocket: WebSocket,
   upstream: WebSocket,
@@ -75,34 +98,14 @@ export function bindWebSocketPair(
   });
 
   clientSocket.on("close", (code, reason) => {
-    logWebSocketEvent(context, {
-      event: closeEventName(code),
-      connection_side: "client",
-      agent_id: agentId,
-      close_code: code,
-      close_reason: formatCloseReason(reason),
-      code,
-      reason: formatCloseReason(reason),
-      abnormal: code !== 1000,
-      ...counters,
-    });
+    logWebSocketEvent(context, closeEventPayload("client", agentId, code, reason, counters));
     if (upstream.readyState === WebSocket.OPEN) {
       upstream.close(normalizeCloseCode(code, 1000), normalizeCloseReason(reason, "client closed"));
     }
   });
 
   upstream.on("close", (code, reason) => {
-    logWebSocketEvent(context, {
-      event: closeEventName(code),
-      connection_side: "upstream",
-      agent_id: agentId,
-      close_code: code,
-      close_reason: formatCloseReason(reason),
-      code,
-      reason: formatCloseReason(reason),
-      abnormal: code !== 1000,
-      ...counters,
-    });
+    logWebSocketEvent(context, closeEventPayload("upstream", agentId, code, reason, counters));
     if (clientSocket.readyState === WebSocket.OPEN) {
       clientSocket.close(normalizeCloseCode(code, 1011), normalizeCloseReason(reason, "upstream closed"));
     }

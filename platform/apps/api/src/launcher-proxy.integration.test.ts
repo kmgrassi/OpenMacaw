@@ -517,15 +517,19 @@ describe("launcher runtime proxy integration", () => {
           handshake_duration_ms: expect.any(Number),
         }),
       );
-      expect(wsLogs).toContainEqual(
-        expect.objectContaining({
-          event: "gateway_ws_closed",
-          connection_side: "client",
-          close_code: 1000,
-          downstream_message_count: 2,
-          upstream_message_count: 1,
-        }),
+      const closeLog = wsLogs.find(
+        (entry) => entry.event === "gateway_ws_closed" && entry.connection_side === "client",
       );
+      expect(closeLog).toMatchObject({
+        event: "gateway_ws_closed",
+        connection_side: "client",
+        close_code: 1000,
+        close_reason: "done",
+        downstream_message_count: 2,
+        upstream_message_count: 1,
+      });
+      expect(closeLog).not.toHaveProperty("code");
+      expect(closeLog).not.toHaveProperty("reason");
     } finally {
       stdoutWrite.mockRestore();
     }
