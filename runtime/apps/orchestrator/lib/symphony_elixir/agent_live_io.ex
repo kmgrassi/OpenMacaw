@@ -10,6 +10,7 @@ defmodule SymphonyElixir.AgentLiveIo do
   use GenServer
 
   alias SymphonyElixir.AgentIO
+  alias SymphonyElixir.AgentIO.ToolActivity
   alias SymphonyElixir.AgentInventory.Agent
   alias SymphonyElixir.ChatGateway
   alias SymphonyElixir.ExecutionProfile
@@ -58,6 +59,7 @@ defmodule SymphonyElixir.AgentLiveIo do
   @spec interrupt(scope() | String.t(), String.t() | nil, keyword()) :: {:ok, event()} | {:error, term()}
   def interrupt(scope_or_session_key, run_id \\ nil, opts \\ [])
 
+  @spec interrupt(scope() | String.t(), String.t() | nil, keyword()) :: {:ok, event()} | {:error, term()}
   def interrupt(%{session_key: session_key} = scope, run_id, opts) when is_binary(session_key) do
     with {:ok, route} <- route(scope, opts) do
       case route do
@@ -94,6 +96,7 @@ defmodule SymphonyElixir.AgentLiveIo do
   @spec subscribe(scope() | String.t(), keyword()) :: :ok | {:error, term()}
   def subscribe(scope_or_session_key, opts \\ [])
 
+  @spec subscribe(scope() | String.t(), keyword()) :: :ok | {:error, term()}
   def subscribe(%{session_key: session_key} = scope, opts) when is_binary(session_key) do
     with {:ok, route} <- route(scope, opts) do
       case route do
@@ -149,9 +152,9 @@ defmodule SymphonyElixir.AgentLiveIo do
         base_event("error", scope, session_key, turn_id)
         |> Map.put("payload", payload)
 
-      event when event in [:tool_call_started, :tool_call_completed, :tool_call_failed] ->
+      event when event in [:tool_call_started, :tool_call_completed, :tool_call_failed, :unsupported_tool_call] ->
         base_event("tool_activity", scope, session_key, turn_id)
-        |> Map.put("payload", payload)
+        |> Map.put("payload", ToolActivity.normalize(message))
 
       _other ->
         nil
@@ -443,12 +446,19 @@ defmodule SymphonyElixir.AgentLiveIo do
 
   defp runner_event(session_key, run_id, %{event: event, payload: payload}) do
     type =
-      if event in [:tool_call_started, :tool_call_completed, :tool_call_failed],
+      if event in [:tool_call_started, :tool_call_completed, :tool_call_failed, :unsupported_tool_call],
         do: "tool_activity",
         else: Atom.to_string(event)
 
+    payload =
+      if type == "tool_activity" do
+        ToolActivity.normalize(%{event: event, payload: payload})
+      else
+        payload || %{}
+      end
+
     base_event(type, nil, session_key, run_id)
-    |> Map.put("payload", payload || %{})
+    |> Map.put("payload", payload)
   end
 
   defp runner_event(session_key, run_id, message) do

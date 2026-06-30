@@ -52,6 +52,7 @@ defmodule SymphonyElixir.Codex.AppServer.Approvals do
     tool_name = tool_call_name(params)
     arguments = tool_call_arguments(params)
     RuntimeLog.log(:info, :tool_call_started, tool_log_fields(metadata, id, tool_name))
+    emit_message(on_message, :tool_call_started, %{payload: payload, raw: payload_string}, metadata)
 
     result =
       tool_name
@@ -72,7 +73,7 @@ defmodule SymphonyElixir.Codex.AppServer.Approvals do
 
     RuntimeLog.log(tool_log_level(event), event, tool_log_fields(metadata, id, tool_name, result))
 
-    emit_message(on_message, event, %{payload: payload, raw: payload_string}, metadata)
+    emit_message(on_message, event, %{payload: payload, raw: payload_string, result: result}, metadata)
 
     :approved
   end
