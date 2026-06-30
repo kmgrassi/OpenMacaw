@@ -19,6 +19,7 @@
     "smoke:runtime": "node ./scripts/runtime-smoke.mjs",
     "smoke:agents": "node ./scripts/agents-smoke.mjs",
     "smoke:gateway": "node ./scripts/gateway-smoke.mjs",
+    "smoke:agent-live-io": "node ./scripts/agent-live-io-smoke.mjs",
     "smoke:manager": "node ./scripts/manager-smoke.mjs",
     "smoke:manager-dispatch": "node ./scripts/manager-dispatch-smoke.mjs",
     "smoke:manager-github-pr": "node ./scripts/manager-github-pr-smoke.mjs",

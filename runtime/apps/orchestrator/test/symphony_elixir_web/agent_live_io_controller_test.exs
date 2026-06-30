@@ -307,7 +307,6 @@ defmodule SymphonyElixirWeb.AgentLiveIoControllerTest do
   test "Claude Code runner agents route through AgentIO and stream public contract events" do
     put_app_env(:symphony_elixir, :agent_live_io_profile_resolver, ClaudeProfileResolver)
     put_app_env(:symphony_elixir, :agent_live_io_coding_runner, FakeClaudeRunner)
-    put_app_env(:symphony_elixir, :agent_live_io_claude_code_enabled, true)
     put_app_env(:symphony_elixir, :agent_live_io_test_owner, self())
 
     session_key = default_session_key() <> ":claude"
@@ -351,7 +350,6 @@ defmodule SymphonyElixirWeb.AgentLiveIoControllerTest do
   test "Claude Code runner interrupts use the coding runner callback" do
     put_app_env(:symphony_elixir, :agent_live_io_profile_resolver, ClaudeProfileResolver)
     put_app_env(:symphony_elixir, :agent_live_io_coding_runner, FakeClaudeRunner)
-    put_app_env(:symphony_elixir, :agent_live_io_claude_code_enabled, true)
     put_app_env(:symphony_elixir, :agent_live_io_test_owner, self())
 
     session_key = default_session_key() <> ":claude-interrupt"
@@ -387,26 +385,6 @@ defmodule SymphonyElixirWeb.AgentLiveIoControllerTest do
 
     assert %{"type" => "turn_interrupted", "turnId" => ^turn_id, "payload" => %{"reason" => "interrupted"}} =
              SymphonyElixir.AgentLiveIo.stream_event(scope, event)
-  end
-
-  test "Claude Code runner agents stay on ChatGateway unless the persistent bridge route is enabled" do
-    put_app_env(:symphony_elixir, :agent_live_io_profile_resolver, ClaudeProfileResolver)
-    put_app_env(:symphony_elixir, :agent_live_io_coding_runner, FakeClaudeRunner)
-    put_app_env(:symphony_elixir, :agent_live_io_claude_code_enabled, false)
-    put_app_env(:symphony_elixir, :agent_live_io_test_owner, self())
-
-    conn =
-      authed_conn()
-      |> post("/api/v1/agents/#{@agent_id}/input", %{
-        "workspace_id" => @workspace_id,
-        "user_id" => @user_id,
-        "message" => "Ping",
-        "session_key" => default_session_key()
-      })
-
-    assert %{"accepted" => true} = json_response(conn, 202)
-    assert_received {:message_log_user_message, %{user_id: @user_id}, "thread-1", "Ping", _opts}
-    refute_received {:fake_claude_start_session, _config, _workspace}
   end
 
   test "POST /api/v1/agents/:id/interrupt aborts the active live I/O run" do

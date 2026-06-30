@@ -52,13 +52,14 @@ defmodule SymphonyElixir.AgentIO.Session do
     runner = Keyword.get(opts, :runner, SymphonyElixir.Runner.Codex)
     config = Keyword.get(opts, :config, %{})
     workspace = Keyword.get(opts, :workspace)
+    session_key = Keyword.fetch!(opts, :session_key)
 
     state = %{
-      session_key: Keyword.fetch!(opts, :session_key),
+      session_key: session_key,
       runner: runner,
       config: config,
       workspace: workspace,
-      work_item: Keyword.get(opts, :work_item, default_work_item(Keyword.fetch!(opts, :session_key))),
+      work_item: Keyword.get(opts, :work_item, default_work_item(session_key)),
       runner_session: nil,
       subscribers: MapSet.new(),
       active_task: nil,
@@ -66,6 +67,9 @@ defmodule SymphonyElixir.AgentIO.Session do
       idle_timeout_ms: Keyword.get(opts, :idle_timeout_ms, @default_idle_timeout_ms),
       idle_timer_ref: nil
     }
+
+    Logger.info("AgentIO session started session_key=#{session_key} runner=#{inspect(runner)}")
+    emit([:session, :started], %{count: 1}, state)
 
     {:ok, state}
   end
@@ -115,6 +119,9 @@ defmodule SymphonyElixir.AgentIO.Session do
         %{state | active_task: task, active_turn_id: turn_id}
         |> broadcast(event)
 
+      Logger.info("AgentIO turn started session_key=#{state.session_key} turn_id=#{turn_id} runner=#{inspect(state.runner)}")
+      emit([:turn, :started], %{count: 1}, state, %{turn_id: turn_id})
+
       {:reply, {:ok, %{session_key: state.session_key, turn_id: turn_id}}, state}
     else
       {:error, reason, state} ->
@@ -155,6 +162,9 @@ defmodule SymphonyElixir.AgentIO.Session do
       |> clear_active_turn()
       |> broadcast(event)
 
+    Logger.info("AgentIO turn interrupted session_key=#{state.session_key} turn_id=#{event.turn_id}")
+    emit([:turn, :interrupted], %{count: 1}, state, %{turn_id: event.turn_id})
+
     {:reply, :ok, schedule_idle_timeout(state)}
   end
 
@@ -169,6 +179,9 @@ defmodule SymphonyElixir.AgentIO.Session do
     event =
       case Contract.normalize_result(result) do
         {:ok, normalized} ->
+          emit([:turn, :completed], %{count: 1}, state, %{turn_id: state.active_turn_id})
+          Logger.info("AgentIO turn completed session_key=#{state.session_key} turn_id=#{state.active_turn_id}")
+
           %{
             event: :turn_completed,
             session_key: state.session_key,
@@ -177,6 +190,9 @@ defmodule SymphonyElixir.AgentIO.Session do
           }
 
         {:error, normalized} ->
+          emit([:turn, :failed], %{count: 1}, state, %{turn_id: state.active_turn_id})
+          Logger.warning("AgentIO turn failed session_key=#{state.session_key} turn_id=#{state.active_turn_id}")
+
           %{
             event: :turn_ended_with_error,
             session_key: state.session_key,
@@ -195,6 +211,9 @@ defmodule SymphonyElixir.AgentIO.Session do
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %{active_task: %Task{ref: ref}} = state) do
+    Logger.warning("AgentIO turn task exited session_key=#{state.session_key} turn_id=#{state.active_turn_id} reason=#{inspect(reason)}")
+    emit([:turn, :failed], %{count: 1}, state, %{turn_id: state.active_turn_id, reason: reason})
+
     event = %{
       event: :turn_ended_with_error,
       session_key: state.session_key,
@@ -217,7 +236,9 @@ defmodule SymphonyElixir.AgentIO.Session do
   end
 
   def handle_info({:timeout, ref, :idle_timeout}, %{idle_timer_ref: ref, active_task: nil} = state) do
-    {:noreply, %{stop_runner_session(state) | idle_timer_ref: nil}}
+    Logger.info("AgentIO session idle timeout session_key=#{state.session_key} runner=#{inspect(state.runner)}")
+    emit([:session, :idle_timeout], %{count: 1}, state)
+    {:stop, :normal, %{stop_runner_session(state) | idle_timer_ref: nil}}
   end
 
   def handle_info({:timeout, _ref, :idle_timeout}, state), do: {:noreply, state}
@@ -225,7 +246,9 @@ defmodule SymphonyElixir.AgentIO.Session do
   def handle_info(_message, state), do: {:noreply, state}
 
   @impl true
-  def terminate(_reason, state) do
+  def terminate(reason, state) do
+    Logger.info("AgentIO session stopped session_key=#{state.session_key} runner=#{inspect(state.runner)} reason=#{inspect(reason)}")
+    emit([:session, :stopped], %{count: 1}, state, %{reason: reason})
     _ = stop_runner_session(state)
     :ok
   end
@@ -245,10 +268,14 @@ defmodule SymphonyElixir.AgentIO.Session do
     case state.runner.start_session(state.config, state.workspace) do
       {:ok, runner_session} ->
         state = %{state | runner_session: runner_session}
+        Logger.info("AgentIO runner session started session_key=#{state.session_key} runner=#{inspect(state.runner)}")
+        emit([:runner_session, :started], %{count: 1}, state)
         broadcast(state, %{event: :session_started, session_key: state.session_key, payload: session_snapshot(state)})
         {:ok, state}
 
       {:error, reason} ->
+        Logger.warning("AgentIO runner session startup failed session_key=#{state.session_key} runner=#{inspect(state.runner)} reason=#{inspect(reason)}")
+        emit([:runner_session, :startup_failed], %{count: 1}, state, %{reason: reason})
         event = %{event: :startup_failed, session_key: state.session_key, payload: %{"reason" => inspect(reason)}}
         state = broadcast(state, event)
         {:error, reason, state}
@@ -305,6 +332,8 @@ defmodule SymphonyElixir.AgentIO.Session do
 
   defp stop_runner_session(state) do
     _ = CodingRunner.stop_session(state.runner, state.runner_session)
+    Logger.info("AgentIO runner session stopped session_key=#{state.session_key} runner=#{inspect(state.runner)}")
+    emit([:runner_session, :stopped], %{count: 1}, state)
     %{state | runner_session: nil}
   end
 
@@ -344,5 +373,19 @@ defmodule SymphonyElixir.AgentIO.Session do
     System.unique_integer([:positive, :monotonic])
     |> Integer.to_string()
     |> then(&"turn-#{&1}")
+  end
+
+  defp emit(event, measurements, state, metadata \\ []) do
+    metadata =
+      metadata
+      |> Map.new()
+      |> Map.merge(%{
+        session_key: state.session_key,
+        runner: state.runner,
+        workspace: state.workspace,
+        active_turn_id: state.active_turn_id
+      })
+
+    :telemetry.execute([:symphony_elixir, :agent_io] ++ event, measurements, metadata)
   end
 end

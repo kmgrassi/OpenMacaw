@@ -61,6 +61,29 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     assert :ok = ClaudeCode.stop_session(session)
   end
 
+  test "can run a real Claude bridge round trip when explicitly configured", %{workspace: workspace} do
+    bridge_command = System.get_env("OPENMACAW_REAL_CLAUDE_BRIDGE_COMMAND")
+
+    if bridge_command && System.get_env("OPENMACAW_RUN_REAL_PROCESS_TESTS") == "1" do
+      config = %{
+        "bridge_command" => bridge_command,
+        "model" => System.get_env("OPENMACAW_REAL_CLAUDE_MODEL", "sonnet"),
+        "max_turns" => 1
+      }
+
+      assert {:ok, session} = ClaudeCode.start_session(config, workspace)
+
+      try do
+        assert {:ok, result} = ClaudeCode.run_turn(session, "Reply with exactly: claude-real-process-ok", work_item())
+        assert is_map(result)
+      after
+        ClaudeCode.stop_session(session)
+      end
+    else
+      assert is_nil(bridge_command) || System.get_env("OPENMACAW_RUN_REAL_PROCESS_TESTS") != "1"
+    end
+  end
+
   test "surfaces startup failures", %{workspace: workspace} do
     bridge = fake_bridge!("startup_failure")
 
@@ -112,7 +135,7 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
         send(events_recipient, {:claude_event, event})
 
         case event do
-          %{"method" => "permission/can_use_tool"} -> %{"behavior" => "deny", "message" => "not for this test"}
+          %{payload: %{"method" => "permission/can_use_tool"}} -> %{"behavior" => "deny", "message" => "not for this test"}
           _event -> :ok
         end
       end
@@ -124,9 +147,9 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
 
     assert_received {:claude_event,
                      %{
-                       "id" => "permission-1",
-                       "method" => "permission/can_use_tool",
-                       "params" => %{"toolName" => "Bash"}
+                       event: :notification,
+                       metadata: %{bridge_id: "permission-1"},
+                       payload: %{"method" => "permission/can_use_tool", "params" => %{"toolName" => "Bash"}}
                      }}
 
     assert :ok = ClaudeCode.stop_session(session)
@@ -173,16 +196,6 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
              tool_activity: true,
              metadata: %{backend: "claude_agent_bridge"}
            } = ClaudeCode.stream_capabilities()
-  end
-
-  test "interrupt remains unsupported until the persistent bridge handles it", %{workspace: workspace} do
-    bridge = fake_bridge!("success")
-
-    assert {:ok, session} =
-             ClaudeCode.start_session(%{"bridge_command" => "node #{shell_escape(bridge)}"}, workspace)
-
-    assert {:error, :interrupt_not_supported} = ClaudeCode.interrupt(session, [])
-    assert :ok = ClaudeCode.stop_session(session)
   end
 
   test "rejects a configured cwd that differs from the workspace", %{workspace: workspace, root: root} do

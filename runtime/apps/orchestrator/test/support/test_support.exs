@@ -435,8 +435,8 @@ defmodule SymphonyElixir.Runner.PlannerTestSupport do
 
       import SymphonyElixir.Runner.PlannerTestSupport
 
-      @planner_tool_names ~w(plan.create plan.update plan.delete delegate task.create task.update task.schedule agent_tool_grant.create agent_tool_grant.update skill.create scheduled_task.create scheduled_task.read scheduled_task.update scheduled_task.list scheduled_task.delete plan.read task.read task.status planning_profile.create_update planning_profile.delete workspace_settings.manage workspace_settings.update_tracker_kind snooze_work_item)
-      @provider_tool_names ~w(plan_create plan_update plan_delete delegate task_create task_update task_schedule agent_tool_grant_create agent_tool_grant_update skill_create scheduled_task_create scheduled_task_read scheduled_task_update scheduled_task_list scheduled_task_delete plan_read task_read task_status planning_profile_create_update planning_profile_delete workspace_settings_manage workspace_settings_update_tracker_kind snooze_work_item)
+      @planner_tool_names ~w(scheduled_task.read scheduled_task.list shell.exec task.status plan.create plan.update plan.delete delegate task.create task.update task.schedule agent_tool_grant.create agent_tool_grant.update skill.create scheduled_task.create scheduled_task.update scheduled_task.delete plan.read task.read planning_profile.create_update planning_profile.delete workspace_settings.manage workspace_settings.update_tracker_kind snooze_work_item)
+      @provider_tool_names ~w(scheduled_task_read scheduled_task_list shell_exec task_status plan_create plan_update plan_delete delegate task_create task_update task_schedule agent_tool_grant_create agent_tool_grant_update skill_create scheduled_task_create scheduled_task_update scheduled_task_delete plan_read task_read planning_profile_create_update planning_profile_delete workspace_settings_manage workspace_settings_update_tracker_kind snooze_work_item)
     end
   end
 

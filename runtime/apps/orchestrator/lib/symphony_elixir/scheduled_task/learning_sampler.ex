@@ -9,7 +9,6 @@ defmodule SymphonyElixir.ScheduledTask.LearningSampler do
   @default_message_window 10
 
   @spec sample(String.t(), map()) :: {:ok, map() | nil} | {:error, term()}
-  @spec sample(String.t(), map(), keyword()) :: {:ok, map() | nil} | {:error, term()}
   def sample(workspace_id, sampling, opts \\ [])
 
   @spec sample(String.t(), map(), keyword()) :: {:ok, map() | nil} | {:error, term()}

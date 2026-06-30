@@ -24,6 +24,9 @@ config :symphony_elixir, SymphonyElixirWeb.Endpoint,
   check_origin: false,
   server: false
 
+config :symphony_elixir,
+  agent_io_max_sessions: 100
+
 # Import environment-specific config (dev.exs, prod.exs, test.exs)
 if File.exists?(Path.expand("#{config_env()}.exs", __DIR__)) do
   import_config "#{config_env()}.exs"

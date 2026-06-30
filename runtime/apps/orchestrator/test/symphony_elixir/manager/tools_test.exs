@@ -25,7 +25,6 @@ defmodule SymphonyElixir.Manager.ToolRegistryTest do
     scheduled_task.update
     scheduled_task.list
     scheduled_task.delete
-    shell.exec
     git.run
   )
 

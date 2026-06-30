@@ -26,7 +26,7 @@ defmodule SymphonyElixir.Tools.ShellExec do
   end
 
   @impl true
-  def bundle, do: [:coding, :manager]
+  def bundle, do: :coding
 
   @impl true
   def execution_kind, do: :runtime
