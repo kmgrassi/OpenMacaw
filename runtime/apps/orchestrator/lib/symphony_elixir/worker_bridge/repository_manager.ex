@@ -10,10 +10,11 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
 
   alias SymphonyElixir.RuntimeLog
   alias SymphonyElixir.WorkerBridge.RepositoryCredential
+  alias SymphonyElixir.WorkerBridge.RepositoryManager.Git
   alias SymphonyElixir.WorkerBridge.RepositoryManager.Metadata
   alias SymphonyElixir.WorkerBridge.RepositoryManager.MirrorLock
+  alias SymphonyElixir.WorkerBridge.RepositoryManager.Resources
 
-  @askpass_filename "git-askpass.sh"
   @alias_pattern ~r/^[a-z0-9_-]+$/
   # Default mirror-lock wait: 10 minutes. A large repo clone over EFS can
   # legitimately take many minutes, so timing out concurrent requests just
@@ -122,10 +123,19 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
   def prepare_resources(resources, session_id)
       when is_list(resources) and is_binary(session_id) do
     with :ok <- ensure_git_available(),
-         {:ok, normalized_resources} <- normalize_resources(resources),
-         {:ok, workspace_path} <- create_resource_workspace(normalized_resources, session_id) do
+         {:ok, normalized_resources} <-
+           Resources.normalize_resources(resources, &normalize_repository_url/1, @alias_pattern),
+         {:ok, workspace_path} <-
+           Resources.create_workspace(session_root(), normalized_resources, session_id) do
       workspace_path
-      |> materialize_resources(normalized_resources)
+      |> Resources.materialize_resources(normalized_resources,
+        sanitize_url: &sanitize_url/1,
+        repo_id: &repo_id/1,
+        resolve_credential: &RepositoryCredential.resolve/1,
+        ensure_mirror_cache: &ensure_mirror_cache/4,
+        clone_checkout: &clone_checkout/3,
+        workspace_revision: &workspace_revision/1
+      )
       |> case do
         {:ok, statuses} ->
           {:ok, workspace_path, statuses}
@@ -141,7 +151,7 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
 
   @spec cleanup_workspace(Path.t()) :: :ok | {:error, term()}
   def cleanup_workspace(workspace_path) when is_binary(workspace_path) do
-    with :ok <- assert_child_path(workspace_path, session_root()) do
+    with :ok <- Resources.assert_child_path(workspace_path, session_root()) do
       metadata = Metadata.workspace_metadata(workspace_path)
       started_at = System.monotonic_time()
 
@@ -451,7 +461,7 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
     File.rm_rf!(workspace_path)
 
     {checkout_ms, result} =
-      timed(fn -> materialize_checkout(cache_path, workspace_path, repository, method) end)
+      timed(fn -> Git.materialize_checkout(cache_path, workspace_path, repository, method, root_dir()) end)
 
     case result do
       {:ok, materialization_method} ->
@@ -463,164 +473,8 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
     end
   end
 
-  defp materialize_checkout(cache_path, workspace_path, repository, :worktree) do
-    case worktree_checkout(cache_path, workspace_path, repository) do
-      :ok ->
-        {:ok, "worktree"}
-
-      {:error, _reason} ->
-        File.rm_rf!(workspace_path)
-        clone_checkout(cache_path, workspace_path, repository)
-    end
-  end
-
-  defp materialize_checkout(cache_path, workspace_path, repository, _method) do
-    clone_checkout(cache_path, workspace_path, repository)
-  end
-
   defp clone_checkout(cache_path, workspace_path, repository) do
-    with {:ok, _output} <- git(["clone", cache_path, workspace_path]),
-         :ok <- maybe_checkout_ref(workspace_path, repository) do
-      {:ok, "clone"}
-    end
-  end
-
-  defp worktree_checkout(cache_path, workspace_path, repository) do
-    ref = repository_ref(repository)
-
-    with {:ok, _output} <-
-           git(["--git-dir", cache_path, "worktree", "add", "--detach", workspace_path, ref]),
-         :ok <- maybe_checkout_ref(workspace_path, repository) do
-      :ok
-    end
-  end
-
-  defp normalize_resources([]), do: {:error, :invalid_resources}
-
-  defp normalize_resources(resources) do
-    resources
-    |> Enum.reduce_while({:ok, [], MapSet.new()}, fn resource, {:ok, acc, aliases} ->
-      with {:ok, normalized} <- normalize_resource(resource),
-           alias_value = normalized["alias"],
-           false <- MapSet.member?(aliases, alias_value) do
-        {:cont, {:ok, [normalized | acc], MapSet.put(aliases, alias_value)}}
-      else
-        true -> {:halt, {:error, {:duplicate_resource_alias, Map.get(resource, "alias")}}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-    |> case do
-      {:ok, normalized, _aliases} -> {:ok, Enum.reverse(normalized)}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp normalize_resource(%{"url" => url, "alias" => alias_value} = resource)
-       when is_binary(url) and is_binary(alias_value) do
-    with {:ok, normalized_url} <- normalize_repository_url(url),
-         {:ok, alias_value} <- normalize_alias(alias_value) do
-      {:ok,
-       resource
-       |> Map.put("url", normalized_url)
-       |> Map.put("alias", alias_value)
-       |> Map.put_new("required", true)}
-    end
-  end
-
-  defp normalize_resource(_resource), do: {:error, :invalid_resource}
-
-  defp normalize_alias(alias_value) when is_binary(alias_value) do
-    alias_value = String.trim(alias_value)
-
-    if String.match?(alias_value, @alias_pattern),
-      do: {:ok, alias_value},
-      else: {:error, {:invalid_resource_alias, alias_value}}
-  end
-
-  defp create_resource_workspace(resources, session_id) do
-    File.mkdir_p!(session_root())
-    workspace_path = Path.join(session_root(), session_slug("resources", session_id))
-    resources_path = Path.join(workspace_path, "resources")
-    File.rm_rf!(workspace_path)
-    File.mkdir_p!(resources_path)
-
-    resources
-    |> Enum.map(&Path.join(resources_path, &1["alias"]))
-    |> Enum.reduce_while(:ok, fn path, :ok ->
-      case assert_child_path(path, resources_path) do
-        :ok -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-    |> case do
-      :ok -> {:ok, workspace_path}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp materialize_resources(workspace_path, resources) do
-    resources_root = Path.join(workspace_path, "resources")
-
-    resources
-    |> Enum.reduce_while({:ok, []}, fn resource, {:ok, statuses} ->
-      status = materialize_resource(resources_root, resource)
-      updated_statuses = [status | statuses]
-
-      cond do
-        status["status"] == "available" ->
-          {:cont, {:ok, updated_statuses}}
-
-        resource_required?(resource) ->
-          {:halt, {:error, {:required_resource_unavailable, resource["alias"], status["error"], Enum.reverse(updated_statuses)}}}
-
-        true ->
-          {:cont, {:ok, updated_statuses}}
-      end
-    end)
-    |> case do
-      {:ok, statuses} -> {:ok, Enum.reverse(statuses)}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp materialize_resource(resources_root, resource) do
-    alias_value = resource["alias"]
-    target_path = Path.join(resources_root, alias_value)
-    sanitized_url = sanitize_url(resource["url"])
-
-    base_status = %{
-      "resource_id" => Map.get(resource, "resource_id") || Map.get(resource, "id"),
-      "grant_id" => Map.get(resource, "grant_id") || get_in(resource, ["grant", "id"]),
-      "alias" => alias_value,
-      "path" => target_path,
-      "kind" => Map.get(resource, "kind", "repository"),
-      "provider" => Map.get(resource, "provider", "git"),
-      "locator" => sanitized_url,
-      "ref" => Map.get(resource, "ref"),
-      "required" => resource_required?(resource),
-      "credential_ref" => Map.get(resource, "credential_ref") || get_in(resource, ["grant", "credential_ref"])
-    }
-
-    with :ok <- assert_child_path(target_path, resources_root),
-         repo_id <- repo_id(sanitized_url),
-         {:ok, credential} <- RepositoryCredential.resolve(resource),
-         {:ok, cache_result} <-
-           ensure_mirror_cache(resource, resource["url"], repo_id, credential),
-         {:ok, _materialization_method} <-
-           clone_checkout(cache_result.cache_path, target_path, resource) do
-      Map.merge(base_status, %{
-        "status" => "available",
-        "commit" => workspace_revision(target_path),
-        "error" => nil
-      })
-    else
-      {:error, reason} ->
-        Map.merge(base_status, %{
-          "status" => "unavailable",
-          "commit" => nil,
-          "error" => Metadata.safe_error(reason, resource["url"])
-        })
-    end
+    Git.clone_checkout(cache_path, workspace_path, repository, root_dir())
   end
 
   @doc """
@@ -643,52 +497,9 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
 
   defp safe_locator(locator), do: locator
 
-  defp resource_required?(%{"required" => false}), do: false
-  defp resource_required?(%{"required" => "false"}), do: false
-  defp resource_required?(_resource), do: true
-
   defp workspace_revision(workspace_path) do
-    case git(["-C", workspace_path, "rev-parse", "--verify", "HEAD"]) do
-      {:ok, output} -> String.trim(output)
-      {:error, _reason} -> nil
-    end
+    Git.workspace_revision(workspace_path, root_dir())
   end
-
-  defp assert_child_path(path, root) do
-    expanded_path = Path.expand(path)
-    expanded_root = Path.expand(root)
-
-    if String.starts_with?(expanded_path <> "/", expanded_root <> "/"),
-      do: :ok,
-      else: {:error, {:resource_path_outside_workspace, expanded_path, expanded_root}}
-  end
-
-  defp maybe_checkout_ref(_workspace_path, %{"ref" => ref}) when ref in [nil, ""], do: :ok
-
-  defp maybe_checkout_ref(_workspace_path, %{} = repository)
-       when not is_map_key(repository, "ref"), do: :ok
-
-  defp maybe_checkout_ref(workspace_path, %{"ref" => ref}) when is_binary(ref) do
-    case git(["-C", workspace_path, "checkout", ref]) do
-      {:ok, _output} ->
-        :ok
-
-      {:error, _reason} ->
-        checkout_remote_branch(workspace_path, ref)
-    end
-  end
-
-  defp checkout_remote_branch(workspace_path, ref) do
-    with {:ok, _output} <- git(["-C", workspace_path, "fetch", "--all", "--prune"]),
-         {:ok, _output} <- git(["-C", workspace_path, "checkout", "-B", ref, "origin/#{ref}"]) do
-      :ok
-    else
-      {:error, reason} -> {:error, {:repository_checkout_failed, ref, reason}}
-    end
-  end
-
-  defp repository_ref(%{"ref" => ref}) when is_binary(ref) and ref != "", do: ref
-  defp repository_ref(_repository), do: "HEAD"
 
   defp cache_path(repo_id) do
     Path.join(repo_cache_root(), repo_id)
@@ -748,65 +559,7 @@ defmodule SymphonyElixir.WorkerBridge.RepositoryManager do
   end
 
   defp git(args, credential \\ nil) when is_list(args) do
-    cmd_opts =
-      [stderr_to_stdout: true]
-      |> maybe_put_git_credential_env(credential)
-
-    case System.cmd("git", args, cmd_opts) do
-      {output, 0} ->
-        {:ok, output}
-
-      {output, status} ->
-        sanitized = output |> redact_credential_output(credential) |> String.slice(0, 1000)
-        Logger.warning("Worker bridge git command failed status=#{status} output=#{inspect(sanitized)}")
-        {:error, {:git_failed, status, redact_credential_output(output, credential)}}
-    end
-  end
-
-  defp maybe_put_git_credential_env(opts, nil), do: opts
-
-  defp maybe_put_git_credential_env(opts, %RepositoryCredential{} = credential) do
-    Keyword.put(opts, :env, [
-      {"GIT_ASKPASS", askpass_path!()},
-      {"GIT_TERMINAL_PROMPT", "0"},
-      {"SYMPHONY_GIT_USERNAME", credential.username},
-      {"SYMPHONY_GIT_PASSWORD", credential.token}
-    ])
-  end
-
-  defp askpass_path! do
-    File.mkdir_p!(root_dir())
-    path = Path.join(root_dir(), @askpass_filename)
-
-    unless File.exists?(path) do
-      File.write!(path, askpass_script())
-      File.chmod!(path, 0o700)
-    end
-
-    path
-  end
-
-  defp askpass_script do
-    """
-    #!/bin/sh
-    case "$1" in
-      *Username*) printf '%s\\n' "$SYMPHONY_GIT_USERNAME" ;;
-      *Password*) printf '%s\\n' "$SYMPHONY_GIT_PASSWORD" ;;
-      *) printf '%s\\n' "$SYMPHONY_GIT_PASSWORD" ;;
-    esac
-    """
-  end
-
-  defp redact_credential_output(output, nil), do: output || ""
-
-  defp redact_credential_output(output, %RepositoryCredential{token: token}) do
-    output = output || ""
-
-    if is_binary(token) and token != "" do
-      String.replace(output, token, "[REDACTED]")
-    else
-      output
-    end
+    Git.run(root_dir(), args, credential)
   end
 
   defp configured_repo_cache_root do
