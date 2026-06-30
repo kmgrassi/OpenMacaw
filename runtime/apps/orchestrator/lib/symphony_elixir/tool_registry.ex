@@ -92,6 +92,10 @@ defmodule SymphonyElixir.ToolRegistry do
   @planning "planning"
   @read_only_turn_sandbox %{"type" => "readOnly", "networkAccess" => false}
   @planner_database_tools [
+    "scheduled_task.read",
+    "scheduled_task.list",
+    "shell.exec",
+    "task.status",
     "plan.create",
     "plan.update",
     "plan.delete",
@@ -364,12 +368,12 @@ defmodule SymphonyElixir.ToolRegistry do
       when is_map(config) and is_list(fallback_names) do
     case map_value(config, :tool_definitions) || map_value(config, :toolDefinitions) do
       tools when is_list(tools) -> normalize_definitions(tools)
-      _other -> specs(fallback_names)
+      _other -> specs(Enum.uniq(fallback_names))
     end
   end
 
   def effective_definitions(_config, fallback_names) when is_list(fallback_names),
-    do: specs(fallback_names)
+    do: specs(Enum.uniq(fallback_names))
 
   @doc "Extract runtime tool names from model-agnostic tool definitions."
   @spec definition_names([map()]) :: [tool_name()]

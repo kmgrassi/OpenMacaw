@@ -42,6 +42,19 @@ defmodule SymphonyElixirWeb.AgentLiveIoControllerTest do
     end
   end
 
+  defmodule ClaudeProfileResolver do
+    def resolve_route(_agent_id, _workspace_id) do
+      {:ok,
+       %{
+         "role" => "coding",
+         "runner_kind" => "claude_code",
+         "provider" => "anthropic",
+         "model" => "fake-claude",
+         "adapter_config" => %{}
+       }}
+    end
+  end
+
   defmodule FakeCodexRunner do
     def start_session(config, workspace) do
       send(owner(), {:fake_codex_start_session, config, workspace})
@@ -155,6 +168,31 @@ defmodule SymphonyElixirWeb.AgentLiveIoControllerTest do
              SymphonyElixir.AgentLiveIo.stream_event(scope, event)
 
     refute_received {:message_log_user_message, _, _, "Ping", _}
+  end
+
+  test "Claude Code runner agents route through AgentIO" do
+    put_app_env(:symphony_elixir, :agent_live_io_profile_resolver, ClaudeProfileResolver)
+    put_app_env(:symphony_elixir, :agent_live_io_coding_runner, FakeCodexRunner)
+    put_app_env(:symphony_elixir, :agent_live_io_test_owner, self())
+
+    session_key = default_session_key() <> ":claude"
+    scope = %{agent_id: @agent_id, workspace_id: @workspace_id, user_id: @user_id, session_key: session_key}
+
+    assert :ok = SymphonyElixir.AgentLiveIo.subscribe(scope)
+
+    conn =
+      authed_conn()
+      |> post("/api/v1/agents/#{@agent_id}/input", %{
+        "workspace_id" => @workspace_id,
+        "user_id" => @user_id,
+        "message" => "Ping",
+        "session_key" => session_key
+      })
+
+    assert %{"accepted" => true, "sessionKey" => ^session_key, "turnId" => turn_id} = json_response(conn, 202)
+    assert_receive {:fake_codex_start_session, %{"model" => "fake-claude", "model_provider" => "anthropic"}, _workspace}
+    assert_receive {:fake_codex_run_turn, "Ping", %{id: ^session_key, runner_type: "claude_code"}}
+    assert_receive {:agent_io_event, ^session_key, %{event: :turn_started, turn_id: ^turn_id}}
   end
 
   test "Codex runner interrupts become turn_interrupted stream events" do

@@ -61,6 +61,29 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     assert :ok = ClaudeCode.stop_session(session)
   end
 
+  test "can run a real Claude bridge round trip when explicitly configured", %{workspace: workspace} do
+    bridge_command = System.get_env("OPENMACAW_REAL_CLAUDE_BRIDGE_COMMAND")
+
+    if bridge_command && System.get_env("OPENMACAW_RUN_REAL_PROCESS_TESTS") == "1" do
+      config = %{
+        "bridge_command" => bridge_command,
+        "model" => System.get_env("OPENMACAW_REAL_CLAUDE_MODEL", "sonnet"),
+        "max_turns" => 1
+      }
+
+      assert {:ok, session} = ClaudeCode.start_session(config, workspace)
+
+      try do
+        assert {:ok, result} = ClaudeCode.run_turn(session, "Reply with exactly: claude-real-process-ok", work_item())
+        assert is_map(result)
+      after
+        ClaudeCode.stop_session(session)
+      end
+    else
+      assert is_nil(bridge_command) || System.get_env("OPENMACAW_RUN_REAL_PROCESS_TESTS") != "1"
+    end
+  end
+
   test "surfaces startup failures", %{workspace: workspace} do
     bridge = fake_bridge!("startup_failure")
 

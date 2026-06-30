@@ -58,6 +58,7 @@ defmodule SymphonyElixir.AgentLiveIo do
   @spec interrupt(scope() | String.t(), String.t() | nil, keyword()) :: {:ok, event()} | {:error, term()}
   def interrupt(scope_or_session_key, run_id \\ nil, opts \\ [])
 
+  @spec interrupt(scope(), String.t() | nil, keyword()) :: {:ok, event()} | {:error, term()}
   def interrupt(%{session_key: session_key} = scope, run_id, opts) when is_binary(session_key) do
     with {:ok, route} <- route(scope, opts) do
       case route do
@@ -76,6 +77,7 @@ defmodule SymphonyElixir.AgentLiveIo do
     end
   end
 
+  @spec interrupt(String.t(), String.t() | nil, keyword()) :: {:ok, event()} | {:error, term()}
   def interrupt(session_key, run_id, _opts) when is_binary(session_key) do
     case SessionStore.abort_run(session_key, run_id) do
       {:ok, session} ->
@@ -94,6 +96,7 @@ defmodule SymphonyElixir.AgentLiveIo do
   @spec subscribe(scope() | String.t(), keyword()) :: :ok | {:error, term()}
   def subscribe(scope_or_session_key, opts \\ [])
 
+  @spec subscribe(scope(), keyword()) :: :ok | {:error, term()}
   def subscribe(%{session_key: session_key} = scope, opts) when is_binary(session_key) do
     with {:ok, route} <- route(scope, opts) do
       case route do
@@ -109,6 +112,7 @@ defmodule SymphonyElixir.AgentLiveIo do
     end
   end
 
+  @spec subscribe(String.t(), keyword()) :: :ok | {:error, term()}
   def subscribe(session_key, _opts) when is_binary(session_key) do
     GenServer.call(__MODULE__, {:subscribe, session_key, self()})
   end
@@ -277,7 +281,7 @@ defmodule SymphonyElixir.AgentLiveIo do
   end
 
   defp coding_agent_io_profile?(profile) when is_map(profile) do
-    ExecutionProfile.runner_kind(profile) == "codex"
+    ExecutionProfile.runner_kind(profile) in ["codex", "claude_code"]
   end
 
   defp coding_agent_io_profile?(_profile), do: false

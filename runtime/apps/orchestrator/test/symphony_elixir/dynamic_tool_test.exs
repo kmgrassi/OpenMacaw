@@ -28,6 +28,10 @@ defmodule SymphonyElixir.Codex.DynamicToolTest do
     specs = DynamicTool.planner_tool_specs()
 
     assert Enum.map(specs, & &1["name"]) == [
+             "scheduled_task.read",
+             "scheduled_task.list",
+             "shell.exec",
+             "task.status",
              "plan.create",
              "plan.update",
              "plan.delete",

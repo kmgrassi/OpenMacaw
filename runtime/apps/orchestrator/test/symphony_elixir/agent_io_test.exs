@@ -101,6 +101,68 @@ defmodule SymphonyElixir.AgentIOTest do
     assert_receive {:agent_io_event, ^key, %{event: :turn_ended_with_error, turn_id: ^turn_id, payload: %{"reason" => "interrupted"}}}
   end
 
+  test "enforces the configured live session cap" do
+    first_key = unique_key()
+    second_key = unique_key()
+    max_sessions = AgentIO.stats().active_sessions + 1
+
+    assert {:ok, pid} =
+             AgentIO.ensure_session(first_key,
+               runner: FakeRunner,
+               config: %{owner: self()},
+               idle_timeout_ms: 0,
+               max_sessions: max_sessions
+             )
+
+    assert {:error, :session_limit_exceeded} =
+             AgentIO.ensure_session(second_key,
+               runner: FakeRunner,
+               config: %{owner: self()},
+               idle_timeout_ms: 0,
+               max_sessions: max_sessions
+             )
+
+    Process.exit(pid, :normal)
+  end
+
+  test "emits lifecycle telemetry for sessions and turns" do
+    key = unique_key()
+    parent = self()
+    handler_id = "agent-io-lifecycle-test-#{System.unique_integer([:positive])}"
+
+    events = [
+      [:symphony_elixir, :agent_io, :session, :started],
+      [:symphony_elixir, :agent_io, :runner_session, :started],
+      [:symphony_elixir, :agent_io, :turn, :started],
+      [:symphony_elixir, :agent_io, :turn, :completed]
+    ]
+
+    :telemetry.attach_many(
+      handler_id,
+      events,
+      fn event, measurements, metadata, _config ->
+        send(parent, {:agent_io_telemetry, event, measurements, metadata})
+      end,
+      nil
+    )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+
+    assert {:ok, _snapshot} =
+             AgentIO.subscribe(key, self(),
+               runner: FakeRunner,
+               config: %{owner: self()},
+               idle_timeout_ms: 0
+             )
+
+    assert {:ok, %{turn_id: turn_id}} = AgentIO.send_message(key, "hello")
+
+    assert_receive {:agent_io_telemetry, [:symphony_elixir, :agent_io, :session, :started], %{count: 1}, %{session_key: ^key}}
+    assert_receive {:agent_io_telemetry, [:symphony_elixir, :agent_io, :runner_session, :started], %{count: 1}, %{session_key: ^key}}
+    assert_receive {:agent_io_telemetry, [:symphony_elixir, :agent_io, :turn, :started], %{count: 1}, %{session_key: ^key, turn_id: ^turn_id}}
+    assert_receive {:agent_io_telemetry, [:symphony_elixir, :agent_io, :turn, :completed], %{count: 1}, %{session_key: ^key, turn_id: ^turn_id}}
+  end
+
   test "stale idle timeout messages do not stop an active runner session" do
     key = unique_key()
 

@@ -70,6 +70,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
   @spec resolve_route(String.t(), String.t()) :: {:ok, resolution()} | {:error, term()}
   def resolve_route(agent_id, workspace_id, opts \\ [])
 
+  @spec resolve_route(String.t(), String.t(), keyword()) :: {:ok, resolution()} | {:error, term()}
   def resolve_route(agent_id, workspace_id, opts)
       when is_binary(agent_id) and agent_id != "" and is_binary(workspace_id) and
              workspace_id != "" do

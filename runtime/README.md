@@ -68,6 +68,20 @@ mix compile --warnings-as-errors
 mix test
 ```
 
+For production live agent I/O checks, use the HTTP/SSE smoke against a local
+or production orchestrator:
+
+```sh
+SUPABASE_SERVICE_ROLE_KEY=... pnpm run smoke:agent-live-io -- \
+  --workspace-id <workspace-id> \
+  --codex-agent-id <codex-agent-id> \
+  --claude-agent-id <claude-agent-id>
+```
+
+Add `--base-url https://...` to target prod. The smoke opens `/stream`, posts
+input, verifies streamed events, then starts another turn and verifies
+`/interrupt` emits `turn_interrupted` for Codex and Claude Code coding agents.
+
 ## More documentation
 
 - [`docs/`](docs/) — runtime runbooks and scoping docs

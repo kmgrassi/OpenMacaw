@@ -37,6 +37,24 @@ defmodule SymphonyElixir.Runner.CodexTest do
       result = Codex.start_session(%{}, "/nonexistent/workspace")
       assert match?({:error, _}, result)
     end
+
+    test "can run a real Codex app-server round trip when explicitly configured" do
+      workspace = System.get_env("OPENMACAW_REAL_CODEX_WORKSPACE")
+
+      if workspace && System.get_env("OPENMACAW_RUN_REAL_PROCESS_TESTS") == "1" do
+        assert :ok = Codex.ping(%{})
+        assert {:ok, session} = Codex.start_session(%{}, workspace)
+
+        try do
+          assert {:ok, result} = Codex.run_turn(session, "Reply with exactly: codex-real-process-ok", work_item())
+          assert is_map(result)
+        after
+          Codex.stop_session(session)
+        end
+      else
+        assert is_nil(workspace) || System.get_env("OPENMACAW_RUN_REAL_PROCESS_TESTS") != "1"
+      end
+    end
   end
 
   describe "stop_session/1" do

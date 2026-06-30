@@ -58,14 +58,14 @@ defmodule SymphonyElixirWeb.CodexSessionControllerTest do
 
       conn =
         authed_conn()
-        |> post("/api/v1/codex/sessions", %{"workspace" => workspace})
+        |> post("/api/v1/internal/codex/sessions", %{"workspace" => workspace})
 
       assert %{"ok" => true, "session" => %{"session_id" => session_id, "thread_id" => "thread-1302"}} =
                json_response(conn, 200)
 
       conn =
         authed_conn()
-        |> post("/api/v1/codex/sessions/#{session_id}/input", %{
+        |> post("/api/v1/internal/codex/sessions/#{session_id}/input", %{
           "prompt" => "continue",
           "issue" => %{"identifier" => "MT-1302", "title" => "API input"}
         })
@@ -76,7 +76,7 @@ defmodule SymphonyElixirWeb.CodexSessionControllerTest do
   end
 
   test "rejects unauthenticated Codex session requests" do
-    conn = post(build_conn(), "/api/v1/codex/sessions", %{"workspace" => "/tmp/workspace"})
+    conn = post(build_conn(), "/api/v1/internal/codex/sessions", %{"workspace" => "/tmp/workspace"})
 
     assert %{"error" => %{"code" => "auth_required"}} = json_response(conn, 401)
   end
