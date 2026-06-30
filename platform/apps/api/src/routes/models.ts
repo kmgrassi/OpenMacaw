@@ -10,6 +10,7 @@ import { CredentialProviderSchema } from "../../../../contracts/credentials.js";
 import { MODEL_PROVIDER_IDS, type ModelProvider } from "../../../../contracts/provider-registry.js";
 import { apiRoute, ApiRouteError, requestWorkspaceId } from "../http.js";
 import { saveModelProviderCredentialForWorkspaceInSupabase } from "../services/saved-credentials.js";
+import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
 import {
   listModelCatalog,
   listModelProviderConnections,
@@ -30,6 +31,21 @@ const MODEL_CREDENTIAL_PROVIDERS = new Set<string>(MODEL_PROVIDER_IDS);
 
 function asModelProvider(provider: string): ModelProvider | null {
   return MODEL_CREDENTIAL_PROVIDERS.has(provider) ? (provider as ModelProvider) : null;
+}
+
+async function requireWorkspaceAccess(userId: string, workspaceId: string) {
+  try {
+    await assertWorkspaceMembership(userId, workspaceId);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("not authorized")) {
+      throw new ApiRouteError(
+        403,
+        "workspace_forbidden",
+        "Authenticated user is not authorized for the requested workspace",
+      );
+    }
+    throw error;
+  }
 }
 
 export function registerModelCatalogRoutes(app: express.Express) {
@@ -66,6 +82,11 @@ export function registerModelCatalogRoutes(app: express.Express) {
           throw new ApiRouteError(400, "invalid_request", "Unsupported model provider");
         }
         const provider = parsedProvider.data;
+        if (!userId) {
+          throw new ApiRouteError(401, "auth_required", "Supabase access token is required");
+        }
+
+        await requireWorkspaceAccess(userId, body.workspaceId);
 
         const validation = await validateModelProviderCredential({
           provider: modelProvider,
