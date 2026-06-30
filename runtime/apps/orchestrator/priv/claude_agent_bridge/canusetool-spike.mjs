@@ -45,7 +45,7 @@ const canUseTool = async (toolName, input) => {
 };
 
 console.log(`workspace: ${cwd}`);
-console.log("running Claude Code (string prompt, permissionMode=default)...");
+console.log("running Claude Code (string prompt, isolated settings, permissionMode=default)...");
 
 let resultText = "";
 try {
@@ -53,6 +53,7 @@ try {
     prompt: PROMPT,
     options: {
       cwd,
+      settingSources: [], // isolate the probe from user/project approvals
       permissionMode: "default", // so tool calls actually prompt → canUseTool fires
       canUseTool,
       maxTurns: 6,
