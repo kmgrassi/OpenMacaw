@@ -55,8 +55,8 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     assert result.result == "done"
     assert result.session_id == "fake-session"
 
-    assert_received {:claude_event, %{"method" => "message/delta", "params" => %{"textDelta" => "working"}}}
-    assert_received {:claude_event, %{"method" => "usage/updated"}}
+    assert_received {:claude_event, %{event: :notification, payload: %{"params" => %{"text_delta" => "working"}}}}
+    assert_received {:claude_event, %{event: :notification, usage: %{"input_tokens" => 1, "output_tokens" => 2, "total_tokens" => 3}}}
 
     assert :ok = ClaudeCode.stop_session(session)
   end
@@ -108,11 +108,21 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     assert :ok = ClaudeCode.stop_session(session)
   end
 
+  test "interrupt sends the bridge turn interrupt request", %{workspace: workspace} do
+    bridge = fake_bridge!("success")
+
+    assert {:ok, session} =
+             ClaudeCode.start_session(%{"bridge_command" => "node #{shell_escape(bridge)}"}, workspace)
+
+    assert :ok = ClaudeCode.interrupt(session, [])
+    assert :ok = ClaudeCode.stop_session(session)
+  end
+
   test "advertises streaming I/O capabilities" do
     assert %{
              input: :turn,
              output_stream: :runner_events,
-             interrupt: :unsupported,
+             interrupt: :supported,
              tool_activity: true,
              metadata: %{backend: "claude_agent_bridge"}
            } = ClaudeCode.stream_capabilities()
@@ -210,6 +220,11 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
         write({ method: 'message/delta', params: { textDelta: 'working' } });
         write({ method: 'usage/updated', params: { inputTokens: 1, outputTokens: 2, totalTokens: 3 } });
         write({ id: message.id, result: { result: 'done', sessionId: 'fake-session' } });
+        return;
+      }
+
+      if (message.method === 'turn/interrupt') {
+        write({ id: message.id, result: { interrupted: true } });
         return;
       }
 

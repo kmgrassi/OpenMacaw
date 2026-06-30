@@ -15,6 +15,14 @@ defmodule SymphonyElixir.AgentIOTest do
       {:ok, %{"output_text" => "hello", "usage" => %{"input_tokens" => 1, "output_tokens" => 1}}}
     end
 
+    def send_input(session, input, work_item, opts) do
+      session
+      |> Map.put(:on_message, Keyword.fetch!(opts, :on_message))
+      |> run_turn(input, work_item)
+    end
+
+    def interrupt(_session, _opts), do: {:error, :interrupt_not_supported}
+
     def stop_session(session) do
       send(session.owner, {:fake_stop_session, session.session_id})
       :ok
@@ -35,6 +43,10 @@ defmodule SymphonyElixir.AgentIOTest do
         30_000 -> {:ok, %{"output_text" => "late"}}
       end
     end
+
+    def send_input(session, input, work_item, _opts), do: run_turn(session, input, work_item)
+
+    def interrupt(_session, _opts), do: {:error, :interrupt_not_supported}
 
     def stop_session(session) do
       send(session.owner, {:slow_stop_session, session.session_id})

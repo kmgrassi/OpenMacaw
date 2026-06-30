@@ -277,17 +277,17 @@ defmodule SymphonyElixir.AgentLiveIo do
   end
 
   defp coding_agent_io_profile?(profile) when is_map(profile) do
-    ExecutionProfile.runner_kind(profile) == "codex"
+    ExecutionProfile.runner_kind(profile) in ["codex", "claude_code"]
   end
 
   defp coding_agent_io_profile?(_profile), do: false
 
   defp agent_io_opts(scope, agent, profile, opts) do
     work_item = work_item(scope, agent, profile, Keyword.get(opts, :metadata, %{}))
-    runner = Keyword.get(opts, :runner, Application.get_env(:symphony_elixir, :agent_live_io_coding_runner, SymphonyElixir.Runner.Codex))
     config = runner_config(agent, profile, scope, opts)
 
-    with {:ok, workspace} <- workspace_for(work_item, opts) do
+    with {:ok, runner} <- coding_runner(profile, opts),
+         {:ok, workspace} <- workspace_for(work_item, opts) do
       {:ok,
        [
          runner: runner,
@@ -295,6 +295,19 @@ defmodule SymphonyElixir.AgentLiveIo do
          workspace: workspace,
          work_item: work_item
        ]}
+    end
+  end
+
+  defp coding_runner(profile, opts) do
+    cond do
+      Keyword.has_key?(opts, :runner) ->
+        {:ok, Keyword.fetch!(opts, :runner)}
+
+      configured = Application.get_env(:symphony_elixir, :agent_live_io_coding_runner) ->
+        {:ok, configured}
+
+      true ->
+        ExecutionProfile.runner_module(profile)
     end
   end
 
