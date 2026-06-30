@@ -40,7 +40,7 @@ Concretely:
   cards on the dashboard, and the diagnostics tabs under `/settings/*`.
 - There is no single "is my system healthy?" answer. Health is implied by
   the union of `WorkspaceAgentHealthWidget`, `AgentHealthBanner`,
-  `EngineInstanceCard`, `ConnectionHealth`, and the runtime settings page.
+  `EngineInstanceCard`, and the runtime settings page.
 
 **Spacing and responsiveness**
 
