@@ -59,16 +59,6 @@ defmodule SymphonyElixir.ClaudeCode.Bridge do
     request(port, "turn/start", params, options, on_event)
   end
 
-  @spec interrupt(session(), keyword()) :: :ok | {:error, term()}
-  def interrupt(%{port: port, options: options}, opts \\ []) when is_port(port) do
-    timeout_ms = Keyword.get(opts, :timeout_ms, request_timeout(options))
-
-    case request(port, "turn/interrupt", %{}, Map.put(options, "timeout_ms", timeout_ms)) do
-      {:ok, _result} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   @spec stop(session() | port()) :: :ok
   def stop(%{port: port, options: options}) when is_port(port) do
     _ = request(port, "session/stop", %{}, options)

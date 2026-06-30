@@ -75,14 +75,14 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
   end
 
   @impl SymphonyElixir.Runner.CodingRunner
-  def interrupt(session, opts) when is_map(session), do: Bridge.interrupt(session, opts)
+  def interrupt(_session, _opts), do: {:error, :interrupt_not_supported}
 
   @impl SymphonyElixir.Runner.CodingRunner
   def stream_capabilities do
     Contract.coding_capabilities(
       input: :turn,
       output_stream: :runner_events,
-      interrupt: :supported,
+      interrupt: :unsupported,
       tool_activity: true,
       metadata: %{backend: "claude_agent_bridge"}
     )

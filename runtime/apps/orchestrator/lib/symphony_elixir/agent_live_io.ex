@@ -277,7 +277,11 @@ defmodule SymphonyElixir.AgentLiveIo do
   end
 
   defp coding_agent_io_profile?(profile) when is_map(profile) do
-    ExecutionProfile.runner_kind(profile) in ["codex", "claude_code"]
+    case ExecutionProfile.runner_kind(profile) do
+      "codex" -> true
+      "claude_code" -> Application.get_env(:symphony_elixir, :agent_live_io_claude_code_enabled, false)
+      _other -> false
+    end
   end
 
   defp coding_agent_io_profile?(_profile), do: false
