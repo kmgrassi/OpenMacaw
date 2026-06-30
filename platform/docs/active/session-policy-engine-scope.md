@@ -39,11 +39,18 @@ The two are orthogonal and should compose:
 | Which runner/model/credential? | `routing_rule` execution profile | exists |
 | May this *specific* call proceed *now*, given session state? | **session policy engine** | this doc |
 
-The enforcement seam already exists: `ToolRegistry.execute/4`
-(`runtime/apps/orchestrator/lib/symphony_elixir/tool_registry.ex:161`) is the
-single chokepoint every tool call passes through. Today it only runs
-`allowed?(name, allowed)`. The policy engine slots in immediately after that
-check, before `dispatch/3`.
+`ToolRegistry.execute/4`
+(`runtime/apps/orchestrator/lib/symphony_elixir/tool_registry.ex:161`) is *one*
+enforcement point — but **not the only one**, so the engine must not hook there.
+Several tool-execution paths skip the registry entirely (see
+[Runtime Enforcement](#runtime-enforcement-elixir) for the full list): the
+tool-calling dispatcher can invoke a custom executor or ship the call to the
+local helper, and the cloud coding executor calls `ShellExec` / `ApplyPatch`
+directly. Hooking only `ToolRegistry.execute/4` would silently bypass
+`ask_on_shell`, `block_tools`, and the per-session counters for exactly the
+highest-risk paths (shell, patch, container, local-relay). The engine therefore
+gates at the **logical pre-execution funnels** that sit above the
+executor/transport split, through one shared `PolicyGate`.
 
 ## Non-Goals
 
@@ -175,28 +182,56 @@ dashboard can read live counters.
 
 ## Runtime Enforcement (Elixir)
 
-The engine lives in the runtime because that is where tools execute and where
-the single chokepoint is.
+The engine lives in the runtime because that is where tools execute. There is
+**no single chokepoint** today; tool calls reach execution through several
+paths, and the gate must cover all of them or it is trivially bypassable.
 
-### Evaluation seam
+### The tool-execution paths (why one hook is not enough)
 
-In `tool_registry.ex`, extend `execute/4` so that after the allowlist passes and
-before `dispatch/3`:
+| # | Path | Where it executes | Hits `ToolRegistry.execute/4`? |
+| --- | --- | --- | --- |
+| 1 | Registry tool | in orchestrator process | yes |
+| 2 | Custom executor (function/module) — `tool_execution_dispatcher.ex:155-162`, `:194-204` | in orchestrator process | **no** |
+| 3 | Local-relay tool — dispatcher ships a frame to the helper daemon | on the user's machine | **no** |
+| 4 | Cloud coding executor `shell.exec` / `apply_patch` — `coding_executor.ex:206-231` (`ShellExec.execute` / `ApplyPatch.execute`) | in the cloud container | **no** |
+
+Paths 3 and 4 execute **off-process** (helper daemon / container), so the policy
+decision — especially `ask`, counters, and budgets — must be made in the
+orchestrator *before* the call is dispatched. That rules out a hook inside the
+executor and points at the dispatch funnels.
+
+### Evaluation seam: one `PolicyGate`, called at each pre-execution funnel
+
+Introduce `SymphonyElixir.PolicyGate.evaluate/1` and call it at the logical
+funnels that sit **above** the executor/transport split, so a single decision
+covers registry, custom-executor, and local-relay tools at once:
+
+- **`tool_execution_dispatcher.ex` — `request_tool_execution/3` (line 106)** —
+  above the runtime-vs-helper split (109-114) and the executor split (155), so it
+  gates paths 1, 2, and 3 for the cloud tool-calling loop.
+- **`tool_execution_dispatcher.ex` — `execute_direct_tool/2` (line 184)** — above
+  its executor split (194), gating the direct / local-model-coding path.
+- **`coding_executor.ex` — `execute_tool/5` (line 206)** — the separate cloud
+  container runner; gate at the top before the `shell.exec` / `apply_patch`
+  branches (path 4).
+- **`ToolRegistry.execute/4`** keeps the allowlist check (`allowed?/2`) but is
+  *not* the policy seam — the gate has already run upstream by the time a
+  registry tool reaches it.
 
 ```elixir
-cond do
-  not allowed?(name, allowed) ->
-    {:error, :not_allowed}
-
-  true ->
-    case PolicyEngine.evaluate(%{type: :tool_call, target: name,
-                                 data: arguments, context: context}) do
-      :allow            -> dispatch(module, ...)
-      {:deny, reason}   -> {:error, {:policy_denied, reason}}
-      {:ask, escalation}-> {:error, {:policy_ask, escalation}}
-    end
+# at each funnel, before any executor / transport dispatch
+case PolicyGate.evaluate(%{type: :tool_call, target: call.name,
+                           data: call.arguments, session: session}) do
+  :allow             -> dispatch_however_this_path_dispatches()
+  {:deny, reason}    -> {:error, {:policy_denied, reason}}
+  {:ask, escalation} -> {:error, {:policy_ask, escalation}}
 end
 ```
+
+`PolicyGate.evaluate/1` is the single implementation (state, tiers, verdict
+composition); the funnels above are the only call sites. Adding a future runner
+path means adding one `PolicyGate.evaluate/1` call at its funnel — enforced by a
+test that asserts every tool-dispatch funnel is gated (see Verification).
 
 - `{:policy_denied, reason}` surfaces to the agent in-band as a tool error,
   reusing the existing failure-response shaping (`tool_registry.ex:217-227`).
@@ -288,19 +323,25 @@ Each PR lists how to **verify it works in isolation** before moving on.
      positive integer `limit`); the cross-repo drift check passes with the TS
      registry, the Elixir evaluator stubs, and any DB `CHECK` in agreement.
      Pure TS — `pnpm -C apps/api run validate`.
-3. **PR-3 — Runtime engine (allow/deny only).** `PolicyEngine` + in-process
-   state + write-behind; wire into `execute/4`; implement
+3. **PR-3 — Runtime engine (allow/deny only).** `PolicyGate` + `PolicyEngine` +
+   in-process state + write-behind; wire `PolicyGate.evaluate/1` into **all**
+   pre-execution funnels (`request_tool_execution/3`, `execute_direct_tool/2`,
+   `coding_executor.execute_tool/5`), not just the registry path; implement
    `max_tool_calls_per_session` and `block_tools`. No human gate yet. **First
    behaviorally testable PR.**
    - *Verify:* `mix` unit tests for the engine — precedence (`deny` > `ask` >
      `allow`), tier ordering, counter increment, restart hydration from
-     `policy_session_state`. Full-stack smoke: insert
-     `max_tool_calls_per_session: 2` directly via PostgREST, run an agent, and
-     confirm the 3rd tool call returns an in-band policy error (the
-     `tool_registry.ex:217` shape) while calls 1–2 succeed. Separately grant a
-     tool, then add a `block_tools` policy for it, and confirm the call is now
-     denied even though the grant still exists — proving policy composes *after*
-     the allowlist.
+     `policy_session_state`. **Path-coverage test (the Codex P1):** with one
+     `block_tools` policy active, assert the call is denied for each path —
+     a registry tool, a custom-executor tool, a local-relay tool, and the cloud
+     coding `shell.exec` — so no runner/transport bypasses the gate. Full-stack
+     smoke: insert `max_tool_calls_per_session: 2` directly via PostgREST, run an
+     agent, and confirm the 3rd tool call returns an in-band policy error while
+     calls 1–2 succeed; repeat the count against a `shell.exec`-driven cloud
+     coding run to prove the counter increments off-registry too. Separately
+     grant a tool, then add a `block_tools` policy for it, and confirm the call
+     is denied even though the grant still exists — proving policy composes
+     *after* the allowlist.
 4. **PR-4 — Resolver + dispatch.** `policy-resolver.ts`, dispatch-context
    plumbing, runtime config load at turn start.
    - *Verify:* API test that `GET /api/agents/:id/policies` returns the resolved
