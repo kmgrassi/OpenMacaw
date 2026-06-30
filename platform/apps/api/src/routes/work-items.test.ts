@@ -1,7 +1,8 @@
+import { createHmac } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
-import express from "express";
+import express, { type Request } from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiConfig } from "../config.js";
@@ -15,6 +16,7 @@ type WorkItemTestTables = {
   workspaces: TableRows;
   work_items: TableRows;
   event_log: TableRows;
+  webhook_delivery: TableRows;
 };
 
 const tables: WorkItemTestTables = {
@@ -22,6 +24,7 @@ const tables: WorkItemTestTables = {
   workspaces: [],
   work_items: [],
   event_log: [],
+  webhook_delivery: [],
 };
 const mockClient = createMockSupabaseClient(tables);
 
@@ -94,6 +97,8 @@ function workItemRow(overrides: Record<string, unknown> = {}) {
 }
 
 function resetTables() {
+  config.githubWebhookSecret = null;
+  config.githubRepoWorkspaceMap = {};
   tables.workspace_members = [{ workspace_id: workspaceId, user_id: userId }];
   tables.workspaces = [];
   tables.work_items = [
@@ -106,6 +111,7 @@ function resetTables() {
     }),
   ];
   tables.event_log = [];
+  tables.webhook_delivery = [];
   vi.clearAllMocks();
 }
 
@@ -129,6 +135,10 @@ async function postJson(url: string, body: unknown) {
   });
 }
 
+function githubSignature(secret: string, body: string) {
+  return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+}
+
 let baseUrl = "";
 
 describe("work item routes", () => {
@@ -138,7 +148,13 @@ describe("work item routes", () => {
     resetTables();
 
     const app = express();
-    app.use(express.json());
+    app.use(
+      express.json({
+        verify: (req, _res, buffer) => {
+          (req as Request & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
+        },
+      }),
+    );
     app.use((req, _res, next) => {
       if (req.header("authorization") === "Bearer test-token") {
         req.userId = userId;
@@ -383,5 +399,66 @@ describe("work item routes", () => {
       nextPollAt: futureUntil,
       snooze: null,
     });
+  });
+
+  it("skips replayed GitHub webhook deliveries after the first successful claim", async () => {
+    config.githubWebhookSecret = "github-secret";
+    config.githubRepoWorkspaceMap = { "openmacaw/repo": workspaceId };
+    tables.work_items.push(
+      workItemRow({
+        id: "55555555-5555-4555-8555-555555555555",
+        source: "github",
+        title: "Old auth bug title",
+        metadata: { external_id: "openmacaw/repo:issue:17" },
+        "metadata->>external_id": "openmacaw/repo:issue:17",
+      }),
+    );
+
+    const payload = JSON.stringify({
+      action: "opened",
+      repository: {
+        full_name: "openmacaw/repo",
+        html_url: "https://github.com/openmacaw/repo",
+      },
+      issue: {
+        number: 17,
+        title: "Fix auth bug",
+        body: "Investigate duplicate webhook processing.",
+        state: "open",
+        html_url: "https://github.com/openmacaw/repo/issues/17",
+        labels: [],
+      },
+    });
+    const headers = {
+      connection: "close",
+      "content-type": "application/json",
+      "x-github-event": "issues",
+      "x-github-delivery": "delivery-1",
+      "x-hub-signature-256": githubSignature("github-secret", payload),
+    };
+
+    const first = await fetch(`${baseUrl}/api/webhooks/github`, {
+      method: "POST",
+      headers,
+      body: payload,
+    });
+    expect(first.status).toBe(202);
+    expect(tables.work_items).toHaveLength(3);
+    expect(tables.webhook_delivery).toHaveLength(1);
+
+    const replay = await fetch(`${baseUrl}/api/webhooks/github`, {
+      method: "POST",
+      headers,
+      body: payload,
+    });
+
+    expect(replay.status).toBe(202);
+    await expect(replay.json()).resolves.toMatchObject({
+      accepted: true,
+      skipped: true,
+      reason: "duplicate_delivery",
+    });
+    expect(tables.work_items).toHaveLength(3);
+    expect(tables.webhook_delivery).toHaveLength(1);
   });
 });
