@@ -264,38 +264,100 @@ load together and stay consistent for the turn.
 
 ## PR Sequence
 
+The sequence is ordered so each PR is independently shippable and verifiable,
+and so behavior only changes once — at PR-3. PRs 1, 2, and 4 are additive or
+non-behavioral; the engine itself is gated by data, not a flag (see
+[Incremental rollout property](#incremental-rollout-property)), so early PRs are
+safe to merge before the feature is complete.
+
+Each PR lists how to **verify it works in isolation** before moving on.
+
 1. **PR-1 — Schema.** Create `policy` and `policy_session_state` (migration +
    `openmacaw-schema.sql` + `pnpm run db:schema:sync` / runtime schema sync).
    RLS via the standard `workspace_id` member policy loop.
+   - *Verify:* migration applies cleanly; `db:schema:sync` regenerates types
+     with no hand edits; insert a `policy` row via PostgREST with the
+     service-role key and read it back; confirm an anon-key client only sees
+     rows for its own workspace (RLS). No behavior change — existing
+     `pnpm -C apps/api run validate` and `mix test` stay green and agents still
+     run normally.
 2. **PR-2 — Contracts + registry.** `policy.ts`, kind schemas, verdict schema,
    drift check, escalation `policy_ask` reason.
+   - *Verify:* unit tests on each kind's Zod schema (valid params parse,
+     invalid params reject — e.g. `max_tool_calls_per_session` requires a
+     positive integer `limit`); the cross-repo drift check passes with the TS
+     registry, the Elixir evaluator stubs, and any DB `CHECK` in agreement.
+     Pure TS — `pnpm -C apps/api run validate`.
 3. **PR-3 — Runtime engine (allow/deny only).** `PolicyEngine` + in-process
    state + write-behind; wire into `execute/4`; implement
-   `max_tool_calls_per_session` and `block_tools`. No human gate yet.
+   `max_tool_calls_per_session` and `block_tools`. No human gate yet. **First
+   behaviorally testable PR.**
+   - *Verify:* `mix` unit tests for the engine — precedence (`deny` > `ask` >
+     `allow`), tier ordering, counter increment, restart hydration from
+     `policy_session_state`. Full-stack smoke: insert
+     `max_tool_calls_per_session: 2` directly via PostgREST, run an agent, and
+     confirm the 3rd tool call returns an in-band policy error (the
+     `tool_registry.ex:217` shape) while calls 1–2 succeed. Separately grant a
+     tool, then add a `block_tools` policy for it, and confirm the call is now
+     denied even though the grant still exists — proving policy composes *after*
+     the allowlist.
 4. **PR-4 — Resolver + dispatch.** `policy-resolver.ts`, dispatch-context
    plumbing, runtime config load at turn start.
+   - *Verify:* API test that `GET /api/agents/:id/policies` returns the resolved
+     workspace+agent set; assert `runtime-dispatch-context` now carries the
+     policy set alongside `workspace_policy`. Repeat the PR-3 smoke but configure
+     the policy through the **resolver path** (not a manual PostgREST insert) and
+     confirm the runtime loads it at turn start. Extend the diagnostic endpoint
+     and confirm `GET /api/diagnostic/agents/:id` lists resolved policies.
 5. **PR-5 — `ask` / human gate.** Generalize `approval_policy`, write
    `escalation` on `ask`, pause/resume the turn, `ask_on_shell` / `ask_on_tool`.
+   - *Verify:* `mix` tests for pause/resume around an `ask` verdict. Full-stack:
+     configure `ask_on_shell`, run an agent that calls a shell tool, confirm an
+     `escalation` row (`reason_kind = policy_ask`) is written and the turn
+     blocks; **approve** via the escalation queue and confirm the call proceeds;
+     re-run and **refuse** and confirm it resolves to `deny` with an in-band
+     error. Confirm `agent_tool_call_event.approval_state` reflects each outcome.
 6. **PR-6 — Cost + risk.** `cost_budget`, `risk_score`, live counter endpoint.
+   - *Verify:* configure `cost_budget` with a low `max_cost_usd` and one
+     `ask_thresholds_usd` entry; run turns and confirm an `ask` fires at the
+     threshold and a `deny` once over `max`. Configure `risk_score` over a couple
+     of guarded tools and confirm escalation once the accrued points cross
+     `threshold`. Confirm `GET /api/sessions/:id/policy-state` reports the live
+     `tool_call_count` / `accrued_cost_usd` / `risk_points`.
 7. **PR-7 — Settings + session UI.** Policy panels and the in-session approval +
    add-policy controls.
+   - *Verify:* browser smoke per `platform/CLAUDE.md` — `pnpm run dev`, log in
+     with the **Use dev credentials** button, open the agent Policies panel and
+     apply/edit/remove a policy (confirm provenance shows), then in a live
+     session add a session-scoped policy mid-run, watch the live counters update,
+     and approve an `ask` prompt from the session view. Check the browser console
+     for errors.
 
 Bundle PR-1/PR-2 if review surfaces overlap; keep the runtime engine (PR-3) and
 the human-gate change (PR-5) independently revertable since they carry distinct
 rollout risk.
 
-## Verification
+### Incremental rollout property
+
+The engine is a **no-op until a policy row exists.** With zero `policy` rows for
+a workspace/agent/session, `PolicyEngine.evaluate/1` returns `allow` and the only
+added cost is one resolver read per turn. This is what makes the sequence safe to
+land incrementally: merging PR-3/PR-4 to `main` changes nothing for existing
+workspaces until someone deliberately adds a policy, so each PR can ship and be
+exercised on real traffic without a feature flag or a big-bang cutover. Roll out
+by adding one policy to one test agent, watching the diagnostic + counter
+endpoints, then widening.
+
+## Verification (global gates)
+
+Run on every PR in the series, in addition to that PR's per-step checks above:
 
 - `pnpm -C apps/api run validate`
 - `pnpm exec tsc --noEmit -p apps/web/tsconfig.app.json`
 - Runtime: `cd runtime/apps/orchestrator && mix compile --warnings-as-errors && mix test`
-- Engine unit tests: precedence (`deny` > `ask` > `allow`), tier ordering,
-  counter increments, budget thresholds, risk escalation, restart hydration.
-- Full-stack smoke: configure `max_tool_calls_per_session: 2`, confirm the 3rd
-  call returns a policy error to the agent; configure `ask_on_shell`, confirm a
-  shell call raises an escalation and resumes on approval.
-- Diagnostic: extend `GET /api/diagnostic/agents/:id` to show resolved policies
-  and current session counters.
+- Observability for any policy PR: `GET /api/diagnostic/agents/:id` (resolved
+  policies) and `GET /api/sessions/:id/policy-state` (live counters) — these are
+  the two windows used to confirm each step on real runs.
 
 ## Open Questions
 
