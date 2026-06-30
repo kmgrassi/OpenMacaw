@@ -50,12 +50,6 @@ describe("tool bundles", () => {
         toolProfile: "coding",
         runnerKind: "local_model_coding",
       }),
-    ).toEqual([
-      GIT_COMMAND_TOOL_SLUG,
-      "shell.exec",
-      "apply_patch",
-      ...SCHEDULED_TASK_TOOL_SLUGS,
-      ...SKILL_TOOL_SLUGS,
-    ]);
+    ).toEqual([GIT_COMMAND_TOOL_SLUG, "shell.exec", "apply_patch", ...SCHEDULED_TASK_TOOL_SLUGS, ...SKILL_TOOL_SLUGS]);
   });
 });

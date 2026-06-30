@@ -1,5 +1,6 @@
 import type { Express } from "express";
 
+import { AgentPolicySettingsResponseSchema } from "../../../../contracts/policy.js";
 import {
   AgentToolSettingsResponseSchema,
   AppendToolExamplesRequestSchema,
@@ -12,6 +13,7 @@ import {
   UpsertAgentToolGrantRequestSchema,
 } from "../../../../contracts/tool-definition.js";
 import { apiRoute, errorPayload, handleApiRouteError, requestWorkspaceId, requireRouteParam } from "../http.js";
+import { findSetupAgentById } from "../repositories/agents.js";
 import {
   appendToolExamples,
   applyToolPolicyTemplateToAgent,
@@ -23,6 +25,8 @@ import {
   setAgentToolGrant,
   updateTool,
 } from "../services/agent-tools.js";
+import { getAgentPolicySettings } from "../services/policy-resolver.js";
+import { getUserScopedSupabase } from "../supabase-client.js";
 
 function handleToolError(res: Parameters<typeof handleApiRouteError>[0], error: unknown) {
   return handleApiRouteError(res, error, {
@@ -33,6 +37,34 @@ function handleToolError(res: Parameters<typeof handleApiRouteError>[0], error: 
 }
 
 export function registerAgentToolRoutes(app: Express) {
+  app.get(
+    "/api/agents/:agentId/policies",
+    apiRoute({
+      requireAuth: true,
+      onError: handleToolError,
+      async handler({ req, res, accessToken }) {
+        const agentId = requireRouteParam(req, "agentId");
+        const workspaceId = requestWorkspaceId(req);
+        const agent = await findSetupAgentById(accessToken ?? "", agentId);
+        if (!agent || agent.workspace_id !== workspaceId) {
+          return res.status(404).json(errorPayload("agent_not_found", "Agent was not found"));
+        }
+
+        const sessionThreadId =
+          typeof req.query.sessionThreadId === "string" && req.query.sessionThreadId.trim() !== ""
+            ? req.query.sessionThreadId.trim()
+            : null;
+        const result = await getAgentPolicySettings({
+          agentId,
+          workspaceId,
+          sessionThreadId,
+          supabase: getUserScopedSupabase(accessToken ?? ""),
+        });
+        return res.status(200).json(AgentPolicySettingsResponseSchema.parse(result));
+      },
+    }),
+  );
+
   app.get(
     "/api/agents/:agentId/tools",
     apiRoute({

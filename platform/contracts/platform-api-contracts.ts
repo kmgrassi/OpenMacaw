@@ -19,6 +19,7 @@ import {
   AgentLiveStreamQuerySchema,
   AgentLiveStreamEventSchema,
 } from "./agent-live-io.js";
+import { AgentPolicySettingsResponseSchema } from "./policy.js";
 
 const WorkspaceQuerySchema = z.object({
   workspaceId: z.string().uuid(),
@@ -33,6 +34,15 @@ export const PlatformApiContracts = {
     pathParams: z.object({ agentId: z.string().uuid() }),
     query: WorkspaceQuerySchema,
     response: AgentToolSettingsResponseSchema,
+  },
+  listAgentPolicies: {
+    method: "GET",
+    path: "/api/agents/:agentId/policies",
+    pathParams: z.object({ agentId: z.string().uuid() }),
+    query: WorkspaceQuerySchema.extend({
+      sessionThreadId: z.string().trim().min(1).optional(),
+    }),
+    response: AgentPolicySettingsResponseSchema,
   },
   applyAgentToolTemplate: {
     method: "POST",

@@ -311,9 +311,7 @@ describe("default agent tools", () => {
       "task.update",
     ]);
     expect(tables.agent_tool_grant).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ tool_id: "tool-task-read", source_tool_template_id: null }),
-      ]),
+      expect.arrayContaining([expect.objectContaining({ tool_id: "tool-task-read", source_tool_template_id: null })]),
     );
     expect(tables.agent_tool_grant).toHaveLength(13);
   });

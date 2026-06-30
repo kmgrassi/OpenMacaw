@@ -6,6 +6,7 @@ import {
 } from "./local-model-coding.js";
 import { KnownExecutionProviderSchema } from "./provider-registry.js";
 import { ModelTierSchema, RegisteredProviderSchema } from "./model-tiers.js";
+import { RuntimePolicySchema } from "./policy.js";
 import { RUNNER_KINDS } from "./runner-kinds.js";
 import { ToolDefinitionSchema } from "./tool-definition.js";
 export { KnownExecutionProviderSchema } from "./provider-registry.js";
@@ -257,6 +258,7 @@ export const ExecutionProfileSchema = z.object({
 export const RuntimeDispatchContextSchema = z.object({
   executionProfile: ExecutionProfileSchema,
   workspacePolicy: RuntimeWorkspacePolicySchema,
+  policies: z.array(RuntimePolicySchema).default([]),
   executionTarget: RuntimeExecutionTargetSchema,
   toolAssignments: z.array(ToolDefinitionSchema),
 });
