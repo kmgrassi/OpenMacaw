@@ -6,6 +6,7 @@ defmodule SymphonyElixir.Runner.ToolCallingLoopTest do
 
   setup do
     Registry.reset!()
+    SymphonyElixir.Policy.Engine.reset!()
     on_exit(fn -> Registry.reset!() end)
     :ok
   end
@@ -92,6 +93,59 @@ defmodule SymphonyElixir.Runner.ToolCallingLoopTest do
 
     assert {:error, {:retryable, :generation_timeout}} =
              ToolCallingLoop.run(session(self()), %{max_iterations: 3, timeout_per_tool_ms: 100, total_timeout_ms: 1_000})
+  end
+
+  test "policy gate denies local-relay helper tools before dispatch" do
+    parent = self()
+    helper = start_policy_denied_helper("read_file")
+    register_helper(helper)
+
+    blocked_session = put_policy(session(parent), "read_file")
+
+    assert {:ok, result} = ToolCallingLoop.run(blocked_session, %{max_iterations: 3, timeout_per_tool_ms: 100, total_timeout_ms: 1_000})
+    assert result["output_text"] == "registry policy handled"
+
+    refute_received {:tool_execution_request, _frame}
+    assert_receive {:runner_event, %{event: :tool_call_failed, payload: %{"tool_name" => "read_file", "success" => false}}}
+  end
+
+  test "policy gate denies runtime registry tools" do
+    parent = self()
+    helper = start_runtime_tool_helper("echo")
+    register_helper(helper)
+
+    blocked_session =
+      parent
+      |> session()
+      |> Map.put(:tool_definitions, [runtime_tool_definition("echo")])
+      |> put_policy("echo")
+
+    assert {:ok, result} = ToolCallingLoop.run(blocked_session, %{max_iterations: 3, timeout_per_tool_ms: 100, total_timeout_ms: 1_000})
+    assert result["output_text"] == "registry policy handled"
+
+    assert_receive {:runner_event, %{event: :tool_call_failed, payload: %{"tool_name" => "echo", "success" => false}}}
+  end
+
+  test "policy gate denies runtime custom executor tools" do
+    parent = self()
+    helper = start_runtime_tool_helper("custom.run")
+    register_helper(helper)
+
+    blocked_session =
+      parent
+      |> session()
+      |> Map.put(:tool_definitions, [runtime_tool_definition("custom.run")])
+      |> Map.put(:tool_executor, fn _name, _arguments ->
+        send(parent, :custom_executor_called)
+        {:ok, %{"output" => "called"}}
+      end)
+      |> put_policy("custom.run")
+
+    assert {:ok, result} = ToolCallingLoop.run(blocked_session, %{max_iterations: 3, timeout_per_tool_ms: 100, total_timeout_ms: 1_000})
+    assert result["output_text"] == "registry policy handled"
+
+    refute_received :custom_executor_called
+    assert_receive {:runner_event, %{event: :tool_call_failed, payload: %{"tool_name" => "custom.run", "success" => false}}}
   end
 
   defp start_continuation_helper(parent) do
@@ -216,6 +270,27 @@ defmodule SymphonyElixir.Runner.ToolCallingLoopTest do
     end)
   end
 
+  defp start_runtime_tool_helper(tool_name) do
+    start_policy_denied_helper(tool_name)
+  end
+
+  defp start_policy_denied_helper(tool_name) do
+    spawn_link(fn ->
+      receive do
+        {:local_relay_dispatch, %{"correlation_id" => correlation_id}} ->
+          Registry.tool_call_request(correlation_id, %{
+            "type" => "tool_call_request",
+            "tool_calls" => [%{"id" => "call-runtime", "name" => tool_name, "arguments" => %{"message" => "hi"}}]
+          })
+
+          receive do
+            {:local_relay_frame, _frame} ->
+              Registry.complete(correlation_id, %{"output_text" => "registry policy handled"})
+          end
+      end
+    end)
+  end
+
   defp request_read_file(correlation_id) do
     Registry.tool_call_request(correlation_id, %{
       "type" => "tool_call_request",
@@ -230,6 +305,28 @@ defmodule SymphonyElixir.Runner.ToolCallingLoopTest do
       pid: helper,
       runners: [%{runner_kind: "openai_compatible", provider: "ollama", model: "qwen"}]
     })
+  end
+
+  defp runtime_tool_definition(name) do
+    %{
+      "name" => name,
+      "description" => "Runtime tool",
+      "parameters_schema" => %{"type" => "object"},
+      "execution_kind" => "runtime",
+      "execution_config" => %{}
+    }
+  end
+
+  defp put_policy(session, tool_name) do
+    Map.put(session, :policies, [
+      %{
+        "scope" => "session",
+        "kind" => "block_tools",
+        "params" => %{"tools" => [tool_name]},
+        "priority" => 0,
+        "enabled" => true
+      }
+    ])
   end
 
   defp session(parent) do

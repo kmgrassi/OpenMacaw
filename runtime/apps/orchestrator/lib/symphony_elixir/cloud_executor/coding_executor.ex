@@ -10,7 +10,7 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
   """
 
   alias SymphonyElixir.CloudExecutor.PublicRepository
-  alias SymphonyElixir.PathSafety
+  alias SymphonyElixir.{PathSafety, PolicyGate}
   alias SymphonyElixir.Runner.CodingTools.ShellExecutor
   alias SymphonyElixir.Tools.ApplyPatch
   alias SymphonyElixir.Tools.ShellExec
@@ -76,7 +76,7 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
     output.(progress_frame("tool_call_started", %{"tool_call_id" => tool_call_id, "name" => name}))
 
     {success?, tool_output} =
-      case execute_tool(name, arguments, prepared, tool_call_id, output) do
+      case execute_tool(name, arguments, prepared, tool_call_id, output, frame) do
         {:ok, success?, result} -> {success?, result}
         {:error, reason} -> {false, error_output("tool_execution_failed", reason)}
       end
@@ -203,7 +203,19 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
     :ok
   end
 
-  defp execute_tool("shell.exec", arguments, prepared, tool_call_id, output) when is_map(arguments) do
+  defp execute_tool(name, arguments, prepared, tool_call_id, output, frame) when name in ["shell.exec", "apply_patch"] and is_map(arguments) do
+    case PolicyGate.evaluate(%{type: :tool_call, target: name, data: arguments, session: policy_session(frame, prepared)}) do
+      :allow -> execute_allowed_tool(name, arguments, prepared, tool_call_id, output)
+      {:deny, reason} -> {:error, {:policy_denied, reason}}
+      {:ask, reason} -> {:error, {:policy_ask, reason}}
+    end
+  end
+
+  defp execute_tool(name, _arguments, _prepared, _tool_call_id, _output, _frame) do
+    {:error, {:unsupported_tool, name}}
+  end
+
+  defp execute_allowed_tool("shell.exec", arguments, prepared, tool_call_id, output) do
     context = %{
       workspace_root: prepared.tool_workspace,
       env_allowlist: prepared.env_allowlist,
@@ -218,7 +230,7 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
     end
   end
 
-  defp execute_tool("apply_patch", arguments, prepared, _tool_call_id, output) when is_map(arguments) do
+  defp execute_allowed_tool("apply_patch", arguments, prepared, _tool_call_id, output) do
     context = %{
       workspace_root: prepared.tool_workspace,
       on_event: fn event -> output.(progress_frame(to_string(event.event), stringify_keys(event.payload))) end
@@ -230,8 +242,17 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
     end
   end
 
-  defp execute_tool(name, _arguments, _prepared, _tool_call_id, _output) do
-    {:error, {:unsupported_tool, name}}
+  defp policy_session(frame, prepared) do
+    context = Map.get(frame, "context") || %{}
+    metadata = Map.get(frame, "metadata") || %{}
+
+    %{
+      workspace_id: Map.get(frame, "workspace_id") || Map.get(context, "workspace_id") || Map.get(metadata, "workspace_id"),
+      session_thread_id: Map.get(frame, "session_thread_id") || Map.get(context, "session_thread_id") || Map.get(metadata, "session_thread_id"),
+      policies: Map.get(frame, "policies") || Map.get(context, "policies") || Map.get(metadata, "policies") || [],
+      metadata: metadata,
+      workspace_root: prepared.tool_workspace
+    }
   end
 
   defp prepare_workspace_root(path) do

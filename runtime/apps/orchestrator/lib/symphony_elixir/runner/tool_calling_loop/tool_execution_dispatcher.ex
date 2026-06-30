@@ -6,7 +6,7 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
   alias SymphonyElixir.LocalRelay.Registry
   alias SymphonyElixir.Runner.Contract
   alias SymphonyElixir.Runner.ToolCallingLoop.ToolCallNormalization
-  alias SymphonyElixir.{ToolAdapter, ToolExecutionContext, ToolRegistry}
+  alias SymphonyElixir.{PolicyGate, ToolAdapter, ToolExecutionContext, ToolRegistry}
 
   @spec dispatch_cloud(session :: map(), config :: map(), state :: map(), raw_tool_calls :: [map()]) ::
           {:ok, map()} | {:error, term()}
@@ -106,12 +106,18 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
   defp request_tool_execution(session, config, call) do
     tool = ToolCallNormalization.tool_definition(call.name, ToolCallNormalization.tool_definitions(session))
 
-    case ToolCallNormalization.tool_execution_kind(tool) do
-      "runtime" ->
-        request_runtime_tool_execution(session, Map.get(session, :tool_executor, :registry), call)
+    case evaluate_policy(session, call) do
+      :allow ->
+        case ToolCallNormalization.tool_execution_kind(tool) do
+          "runtime" ->
+            request_runtime_tool_execution(session, Map.get(session, :tool_executor, :registry), call)
 
-      _other ->
-        request_helper_tool_execution(session, config, call)
+          _other ->
+            request_helper_tool_execution(session, config, call)
+        end
+
+      denied ->
+        denied
     end
   end
 
@@ -182,12 +188,26 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
   end
 
   defp execute_direct_tool(session, call) do
-    case workspace_status(session) do
-      :ok ->
-        execute_direct_tool_with_workspace(session, call)
+    case evaluate_policy(session, call) do
+      :allow ->
+        case workspace_status(session) do
+          :ok ->
+            execute_direct_tool_with_workspace(session, call)
 
-      {:error, message} ->
-        {:ok, %{"success" => false, "output" => message, "error" => "workspace_unavailable"}}
+          {:error, message} ->
+            {:ok, %{"success" => false, "output" => message, "error" => "workspace_unavailable"}}
+        end
+
+      denied ->
+        denied
+    end
+  end
+
+  defp evaluate_policy(session, call) do
+    case PolicyGate.evaluate(%{type: :tool_call, target: call.name, data: call.arguments, session: session}) do
+      :allow -> :allow
+      {:deny, reason} -> {:error, {:policy_denied, reason}}
+      {:ask, reason} -> {:error, {:policy_ask, reason}}
     end
   end
 
