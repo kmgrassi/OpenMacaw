@@ -43,6 +43,8 @@ const RUNTIME_AGENT_INVENTORY =
   "apps/orchestrator/lib/symphony_elixir/agent_inventory/agent.ex";
 const RUNTIME_SCHEDULED_TASK_DELIVERY =
   "apps/orchestrator/lib/symphony_elixir/scheduled_task/delivery.ex";
+const RUNTIME_POLICY_EVALUATOR_REGISTRY =
+  "apps/orchestrator/lib/symphony_elixir/policy/evaluator_registry.ex";
 const RUNTIME_NORMALIZED_RUNNER_KIND_ALIASES = {
   llm_tool_runner: ["manager", "planner"],
 };
@@ -503,6 +505,11 @@ async function main() {
     agentContract,
     "AgentTypeSchema",
   );
+  const policyContract = readPlatformContract("contracts/policy.ts");
+  const platformPolicyKinds = extractTsStringTuple(
+    policyContract,
+    "POLICY_KINDS",
+  );
 
   console.log(
     `  platform KNOWN_EXECUTION_PROVIDER_IDS: ${platformExecutionProviders.length}`,
@@ -531,12 +538,18 @@ async function main() {
   console.log(
     `  platform agent types:                  ${platformAgentTypes.length}`,
   );
+  console.log(
+    `  platform policy kinds:                 ${platformPolicyKinds.length}`,
+  );
 
   const localRuntimeDelivery = readLocalRuntimeSource(
     RUNTIME_SCHEDULED_TASK_DELIVERY,
   );
   const localRuntimeAgentInventory = readLocalRuntimeSource(
     RUNTIME_AGENT_INVENTORY,
+  );
+  const localRuntimePolicyEvaluatorRegistry = readLocalRuntimeSource(
+    RUNTIME_POLICY_EVALUATOR_REGISTRY,
   );
   const localLearningDeliveryOk = localRuntimeDelivery
     ? assertSameSet({
@@ -565,13 +578,33 @@ async function main() {
       `  warning: local ${RUNTIME_AGENT_INVENTORY} not found; remote runtime check will run when CROSS_REPO_GITHUB_TOKEN is set`,
     );
   }
+  const localPolicyKindsOk = localRuntimePolicyEvaluatorRegistry
+    ? assertSameSet({
+        name: "local runtime Policy.EvaluatorRegistry @policy_kinds = platform POLICY_KINDS",
+        left: platformPolicyKinds,
+        right: extractElixirAttrList(
+          localRuntimePolicyEvaluatorRegistry,
+          "policy_kinds",
+        ),
+      })
+    : false;
+  if (!localRuntimePolicyEvaluatorRegistry) {
+    console.warn(
+      `  warning: local ${RUNTIME_POLICY_EVALUATOR_REGISTRY} not found; policy drift cannot be validated`,
+    );
+  }
 
   const localModelTierOk = assertSuperset({
     name: "PROVIDER_REGISTRY keys ⊇ MODEL_TIER_REGISTRY providers",
     allowed: platformRegisteredProviders,
     required: modelTierRegistryProviders,
   });
-  if (!localModelTierOk || !localLearningDeliveryOk || !localAgentTypesOk) {
+  if (
+    !localModelTierOk ||
+    !localLearningDeliveryOk ||
+    !localAgentTypesOk ||
+    !localPolicyKindsOk
+  ) {
     process.exit(1);
   }
 
