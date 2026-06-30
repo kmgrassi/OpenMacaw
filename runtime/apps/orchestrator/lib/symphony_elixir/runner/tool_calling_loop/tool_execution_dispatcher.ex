@@ -6,7 +6,7 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
   alias SymphonyElixir.LocalRelay.Registry
   alias SymphonyElixir.Runner.Contract
   alias SymphonyElixir.Runner.ToolCallingLoop.ToolCallNormalization
-  alias SymphonyElixir.{ToolAdapter, ToolExecutionContext, ToolRegistry}
+  alias SymphonyElixir.{PolicyGate, ToolAdapter, ToolExecutionContext, ToolRegistry}
 
   @spec dispatch_cloud(session :: map(), config :: map(), state :: map(), raw_tool_calls :: [map()]) ::
           {:ok, map()} | {:error, term()}
@@ -104,14 +104,16 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
   def emit_event(_session, _event), do: :ok
 
   defp request_tool_execution(session, config, call) do
-    tool = ToolCallNormalization.tool_definition(call.name, ToolCallNormalization.tool_definitions(session))
+    with :allow <- evaluate_policy(session, call) do
+      tool = ToolCallNormalization.tool_definition(call.name, ToolCallNormalization.tool_definitions(session))
 
-    case ToolCallNormalization.tool_execution_kind(tool) do
-      "runtime" ->
-        request_runtime_tool_execution(session, Map.get(session, :tool_executor, :registry), call)
+      case ToolCallNormalization.tool_execution_kind(tool) do
+        "runtime" ->
+          request_runtime_tool_execution(session, Map.get(session, :tool_executor, :registry), call)
 
-      _other ->
-        request_helper_tool_execution(session, config, call)
+        _other ->
+          request_helper_tool_execution(session, config, call)
+      end
     end
   end
 
@@ -182,12 +184,22 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
   end
 
   defp execute_direct_tool(session, call) do
-    case workspace_status(session) do
-      :ok ->
-        execute_direct_tool_with_workspace(session, call)
+    with :allow <- evaluate_policy(session, call) do
+      case workspace_status(session) do
+        :ok ->
+          execute_direct_tool_with_workspace(session, call)
 
-      {:error, message} ->
-        {:ok, %{"success" => false, "output" => message, "error" => "workspace_unavailable"}}
+        {:error, message} ->
+          {:ok, %{"success" => false, "output" => message, "error" => "workspace_unavailable"}}
+      end
+    end
+  end
+
+  defp evaluate_policy(session, call) do
+    case PolicyGate.evaluate(%{type: :tool_call, target: call.name, data: call.arguments, session: session}) do
+      :allow -> :allow
+      {:deny, reason} -> {:error, {:policy_denied, reason}}
+      {:ask, escalation} -> {:error, {:policy_ask, escalation}}
     end
   end
 
@@ -285,6 +297,33 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
 
   defp invalid_tool_result(call, message), do: %{"type" => "tool_call_result", "tool_call_id" => call.id, "success" => false, "output" => message}
 
+  defp failed_tool_result(call, {:policy_ask, escalation}) do
+    %{
+      "type" => "tool_call_result",
+      "tool_call_id" => call.id,
+      "success" => false,
+      "output" => "Tool call is waiting for policy approval",
+      "error" => "policy_ask",
+      "error_code" => "policy_ask",
+      "approval_state" => "requested",
+      "escalation" => escalation
+    }
+  end
+
+  defp failed_tool_result(call, {:policy_denied, reason}) do
+    %{
+      "type" => "tool_call_result",
+      "tool_call_id" => call.id,
+      "success" => false,
+      "output" => policy_reason_message(reason),
+      "error" => "policy_denied",
+      "error_code" => "policy_denied",
+      "approval_state" => Map.get(reason, "approval_state"),
+      "policy" => reason
+    }
+    |> reject_nil_values()
+  end
+
   defp failed_tool_result(call, reason) do
     %{"type" => "tool_call_result", "tool_call_id" => call.id, "success" => false, "output" => inspect(reason)}
   end
@@ -308,6 +347,10 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
         # a map. Matches how the model-facing tool result is serialized.
         "result_size_bytes" => byte_size(encode_runtime_tool_output(Map.get(result, "output") || ""))
       })
+      |> maybe_put("approval_state", Map.get(result, "approval_state"))
+      |> maybe_put("error_code", Map.get(result, "error_code"))
+      |> maybe_put("error_message", Map.get(result, "error"))
+      |> maybe_put("escalation", Map.get(result, "escalation"))
 
     emit_event(session, %{event: event, payload: payload})
   end
@@ -341,4 +384,10 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
   end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
+
+  defp policy_reason_message(%{"reason" => reason}) when is_binary(reason), do: reason
+  defp policy_reason_message(reason), do: inspect(reason)
 end
