@@ -461,4 +461,47 @@ describe("work item routes", () => {
     expect(tables.work_items).toHaveLength(3);
     expect(tables.webhook_delivery).toHaveLength(1);
   });
+
+  it("releases the GitHub delivery claim when downstream processing fails", async () => {
+    config.githubWebhookSecret = "github-secret";
+    config.githubRepoWorkspaceMap = { "openmacaw/repo": workspaceId };
+    tables.work_items.push({
+      id: "bad-existing-row",
+      workspace_id: workspaceId,
+      title: "Bad row shape",
+      source: "github",
+      metadata: { external_id: "openmacaw/repo:issue:18" },
+      "metadata->>external_id": "openmacaw/repo:issue:18",
+    });
+
+    const payload = JSON.stringify({
+      action: "opened",
+      repository: {
+        full_name: "openmacaw/repo",
+        html_url: "https://github.com/openmacaw/repo",
+      },
+      issue: {
+        number: 18,
+        title: "Another auth bug",
+        body: "Trigger a downstream processing failure.",
+        state: "open",
+        html_url: "https://github.com/openmacaw/repo/issues/18",
+        labels: [],
+      },
+    });
+    const response = await fetch(`${baseUrl}/api/webhooks/github`, {
+      method: "POST",
+      headers: {
+        connection: "close",
+        "content-type": "application/json",
+        "x-github-event": "issues",
+        "x-github-delivery": "delivery-fail-1",
+        "x-hub-signature-256": githubSignature("github-secret", payload),
+      },
+      body: payload,
+    });
+
+    expect(response.status).toBe(502);
+    expect(tables.webhook_delivery).toHaveLength(0);
+  });
 });

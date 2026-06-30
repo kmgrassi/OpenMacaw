@@ -23,6 +23,7 @@ type UntypedSupabaseQueryBuilder = {
   eq(column: string, value: unknown): UntypedSupabaseQueryBuilder;
   limit(count: number): UntypedSupabaseQueryBuilder;
   insert(value: WebhookDeliveryInsertRow): UntypedSupabaseInsertBuilder;
+  delete(): UntypedSupabaseQueryBuilder;
 };
 
 type UntypedSupabaseClient = {
@@ -76,4 +77,15 @@ export async function claimWebhookDelivery(input: {
     return false;
   }
   throw error;
+}
+
+export async function releaseWebhookDeliveryClaim(input: {
+  source: WebhookDeliverySource;
+  deliveryId: string;
+}): Promise<void> {
+  await deliverySupabase()
+    .from("webhook_delivery")
+    .delete()
+    .eq("source", input.source)
+    .eq("delivery_id", input.deliveryId);
 }

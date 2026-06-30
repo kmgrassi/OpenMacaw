@@ -227,6 +227,11 @@ create table if not exists public.webhook_delivery (
 comment on table public.webhook_delivery is
   'Durable replay-protection ledger for signed inbound webhooks.';
 
+alter table public.webhook_delivery enable row level security;
+
+comment on table public.webhook_delivery is
+  'Durable replay-protection ledger for signed inbound webhooks. Service-role writes only; no authenticated RLS policy.';
+
 create table if not exists public.provider_failure (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),

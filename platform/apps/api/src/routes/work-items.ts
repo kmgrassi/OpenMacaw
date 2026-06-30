@@ -13,6 +13,7 @@ import {
   normalizeGitHubWebhook,
   normalizeLinearWebhook,
   normalizeManualWorkItem,
+  releaseWebhookDeliveryClaim,
   upsertWorkItemFromNormalizedInput,
   verifyGithubSignature,
   verifyLinearSignature,
@@ -210,8 +211,13 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
         return res.status(202).json({ accepted: true, skipped: true, reason: "duplicate_delivery" });
       }
 
-      const saved = await upsertWorkItemFromNormalizedInput(normalized);
-      return res.status(202).json(mapWorkItemIngestResponse(saved));
+      try {
+        const saved = await upsertWorkItemFromNormalizedInput(normalized);
+        return res.status(202).json(mapWorkItemIngestResponse(saved));
+      } catch (error) {
+        await releaseWebhookDeliveryClaim({ source: "github", deliveryId }).catch(() => undefined);
+        throw error;
+      }
     } catch (error) {
       return res
         .status(502)
@@ -266,8 +272,13 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
         return res.status(202).json({ accepted: true, skipped: true, reason: "duplicate_delivery" });
       }
 
-      const saved = await upsertWorkItemFromNormalizedInput(normalized);
-      return res.status(202).json(mapWorkItemIngestResponse(saved));
+      try {
+        const saved = await upsertWorkItemFromNormalizedInput(normalized);
+        return res.status(202).json(mapWorkItemIngestResponse(saved));
+      } catch (error) {
+        await releaseWebhookDeliveryClaim({ source: "linear", deliveryId }).catch(() => undefined);
+        throw error;
+      }
     } catch (error) {
       return res
         .status(502)

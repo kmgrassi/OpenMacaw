@@ -15,3 +15,8 @@ create index if not exists idx_webhook_delivery_workspace_created_at
 
 comment on table public.webhook_delivery is
   'Durable replay-protection ledger for signed inbound webhooks.';
+
+alter table public.webhook_delivery enable row level security;
+
+comment on table public.webhook_delivery is
+  'Durable replay-protection ledger for signed inbound webhooks. Service-role writes only; no authenticated RLS policy.';
