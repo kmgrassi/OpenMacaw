@@ -24,7 +24,6 @@ import { registerMemoryRoutes } from "./routes/memory.js";
 import { registerLocalModelCodingSmokeRoutes } from "./routes/local-model-coding-smoke.js";
 import { registerModelAgnosticSmokeRoutes } from "./routes/model-agnostic-smoke.js";
 import { registerModelCatalogRoutes } from "./routes/models.js";
-import { registerPlanReviewRoutes } from "./routes/plan-reviews.js";
 import { registerPlanRoutes } from "./routes/plans.js";
 import { registerPlannerLocalModelSmokeRoutes } from "./routes/planner-local-model-smoke.js";
 import { registerProviderFailureRoutes } from "./routes/provider-failures.js";
@@ -108,7 +107,6 @@ export function createApp(config: ApiConfig) {
   registerLocalModelsRoutes(app);
   registerAgentDashboardRoutes(app);
   registerAgentDispatchProbeRoutes(app, launcherClient);
-  registerPlanReviewRoutes(app);
   registerProviderFailureRoutes(app);
   registerPlanRoutes(app, config, launcherRequest);
   registerScheduledTaskRoutes(app);
