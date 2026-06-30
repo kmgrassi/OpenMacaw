@@ -273,6 +273,27 @@ describe("resolveExecutionProfile", () => {
     await expect(resolveExecutionProfile({ agentId: codingAgentId })).rejects.toThrow("routing_rule is not readable");
   });
 
+  it("fails at the query boundary when agent model_settings is invalid", async () => {
+    setupMockDatabase({
+      agent: [
+        {
+          id: codingAgentId,
+          workspace_id: workspaceId,
+          type: "coding",
+          model_settings: "openai/gpt-5.1-codex",
+          tool_policy: {},
+        },
+      ],
+      routing_rule: [],
+      routing_rule_match: [],
+    });
+
+    await expect(resolveExecutionProfile({ agentId: codingAgentId })).rejects.toMatchObject({
+      code: "invalid_supabase_row",
+      context: "agent query",
+    });
+  });
+
   it("emits explicit fallback rows in position order on the resolved profile", async () => {
     setupMockDatabase({
       routing_rule: [
