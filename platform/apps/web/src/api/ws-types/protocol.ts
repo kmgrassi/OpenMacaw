@@ -13,19 +13,212 @@ import type { RuntimeEventPayload, RuntimeGatewayEventName } from "./runtime";
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
+export type ConfigIssue = {
+  path: string;
+  message: string;
+};
+
+export type ConfigSnapshot = {
+  /** @deprecated Legacy filesystem path — will be removed when engine drops OPENCLAW_STATE_DIR. */
+  path?: string | null;
+  exists?: boolean | null;
+  raw?: string | null;
+  hash?: string | null;
+  config?: Record<string, unknown> | null;
+  valid?: boolean | null;
+  issues?: ConfigIssue[] | null;
+  /** API-reported source identifier (replaces local path as the authoritative origin). */
+  source?: string | null;
+};
+
+export type ConfigGetParams = Record<string, never>;
+export type ConfigSetParams = {
+  raw: string;
+  baseHash?: string;
+};
+
+export type SessionListItem = {
+  key: string;
+  id?: string;
+  agentId?: string;
+  sessionId?: string;
+  kind?: string;
+  label?: string;
+  displayName?: string;
+  surface?: string;
+  updatedAt?: number | null;
+  lastMessageAt?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  model?: string;
+};
+
+export type SessionsListParams = {
+  includeGlobal?: boolean;
+  includeUnknown?: boolean;
+  limit?: number;
+};
+
+export type SessionsListResponse = {
+  ts?: number;
+  count?: number;
+  sessions?: SessionListItem[];
+};
+
+export type SessionsDeleteParams = {
+  key: string;
+  deleteTranscript?: boolean;
+};
+
+export type SessionsResetParams = {
+  key: string;
+};
+
+export type UsageTotals = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  totalCost: number;
+};
+
+export type UsageDailyEntry = {
+  date: string;
+  tokens: number;
+  cost: number;
+  messages: number;
+};
+
+export type UsageByModelEntry = {
+  provider?: string;
+  model?: string;
+  count: number;
+  totals: UsageTotals;
+};
+
+export type SessionsUsageParams = {
+  startDate: string;
+  endDate: string;
+  limit?: number;
+};
+
+export type SessionsUsageResult = {
+  updatedAt: number;
+  startDate: string;
+  endDate: string;
+  totals: UsageTotals;
+  aggregates: {
+    messages: {
+      total: number;
+      user: number;
+      assistant: number;
+      toolCalls: number;
+      errors: number;
+    };
+    byModel: UsageByModelEntry[];
+    daily: UsageDailyEntry[];
+  };
+};
+
+export type UsageCostParams = {
+  startDate: string;
+  endDate: string;
+};
+
+export type UsageCostResult = {
+  totals?: UsageTotals;
+};
+
+export type ChannelAccountSnapshot = {
+  accountId: string;
+  name?: string | null;
+  enabled?: boolean | null;
+  configured?: boolean | null;
+  linked?: boolean | null;
+  running?: boolean | null;
+  connected?: boolean | null;
+  lastError?: string | null;
+};
+
+export type ChannelsStatusParams = {
+  probe?: boolean;
+  timeoutMs?: number;
+};
+
+export type ChannelsStatusSnapshot = {
+  channelOrder: string[];
+  channelLabels: Record<string, string>;
+  channelDetailLabels?: Record<string, string>;
+  channelAccounts: Record<string, ChannelAccountSnapshot[]>;
+};
+
+export type WebLoginStartParams = {
+  force?: boolean;
+  timeoutMs?: number;
+};
+
+export type WebLoginStartResult = {
+  message?: string;
+  qrDataUrl?: string;
+};
+
+export type WebLoginWaitParams = {
+  timeoutMs?: number;
+};
+
+export type WebLoginWaitResult = {
+  message?: string;
+  connected?: boolean;
+};
+
+export type GatewayAck = {
+  ok?: boolean;
+  message?: string;
+};
+
 export type GatewayMethodParams = {
   connect: ConnectParams;
   "chat.send": ChatSendParams;
   "chat.abort": ChatAbortParams;
+  "config.get": ConfigGetParams;
+  "config.set": ConfigSetParams;
+  "sessions.list": SessionsListParams;
+  "sessions.delete": SessionsDeleteParams;
+  "sessions.reset": SessionsResetParams;
+  "sessions.usage": SessionsUsageParams;
+  "usage.cost": UsageCostParams;
+  "channels.status": ChannelsStatusParams;
+  "web.login.start": WebLoginStartParams;
+  "web.login.wait": WebLoginWaitParams;
 };
 
 export type GatewayMethodResult = {
   connect: GatewayHelloOk;
   "chat.send": ChatSendResult;
   "chat.abort": ChatAbortResult;
+  "config.get": ConfigSnapshot | undefined;
+  "config.set": GatewayAck | undefined;
+  "sessions.list": SessionsListResponse | undefined;
+  "sessions.delete": GatewayAck | undefined;
+  "sessions.reset": GatewayAck | undefined;
+  "sessions.usage": SessionsUsageResult | undefined;
+  "usage.cost": UsageCostResult | undefined;
+  "channels.status": ChannelsStatusSnapshot | null;
+  "web.login.start": WebLoginStartResult;
+  "web.login.wait": WebLoginWaitResult;
 };
 
 export type GatewayMethod = keyof GatewayMethodParams;
+
+export type GatewayRequest = {
+  <Method extends GatewayMethod>(
+    method: Method,
+    params: GatewayMethodParams[Method],
+  ): Promise<GatewayMethodResult[Method]>;
+  <T = unknown>(method: string, params?: unknown): Promise<T>;
+};
 
 type KnownGatewayRequestFrame = {
   [Method in GatewayMethod]: {
