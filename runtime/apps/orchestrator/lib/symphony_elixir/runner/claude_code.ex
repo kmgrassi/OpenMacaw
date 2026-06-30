@@ -12,6 +12,7 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
 
   alias SymphonyElixir.{ClaudeCode.Bridge, Config, PathSafety, WorkItem}
   alias SymphonyElixir.Runner.Contract
+  alias SymphonyElixir.Runner.ClaudeCode.EventMapper
   alias SymphonyElixir.Runner.SkillMaterializer
   alias SymphonyElixir.Runner.WorkerBridgeRouting
 
@@ -45,7 +46,10 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
   end
 
   def run_turn(session, prompt, %WorkItem{} = work_item) when is_map(session) do
-    on_message = Map.get(session.options, "on_message", fn _message -> :ok end)
+    on_message =
+      session.options
+      |> Map.get("on_message", fn _message -> :ok end)
+      |> normalize_event_callback(session)
 
     case Bridge.run_turn(session, prompt, work_item, on_message) do
       {:ok, result} ->
@@ -168,6 +172,22 @@ defmodule SymphonyElixir.Runner.ClaudeCode do
   end
 
   defp maybe_put_on_message(session, _on_message), do: session
+
+  defp normalize_event_callback(on_message, session) when is_function(on_message, 1) do
+    fn message ->
+      opts = [
+        provider: Map.get(session.options, "provider") || Map.get(session.options, "model_provider"),
+        model: Map.get(session.options, "model")
+      ]
+
+      case EventMapper.normalize(message, opts) do
+        {:ok, event} -> on_message.(event)
+        {:error, _reason} -> :ok
+      end
+    end
+  end
+
+  defp normalize_event_callback(_on_message, _session), do: fn _message -> :ok end
 
   defp default_bridge_path do
     :code.priv_dir(:symphony_elixir)

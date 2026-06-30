@@ -55,8 +55,8 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     assert result.result == "done"
     assert result.session_id == "fake-session"
 
-    assert_received {:claude_event, %{"method" => "message/delta", "params" => %{"textDelta" => "working"}}}
-    assert_received {:claude_event, %{"method" => "usage/updated"}}
+    assert_received {:claude_event, %{event: :notification, payload: %{"params" => %{"text_delta" => "working"}}}}
+    assert_received {:claude_event, %{event: :notification, usage: %{"input_tokens" => 1, "output_tokens" => 2, "total_tokens" => 3}}}
 
     assert :ok = ClaudeCode.stop_session(session)
   end
@@ -173,6 +173,16 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
              tool_activity: true,
              metadata: %{backend: "claude_agent_bridge"}
            } = ClaudeCode.stream_capabilities()
+  end
+
+  test "interrupt remains unsupported until the persistent bridge handles it", %{workspace: workspace} do
+    bridge = fake_bridge!("success")
+
+    assert {:ok, session} =
+             ClaudeCode.start_session(%{"bridge_command" => "node #{shell_escape(bridge)}"}, workspace)
+
+    assert {:error, :interrupt_not_supported} = ClaudeCode.interrupt(session, [])
+    assert :ok = ClaudeCode.stop_session(session)
   end
 
   test "rejects a configured cwd that differs from the workspace", %{workspace: workspace, root: root} do
