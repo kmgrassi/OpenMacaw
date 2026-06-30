@@ -61,6 +61,43 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     assert :ok = ClaudeCode.stop_session(session)
   end
 
+  test "real bridge emits can_use_tool events and default-allows tool use", %{workspace: workspace} do
+    bridge = stubbed_sdk_bridge!()
+    events_recipient = self()
+
+    config = %{
+      "bridge_command" => "node #{shell_escape(bridge)}",
+      "permission_mode" => "acceptEdits",
+      "on_message" => fn event -> send(events_recipient, {:claude_event, event}) end
+    }
+
+    assert {:ok, session} = ClaudeCode.start_session(config, workspace)
+    assert {:ok, result} = ClaudeCode.run_turn(session, "Use a tool", work_item())
+    assert result.result == "done"
+
+    assert_received {:claude_event,
+                     %{
+                       "method" => "tool/can_use_tool",
+                       "params" => %{
+                         "tool" => "Bash",
+                         "toolName" => "Bash",
+                         "toolUseId" => "toolu_1",
+                         "input" => %{"command" => "pwd"},
+                         "permissionMode" => "acceptEdits",
+                         "decision" => "allow",
+                         "source" => "can_use_tool"
+                       }
+                     }}
+
+    assert_received {:claude_event,
+                     %{
+                       "method" => "sdk/message",
+                       "params" => %{"type" => "permission_result", "result" => %{"behavior" => "allow"}}
+                     }}
+
+    assert :ok = ClaudeCode.stop_session(session)
+  end
+
   test "surfaces startup failures", %{workspace: workspace} do
     bridge = fake_bridge!("startup_failure")
 
@@ -219,6 +256,41 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
       }
     });
     """
+  end
+
+  defp stubbed_sdk_bridge! do
+    root =
+      Path.join(
+        System.tmp_dir!(),
+        "stubbed-claude-sdk-#{System.unique_integer([:positive])}"
+      )
+
+    module_dir = Path.join(root, "node_modules/@anthropic-ai/claude-agent-sdk")
+    File.mkdir_p!(module_dir)
+
+    File.write!(Path.join(module_dir, "package.json"), ~s({"type":"module"}))
+
+    File.write!(Path.join(module_dir, "index.js"), """
+    export async function* query(request) {
+      const result = await request.options.canUseTool(
+        { name: 'Bash', id: 'toolu_1', input: { command: 'pwd' } },
+        { permissionMode: request.options.permissionMode }
+      );
+
+      yield { type: 'permission_result', result };
+      yield { type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } };
+      yield { type: 'result', result: 'done' };
+    }
+    """)
+
+    bridge = Path.join(root, "bridge.js")
+
+    File.cp!(
+      Path.expand("../../../priv/claude_agent_bridge/bridge.js", __DIR__),
+      bridge
+    )
+
+    bridge
   end
 
   defp shell_escape(value) do

@@ -23,6 +23,18 @@ function event(method, params) {
   write({ method, params });
 }
 
+function toolPermissionParams(input, options) {
+  return {
+    tool: input?.toolName || input?.tool_name || input?.name,
+    toolName: input?.toolName || input?.tool_name || input?.name,
+    toolUseId: input?.toolUseId || input?.tool_use_id || input?.id,
+    input: input?.input || input?.arguments,
+    permissionMode: options?.permissionMode,
+    decision: "allow",
+    source: "can_use_tool"
+  };
+}
+
 function sdkOptions(prompt) {
   const options = {
     prompt,
@@ -35,6 +47,11 @@ function sdkOptions(prompt) {
       disallowedTools: sessionOptions.disallowedTools,
       maxTurns: sessionOptions.maxTurns
     }
+  };
+
+  options.options.canUseTool = async (input, toolOptions) => {
+    event("tool/can_use_tool", toolPermissionParams(input, toolOptions));
+    return { behavior: "allow" };
   };
 
   if (sessionOptions.sdkSessionId) {
