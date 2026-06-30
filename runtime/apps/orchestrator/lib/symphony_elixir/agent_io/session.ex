@@ -5,7 +5,7 @@ defmodule SymphonyElixir.AgentIO.Session do
 
   require Logger
 
-  alias SymphonyElixir.Runner.Contract
+  alias SymphonyElixir.Runner.{CodingRunner, Contract}
   alias SymphonyElixir.WorkItem
 
   @registry SymphonyElixir.AgentIO.SessionRegistry
@@ -98,11 +98,11 @@ defmodule SymphonyElixir.AgentIO.Session do
     with {:ok, state} <- ensure_runner_session_result(state) do
       parent = self()
       turn_id = make_turn_id()
-      runner_session = put_event_callback(state.runner_session, parent, turn_id)
+      on_message = event_callback(state.runner_session, parent, turn_id)
 
       task =
         Task.Supervisor.async_nolink(@task_supervisor, fn ->
-          state.runner.run_turn(runner_session, message, state.work_item)
+          CodingRunner.send_input(state.runner, state.runner_session, message, state.work_item, on_message: on_message)
         end)
 
       event = %{
@@ -134,7 +134,16 @@ defmodule SymphonyElixir.AgentIO.Session do
   end
 
   def handle_call(:interrupt, _from, state) do
-    if is_pid(state.active_task.pid), do: Process.exit(state.active_task.pid, :kill)
+    case CodingRunner.interrupt(state.runner, state.runner_session, []) do
+      :ok ->
+        :ok
+
+      {:error, :interrupt_not_supported} ->
+        kill_active_task(state)
+
+      {:error, _reason} ->
+        kill_active_task(state)
+    end
 
     event = %{
       event: :turn_ended_with_error,
@@ -229,7 +238,7 @@ defmodule SymphonyElixir.AgentIO.Session do
   def handle_info({:timeout, ref, :idle_timeout}, %{idle_timer_ref: ref, active_task: nil} = state) do
     Logger.info("AgentIO session idle timeout session_key=#{state.session_key} runner=#{inspect(state.runner)}")
     emit([:session, :idle_timeout], %{count: 1}, state)
-    {:noreply, %{stop_runner_session(state) | idle_timer_ref: nil}}
+    {:stop, :normal, %{stop_runner_session(state) | idle_timer_ref: nil}}
   end
 
   def handle_info({:timeout, _ref, :idle_timeout}, state), do: {:noreply, state}
@@ -273,14 +282,14 @@ defmodule SymphonyElixir.AgentIO.Session do
     end
   end
 
-  defp put_event_callback(session, parent, turn_id) do
+  defp event_callback(session, parent, turn_id) do
     existing = Map.get(session, :on_message)
 
-    Map.put(session, :on_message, fn message ->
+    fn message ->
       if is_function(existing, 1), do: existing.(message)
       send(parent, {:runner_event, turn_id, message})
       :ok
-    end)
+    end
   end
 
   defp broadcast(state, message) do
@@ -322,11 +331,18 @@ defmodule SymphonyElixir.AgentIO.Session do
   defp stop_runner_session(%{runner_session: nil} = state), do: state
 
   defp stop_runner_session(state) do
-    _ = state.runner.stop_session(state.runner_session)
+    _ = CodingRunner.stop_session(state.runner, state.runner_session)
     Logger.info("AgentIO runner session stopped session_key=#{state.session_key} runner=#{inspect(state.runner)}")
     emit([:runner_session, :stopped], %{count: 1}, state)
     %{state | runner_session: nil}
   end
+
+  defp kill_active_task(%{active_task: %Task{pid: pid}}) when is_pid(pid) do
+    Process.exit(pid, :kill)
+    :ok
+  end
+
+  defp kill_active_task(_state), do: :ok
 
   defp schedule_idle_timeout(%{active_task: %Task{}} = state), do: state
   defp schedule_idle_timeout(%{idle_timeout_ms: 0} = state), do: state

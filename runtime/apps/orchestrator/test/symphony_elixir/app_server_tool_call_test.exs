@@ -141,9 +141,7 @@ defmodule SymphonyElixir.AppServerToolCallTest do
       end
 
       assert {:ok, _result} =
-               AppServer.run(workspace, "Handle supported tool calls", issue,
-                 tool_executor: tool_executor
-               )
+               AppServer.run(workspace, "Handle supported tool calls", issue, tool_executor: tool_executor)
 
       assert_received {:tool_called, "linear_graphql",
                        %{
@@ -241,8 +239,14 @@ defmodule SymphonyElixir.AppServerToolCallTest do
 
       assert_received {:tool_called, "linear_graphql", %{"query" => "query Viewer { viewer { id } }"}}
 
+      assert_received {:app_server_message, %{event: :tool_call_started, payload: %{"params" => %{"tool" => "linear_graphql"}}}}
+
       assert_received {:app_server_message,
-                       %{event: :tool_call_failed, payload: %{"params" => %{"tool" => "linear_graphql"}}}}
+                       %{
+                         event: :tool_call_failed,
+                         payload: %{"params" => %{"tool" => "linear_graphql"}},
+                         result: %{"success" => false}
+                       }}
     end)
   end
 end

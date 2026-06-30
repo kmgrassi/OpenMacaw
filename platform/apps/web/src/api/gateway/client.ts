@@ -14,9 +14,12 @@ import type {
   GatewayMethod,
   GatewayMethodResult,
   GatewayError,
-  GatewayEventFrame,
-  GatewayHelloOk,
-  GatewayResponseFrame,
+} from "../ws-types";
+import {
+  gatewayFrameType,
+  parseGatewayEventFrame,
+  parseGatewayHelloOk,
+  parseGatewayResponseFrame,
 } from "../ws-types";
 import {
   generateRequestId,
@@ -226,13 +229,11 @@ export class GatewayClient {
       return;
     }
 
-    const frame = parsed as { type?: unknown };
-    this.opts.onReceiveFrame?.(
-      typeof frame.type === "string" ? frame.type : "unknown",
-    );
+    this.opts.onReceiveFrame?.(gatewayFrameType(parsed) ?? "unknown");
 
-    if (frame.type === "event") {
-      const evt = parsed as GatewayEventFrame;
+    const eventFrame = parseGatewayEventFrame(parsed);
+    if (eventFrame) {
+      const evt = eventFrame;
       if (evt.event === "connect.challenge") {
         const nonce = evt.payload.nonce;
         if (nonce) {
@@ -249,8 +250,9 @@ export class GatewayClient {
       return;
     }
 
-    if (frame.type === "hello-ok") {
-      const hello = parsed as GatewayHelloOk;
+    const helloFrame = parseGatewayHelloOk(parsed);
+    if (helloFrame) {
+      const hello = helloFrame;
       this.connectSent = true;
       this.startHeartbeat();
       if (hello?.auth?.deviceToken) {
@@ -260,8 +262,9 @@ export class GatewayClient {
       return;
     }
 
-    if (frame.type === "res") {
-      const res = parsed as GatewayResponseFrame;
+    const responseFrame = parseGatewayResponseFrame(parsed);
+    if (responseFrame) {
+      const res = responseFrame;
       const pending = this.pending.get(res.id);
       if (!pending) return;
       this.pending.delete(res.id);

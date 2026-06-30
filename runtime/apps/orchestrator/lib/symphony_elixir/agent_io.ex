@@ -102,7 +102,7 @@ defmodule SymphonyElixir.AgentIO do
 
   defp lookup(session_key) do
     case Registry.lookup(@registry, session_key) do
-      [{pid, _value}] when is_pid(pid) -> {:ok, pid}
+      [{pid, _value}] when is_pid(pid) -> if Process.alive?(pid), do: {:ok, pid}, else: :error
       [] -> :error
     end
   end

@@ -15,6 +15,14 @@ defmodule SymphonyElixir.AgentIOTest do
       {:ok, %{"output_text" => "hello", "usage" => %{"input_tokens" => 1, "output_tokens" => 1}}}
     end
 
+    def send_input(session, input, work_item, opts) do
+      session
+      |> Map.put(:on_message, Keyword.fetch!(opts, :on_message))
+      |> run_turn(input, work_item)
+    end
+
+    def interrupt(_session, _opts), do: {:error, :interrupt_not_supported}
+
     def stop_session(session) do
       send(session.owner, {:fake_stop_session, session.session_id})
       :ok
@@ -35,6 +43,10 @@ defmodule SymphonyElixir.AgentIOTest do
         30_000 -> {:ok, %{"output_text" => "late"}}
       end
     end
+
+    def send_input(session, input, work_item, _opts), do: run_turn(session, input, work_item)
+
+    def interrupt(_session, _opts), do: {:error, :interrupt_not_supported}
 
     def stop_session(session) do
       send(session.owner, {:slow_stop_session, session.session_id})
@@ -189,6 +201,35 @@ defmodule SymphonyElixir.AgentIOTest do
 
     assert :ok = AgentIO.interrupt(key)
     assert_receive {:slow_stop_session, "slow-session-1"}
+  end
+
+  test "idle timeout stops the session process so caps reclaim idle keys" do
+    key = unique_key()
+
+    assert {:ok, pid} =
+             AgentIO.ensure_session(key,
+               runner: FakeRunner,
+               config: %{owner: self()},
+               idle_timeout_ms: 60_000
+             )
+
+    monitor_ref = Process.monitor(pid)
+
+    assert {:ok, _snapshot} = AgentIO.subscribe(key, self())
+    assert_receive {:fake_start_session, nil}
+
+    %{idle_timer_ref: nil} = :sys.get_state(pid)
+    assert {:error, :no_active_turn} = AgentIO.interrupt(key)
+
+    %{idle_timer_ref: idle_ref} = :sys.get_state(pid)
+    assert is_reference(idle_ref)
+
+    send(pid, {:timeout, idle_ref, :idle_timeout})
+
+    assert_receive {:fake_stop_session, "runner-session-1"}
+    assert_receive {:DOWN, ^monitor_ref, :process, ^pid, :normal}
+
+    assert AgentIO.interrupt(key) == :error
   end
 
   defp unique_key do

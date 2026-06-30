@@ -5,19 +5,39 @@ import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AgentDashboardResponseSchema, RUN_HISTORY_PAGE_SIZE } from "../../../../contracts/agent-dashboard.js";
-import { PlanReviewListResponseSchema } from "../../../../contracts/plan-review.js";
+import { PlanReviewListResponseSchema } from "../../../../contracts/plans.js";
 import {
   StoredAgentCreateRequestSchema,
   StoredAgentGatewayConfigUpdateRequestSchema,
 } from "../../../../contracts/stored-agent-management.js";
+import type { ApiConfig } from "../config.js";
 import type { LauncherClient } from "../services/launcher.js";
 import { registerAgentDashboardRoutes } from "./agent-dashboard.js";
-import { registerPlanReviewRoutes } from "./plan-reviews.js";
+import { registerPlanRoutes } from "./plans.js";
 import { registerStoredAgentRoutes } from "./stored-agents.js";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const workspaceId = "22222222-2222-4222-8222-222222222222";
 const agentId = "33333333-3333-4333-8333-333333333333";
+const config: ApiConfig = {
+  port: 0,
+  host: "127.0.0.1",
+  orchestratorBaseUrl: "http://127.0.0.1:4000",
+  orchestratorWsUrl: "ws://127.0.0.1:4000",
+  launcherBaseUrl: "http://127.0.0.1:4100",
+  orchestratorRequestTimeoutMs: 500,
+  launcherRequestTimeoutMs: 500,
+  corsOrigins: "http://127.0.0.1:5173",
+  wsUpgradePath: "/ws",
+  wsConnectTimeoutMs: 500,
+  workItemDefaultWorkspaceId: null,
+  githubWebhookSecret: null,
+  githubRepoWorkspaceMap: {},
+  linearWebhookSecret: null,
+  linearApiKey: null,
+  linearProjectWorkspaceMap: {},
+  linearTeamWorkspaceMap: {},
+};
 
 function closeServer(server: Server | undefined) {
   if (!server) return Promise.resolve();
@@ -41,7 +61,7 @@ function createShellApp() {
     next();
   });
   registerAgentDashboardRoutes(app);
-  registerPlanReviewRoutes(app);
+  registerPlanRoutes(app, config, async () => ({ status: 501, body: {}, headers: {} }));
   registerStoredAgentRoutes(app, {} as LauncherClient);
   return app;
 }
@@ -120,22 +140,22 @@ describe("frontend Supabase API route shells", () => {
             description: null,
             status: "pending",
             type: "implementation",
-            created_at: "2026-04-26T12:00:00.000Z",
-            updated_at: "2026-04-26T12:00:00.000Z",
+            createdAt: "2026-04-26T12:00:00.000Z",
+            updatedAt: "2026-04-26T12:00:00.000Z",
             evidence: [{ path: "apps/api/src/app.ts", line: 12, snippet: "register", label: "route" }],
             tasks: [
               {
                 id: "task-1",
-                workspace_id: workspaceId,
-                plan_id: "plan-1",
+                workspaceId,
+                planId: "plan-1",
                 name: "Add route",
                 description: null,
                 state: "todo",
                 priority: null,
                 labels: ["api"],
                 metadata: {},
-                created_at: "2026-04-26T12:00:00.000Z",
-                updated_at: "2026-04-26T12:00:00.000Z",
+                createdAt: "2026-04-26T12:00:00.000Z",
+                updatedAt: "2026-04-26T12:00:00.000Z",
                 evidence: [],
               },
             ],

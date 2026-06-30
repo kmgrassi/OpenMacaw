@@ -53,7 +53,7 @@ export const AgentLiveStreamEventTypeSchema = z.enum([
   "error",
 ]);
 
-export const AgentLiveStreamEventSchema = z
+const AgentLiveStreamEventBaseSchema = z
   .object({
     type: AgentLiveStreamEventTypeSchema,
     agentId: z.string().uuid(),
@@ -64,6 +64,37 @@ export const AgentLiveStreamEventSchema = z
     payload: z.unknown().optional(),
   })
   .passthrough();
+
+export const AgentLiveToolActivityPayloadSchema = z
+  .object({
+    vendor: z.string().trim().min(1),
+    toolName: z.string().trim().min(1),
+    inputSummary: z.string().optional(),
+    phase: z.enum(["request", "result"]),
+    decision: z.string().trim().min(1).nullable().optional(),
+    toolCallId: z.string().trim().min(1).optional(),
+    success: z.boolean().optional(),
+    outputSummary: z.string().optional(),
+    rawEvent: z.string().trim().min(1).optional(),
+  })
+  .passthrough();
+
+export const AgentLiveToolActivityEventSchema =
+  AgentLiveStreamEventBaseSchema.extend({
+    type: z.literal("tool_activity"),
+    payload: AgentLiveToolActivityPayloadSchema,
+  });
+
+export const AgentLiveStreamEventSchema = z.union([
+  AgentLiveToolActivityEventSchema,
+  AgentLiveStreamEventBaseSchema.refine(
+    (event) => event.type !== "tool_activity",
+    {
+      message:
+        "tool_activity events must use the normalized tool activity payload",
+    },
+  ),
+]);
 
 export type AgentLiveInputRequest = z.infer<typeof AgentLiveInputRequestSchema>;
 export type AgentLiveInputResponse = z.infer<
@@ -77,3 +108,6 @@ export type AgentLiveInterruptResponse = z.infer<
 >;
 export type AgentLiveStreamQuery = z.infer<typeof AgentLiveStreamQuerySchema>;
 export type AgentLiveStreamEvent = z.infer<typeof AgentLiveStreamEventSchema>;
+export type AgentLiveToolActivityPayload = z.infer<
+  typeof AgentLiveToolActivityPayloadSchema
+>;

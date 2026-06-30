@@ -68,6 +68,7 @@ defmodule SymphonyElixir.Gateway.AgentExecutionProfile do
   def resolve(_agent_id, _workspace_id, _opts), do: {:error, :invalid_agent_profile_scope}
 
   @spec resolve_route(String.t(), String.t()) :: {:ok, resolution()} | {:error, term()}
+  @spec resolve_route(String.t(), String.t(), keyword()) :: {:ok, resolution()} | {:error, term()}
   def resolve_route(agent_id, workspace_id, opts \\ [])
 
   @spec resolve_route(String.t(), String.t(), keyword()) :: {:ok, resolution()} | {:error, term()}
