@@ -33,6 +33,33 @@ describe("gateway websocket frame parsers", () => {
     });
   });
 
+  it("parses runtime tool lifecycle chat frames", () => {
+    const frame = parseGatewayEventFrame({
+      type: "event",
+      event: "chat",
+      payload: {
+        runId: "run-1",
+        sessionKey: "agent:11111111-1111-4111-8111-111111111111:main",
+        state: "tool_call_started",
+        tool_name: "task.create",
+        tool_call_id: "call-1",
+      },
+    });
+
+    expect(frame).toEqual({
+      type: "event",
+      event: "chat",
+      payload: {
+        runId: "run-1",
+        sessionKey: "agent:11111111-1111-4111-8111-111111111111:main",
+        state: "tool_call_started",
+        tool_name: "task.create",
+        tool_call_id: "call-1",
+      },
+      seq: undefined,
+    });
+  });
+
   it("rejects malformed runtime event frames", () => {
     expect(
       parseGatewayEventFrame({

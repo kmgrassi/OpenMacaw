@@ -28,7 +28,14 @@ export type ChatAbortResult = {
   ok?: boolean;
 };
 
-export type ChatEventState = "delta" | "final" | "aborted" | "error";
+export type ChatEventState =
+  | "delta"
+  | "final"
+  | "aborted"
+  | "error"
+  | "tool_call_started"
+  | "tool_call_completed"
+  | "tool_call_failed";
 
 export type ChatEventPayload = {
   runId: string;

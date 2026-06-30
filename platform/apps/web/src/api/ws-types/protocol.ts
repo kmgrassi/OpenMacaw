@@ -152,7 +152,10 @@ function isChatEventState(value: unknown): value is ChatEventState {
     value === "delta" ||
     value === "final" ||
     value === "aborted" ||
-    value === "error"
+    value === "error" ||
+    value === "tool_call_started" ||
+    value === "tool_call_completed" ||
+    value === "tool_call_failed"
   );
 }
 
