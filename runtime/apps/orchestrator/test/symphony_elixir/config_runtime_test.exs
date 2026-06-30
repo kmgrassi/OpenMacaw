@@ -629,10 +629,6 @@ defmodule SymphonyElixir.ConfigRuntimeTest do
       assert runtime_settings.agent_kind == "planning"
 
       assert runtime_settings.dynamic_tool_names == [
-               "scheduled_task.read",
-               "scheduled_task.list",
-               "shell.exec",
-               "task.status",
                "plan.create",
                "plan.update",
                "plan.delete",

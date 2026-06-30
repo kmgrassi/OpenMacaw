@@ -11,7 +11,6 @@ defmodule SymphonyElixir.Codex.ToolPolicyTest do
     turn_sandbox_policy: %{"type" => "workspaceWrite", "writableRoots" => ["/tmp/workspace"]}
   }
 
-  @repo_read_tools ["scheduled_task.read", "scheduled_task.list", "shell.exec", "task.status"]
   @plan_task_tools [
     "plan.create",
     "plan.update",
@@ -71,7 +70,7 @@ defmodule SymphonyElixir.Codex.ToolPolicyTest do
     assert resolved.agent_kind == "planning"
 
     assert resolved.dynamic_tool_names ==
-             @repo_read_tools ++ @plan_task_tools ++ @planning_profile_tools ++ @workspace_settings_tools ++ @universal_tools
+             @plan_task_tools ++ @planning_profile_tools ++ @workspace_settings_tools ++ @universal_tools
 
     refute "linear_graphql" in resolved.dynamic_tool_names
     refute "agent.remediate" in resolved.dynamic_tool_names
@@ -97,7 +96,7 @@ defmodule SymphonyElixir.Codex.ToolPolicyTest do
       )
 
     assert resolved.dynamic_tool_names ==
-             @repo_read_tools ++ @plan_task_tools ++ @planning_profile_tools ++ @workspace_settings_tools ++ @universal_tools
+             @plan_task_tools ++ @planning_profile_tools ++ @workspace_settings_tools ++ @universal_tools
 
     assert resolved.thread_sandbox == "workspace-write"
 
@@ -116,8 +115,7 @@ defmodule SymphonyElixir.Codex.ToolPolicyTest do
       )
 
     assert resolved.dynamic_tool_names ==
-             @repo_read_tools ++
-               @plan_task_tools ++ @planning_profile_tools ++ @workspace_settings_tools ++ @universal_tools ++ @agent_communication_tools
+             @plan_task_tools ++ @planning_profile_tools ++ @workspace_settings_tools ++ @universal_tools ++ @agent_communication_tools
   end
 
   test "planning-specific mutation policy overrides legacy top-level allow flag" do

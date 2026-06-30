@@ -46,9 +46,25 @@ describe("agent live I/O contracts", () => {
         agentId,
         workspaceId,
         sequence: 1,
-        payload: { toolName: "shell.exec", state: "running" },
+        payload: {
+          vendor: "codex",
+          toolName: "shell.exec",
+          inputSummary: '{"command":"pwd"}',
+          phase: "request",
+          decision: "allowed",
+          toolCallId: "call-1",
+        },
       }).success,
     ).toBe(true);
+
+    expect(
+      AgentLiveStreamEventSchema.safeParse({
+        type: "tool_activity",
+        agentId,
+        workspaceId,
+        payload: { toolName: "shell.exec", state: "running" },
+      }).success,
+    ).toBe(false);
   });
 
   it("builds the phase C route helpers", () => {

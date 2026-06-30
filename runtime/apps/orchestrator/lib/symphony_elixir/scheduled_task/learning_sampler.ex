@@ -8,9 +8,11 @@ defmodule SymphonyElixir.ScheduledTask.LearningSampler do
   @default_fetch_limit 100
   @default_message_window 10
 
+  @spec sample(String.t(), map()) :: {:ok, map() | nil} | {:error, term()}
   @spec sample(String.t(), map(), keyword()) :: {:ok, map() | nil} | {:error, term()}
   def sample(workspace_id, sampling, opts \\ [])
 
+  @spec sample(String.t(), map(), keyword()) :: {:ok, map() | nil} | {:error, term()}
   def sample(workspace_id, sampling, opts) when is_binary(workspace_id) and is_map(sampling) do
     fetch_limit =
       sampling |> integer_value("fetchLimit", @default_fetch_limit) |> min(200) |> max(1)

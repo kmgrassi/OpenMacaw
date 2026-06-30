@@ -61,6 +61,32 @@ defmodule SymphonyElixirWeb.AgentLiveIoControllerTest do
     def run_turn(session, prompt, work_item) do
       send(session.owner, {:fake_codex_run_turn, prompt, work_item})
       session.on_message.(%{event: :notification, payload: %{"params" => %{"textDelta" => "hello from codex"}}})
+
+      session.on_message.(%{
+        event: :tool_call_started,
+        payload: %{
+          "method" => "item/tool/call",
+          "params" => %{
+            "tool" => "shell.exec",
+            "callId" => "call-1",
+            "arguments" => %{"command" => "pwd"}
+          }
+        }
+      })
+
+      session.on_message.(%{
+        event: :tool_call_completed,
+        payload: %{
+          "method" => "item/tool/call",
+          "params" => %{
+            "tool" => "shell.exec",
+            "callId" => "call-1",
+            "arguments" => %{"command" => "pwd"}
+          }
+        },
+        result: %{"success" => true, "output" => "/tmp/workspace"}
+      })
+
       {:ok, %{"output_text" => "hello from codex", "model" => "fake-codex", "provider" => "openai_codex"}}
     end
 
@@ -148,6 +174,33 @@ defmodule SymphonyElixirWeb.AgentLiveIoControllerTest do
 
     assert %{"type" => "text_delta", "payload" => %{"text" => "hello from codex"}} =
              SymphonyElixir.AgentLiveIo.stream_event(scope, event)
+
+    assert_receive {:agent_io_event, ^session_key, %{event: :tool_call_started, turn_id: ^turn_id} = event}
+
+    assert %{
+             "type" => "tool_activity",
+             "payload" => %{
+               "vendor" => "codex",
+               "toolName" => "shell.exec",
+               "toolCallId" => "call-1",
+               "inputSummary" => "{\"command\":\"pwd\"}",
+               "phase" => "request",
+               "decision" => "allowed",
+               "rawEvent" => "tool_call_started"
+             }
+           } = SymphonyElixir.AgentLiveIo.stream_event(scope, event)
+
+    assert_receive {:agent_io_event, ^session_key, %{event: :tool_call_completed, turn_id: ^turn_id} = event}
+
+    assert %{
+             "type" => "tool_activity",
+             "payload" => %{
+               "toolName" => "shell.exec",
+               "phase" => "result",
+               "success" => true,
+               "outputSummary" => "/tmp/workspace"
+             }
+           } = SymphonyElixir.AgentLiveIo.stream_event(scope, event)
 
     assert_receive {:agent_io_event, ^session_key, %{event: :turn_completed, turn_id: ^turn_id} = event}
 
