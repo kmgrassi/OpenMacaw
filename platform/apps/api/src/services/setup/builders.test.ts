@@ -131,6 +131,25 @@ describe("setup gateway config builders", () => {
     });
   });
 
+  it("drops stale execution profiles when repaired planning configs have no fresh resolution", () => {
+    const repaired = repairGatewayConfig(
+      {
+        execution_profile: {
+          runner_kind: "codex",
+          credential_ref: { type: "credential_id", value: "stale-credential" },
+        },
+        runners: [{ kind: "codex", model: "old-model", provider: "old-provider" }],
+      },
+      "planning",
+      "openai",
+      "openai/gpt-5.2",
+      undefined,
+      null,
+    ) as Record<string, unknown>;
+
+    expect(repaired).not.toHaveProperty("execution_profile");
+  });
+
   it("does not write tracker into setup-created gateway configs", () => {
     const config = buildGatewayConfig({
       workspaceId: "22222222-2222-4222-8222-222222222222",
@@ -159,6 +178,26 @@ describe("setup gateway config builders", () => {
       tracker: { kind: "database", table: "work_items" },
       workflow_template: { id: "manager-default" },
     });
+  });
+
+  it("drops stale execution profiles when repaired manager configs have no fresh resolution", () => {
+    const config = repairManagerGatewayConfig({
+      configJson: {
+        execution_profile: {
+          runner_kind: "llm_tool_runner",
+          credential_ref: { type: "credential_id", value: "stale-credential" },
+        },
+        runners: {
+          manager: { kind: "llm_tool_runner", provider: "old-provider", model: "old-model" },
+        },
+      },
+      provider: "openai",
+      model: "openai/gpt-5.2",
+      runnerKind: "llm_tool_runner",
+      executionProfile: null,
+    }) as Record<string, unknown>;
+
+    expect(config).not.toHaveProperty("execution_profile");
   });
 
   it("treats manager agents (object-shaped runners) as having a runner", () => {

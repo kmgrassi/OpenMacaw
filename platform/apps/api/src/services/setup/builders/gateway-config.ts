@@ -3,6 +3,13 @@ import type { DefaultAgentRole, SetupRequest, SetupUpdateRequest } from "../../.
 import { agentType } from "./agent-defaults.js";
 import type { ResolvedExecutionProfileBlock } from "./execution-profile.js";
 
+function asPlainObject(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
 function defaultTracker() {
   return { kind: "database", table: "work_items" };
 }
@@ -24,11 +31,8 @@ export function defaultAgentGatewayConfig(
 }
 
 function existingCustomTarget(config: unknown) {
-  if (!config || typeof config !== "object" || Array.isArray(config)) {
-    return {};
-  }
-  const backend = (config as Record<string, unknown>).backend;
-  return backend && typeof backend === "object" && !Array.isArray(backend) ? { backend } : {};
+  const backend = asPlainObject(config)?.backend;
+  return asPlainObject(backend) ? { backend } : {};
 }
 
 function gatewayCustomTarget(input: SetupRequest | SetupUpdateRequest, existingConfig?: unknown) {
@@ -91,10 +95,7 @@ export function buildGatewayConfig(
 }
 
 function configuredRunner(provider: string, model: string, existingRunner?: unknown) {
-  const existing =
-    existingRunner && typeof existingRunner === "object" && !Array.isArray(existingRunner)
-      ? (existingRunner as Record<string, unknown>)
-      : {};
+  const existing = asPlainObject(existingRunner) ?? {};
 
   return {
     ...existing,
@@ -102,6 +103,11 @@ function configuredRunner(provider: string, model: string, existingRunner?: unkn
     model,
     provider,
   };
+}
+
+function withoutExecutionProfile(config: Record<string, unknown>) {
+  const { execution_profile: _staleProfile, ...configWithoutProfile } = config;
+  return configWithoutProfile;
 }
 
 export function repairGatewayConfig(
@@ -112,20 +118,17 @@ export function repairGatewayConfig(
   runnerKind?: RunnerKind,
   executionProfile: ResolvedExecutionProfileBlock | null = null,
 ) {
-  if (!configJson || typeof configJson !== "object" || Array.isArray(configJson)) {
+  const config = asPlainObject(configJson);
+  if (!config) {
     return defaultAgentGatewayConfig(role, provider, model, runnerKind, executionProfile);
   }
 
-  const config = configJson as Record<string, unknown>;
   const runners = Array.isArray(config.runners) ? config.runners : [];
 
   // Drop any stale `execution_profile` from the existing config so a missing
   // resolution overwrites rather than preserving an old credential ref.
-  const { execution_profile: _staleProfile, ...configWithoutProfile } = config;
-  const existingTracker =
-    config.tracker && typeof config.tracker === "object" && !Array.isArray(config.tracker)
-      ? (config.tracker as Record<string, unknown>)
-      : null;
+  const configWithoutProfile = withoutExecutionProfile(config);
+  const existingTracker = asPlainObject(config.tracker);
 
   return {
     ...configWithoutProfile,
@@ -173,24 +176,14 @@ export function repairLlmToolGatewayConfig(input: {
   cadenceMs?: number;
   executionProfile?: ResolvedExecutionProfileBlock | null;
 }) {
-  const config =
-    input.configJson && typeof input.configJson === "object" && !Array.isArray(input.configJson)
-      ? { ...(input.configJson as Record<string, unknown>) }
-      : {};
-  const runners =
-    config.runners && typeof config.runners === "object" && !Array.isArray(config.runners)
-      ? { ...(config.runners as Record<string, unknown>) }
-      : {};
-  const manager =
-    runners[input.runnerKey ?? input.agentType] &&
-    typeof runners[input.runnerKey ?? input.agentType] === "object" &&
-    !Array.isArray(runners[input.runnerKey ?? input.agentType])
-      ? { ...(runners[input.runnerKey ?? input.agentType] as Record<string, unknown>) }
-      : {};
+  const config = { ...(asPlainObject(input.configJson) ?? {}) };
+  const runners = { ...(asPlainObject(config.runners) ?? {}) };
+  const runnerKey = input.runnerKey ?? input.agentType;
+  const manager = { ...(asPlainObject(runners[runnerKey]) ?? {}) };
 
   // Drop any stale `execution_profile` block so a missing resolution
   // overwrites rather than preserving an old credential ref.
-  const { execution_profile: _staleProfile, ...configWithoutProfile } = config;
+  const configWithoutProfile = withoutExecutionProfile(config);
 
   // Manager agents share the same minimum required-config shape as
   // planning/coding agents: the runtime launcher rejects any agent whose
@@ -201,17 +194,10 @@ export function repairLlmToolGatewayConfig(input: {
   // tracker/workflow_template defaults, so the manager launch failed with
   // `missing_tracker_kind` until someone hand-patched the row. Default them
   // here to match `defaultAgentGatewayConfig` for planning/coding agents.
-  const existingTracker =
-    config.tracker && typeof config.tracker === "object" && !Array.isArray(config.tracker)
-      ? (config.tracker as Record<string, unknown>)
-      : null;
+  const existingTracker = asPlainObject(config.tracker);
   const tracker = existingTracker ?? defaultTracker();
-  const existingWorkflowTemplate =
-    config.workflow_template && typeof config.workflow_template === "object" && !Array.isArray(config.workflow_template)
-      ? (config.workflow_template as Record<string, unknown>)
-      : null;
+  const existingWorkflowTemplate = asPlainObject(config.workflow_template);
   const workflowTemplate = existingWorkflowTemplate ?? { id: input.workflowTemplateId ?? `${input.agentType}-default` };
-  const runnerKey = input.runnerKey ?? input.agentType;
 
   return {
     ...configWithoutProfile,
