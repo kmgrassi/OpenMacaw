@@ -5,6 +5,7 @@ import type {
 import {
   useCreateSessionPolicyMutation,
   useDeleteSessionPolicyMutation,
+  useSaveSessionPolicyMutation,
   useSessionPoliciesQuery,
   useSessionPolicyStateQuery,
 } from "../../hooks/usePolicies";
@@ -23,15 +24,18 @@ export function SessionPolicyPanel({ sessionThreadId, workspaceId }: Props) {
     sessionThreadId,
     workspaceId,
   );
+  const savePolicy = useSaveSessionPolicyMutation(sessionThreadId, workspaceId);
   const deletePolicy = useDeleteSessionPolicyMutation(
     sessionThreadId,
     workspaceId,
   );
-  const saving = createPolicy.isPending || deletePolicy.isPending;
+  const saving =
+    createPolicy.isPending || savePolicy.isPending || deletePolicy.isPending;
   const error =
     (policies.error as Error | null)?.message ??
     (state.error as Error | null)?.message ??
     (createPolicy.error as Error | null)?.message ??
+    (savePolicy.error as Error | null)?.message ??
     (deletePolicy.error as Error | null)?.message ??
     null;
 
@@ -51,14 +55,24 @@ export function SessionPolicyPanel({ sessionThreadId, workspaceId }: Props) {
         error={error}
         onSave={async (draft) => {
           if (!workspaceId) throw new Error("Workspace context is required.");
-          await createPolicy.mutateAsync({
+          const request = {
             workspaceId,
             kind: draft.kind as PolicyKind,
             params: draft.params as CreateSessionPolicyRequest["params"],
             priority: draft.priority,
             enabled: draft.enabled,
             reason: draft.reason,
-          });
+          };
+
+          if (
+            (policies.data?.policies ?? []).some(
+              (policy) => policy.id === draft.id,
+            )
+          ) {
+            await savePolicy.mutateAsync({ policyId: draft.id, request });
+          } else {
+            await createPolicy.mutateAsync(request);
+          }
         }}
         onDelete={async (policyId) => {
           await deletePolicy.mutateAsync(policyId);

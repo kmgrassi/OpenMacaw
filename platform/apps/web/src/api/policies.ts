@@ -71,6 +71,23 @@ export async function createSessionPolicy(
   return response.policy;
 }
 
+export async function saveSessionPolicy(
+  sessionThreadId: string,
+  policyId: string,
+  input: CreateSessionPolicyRequest,
+): Promise<Policy> {
+  const response = await apiFetch(
+    ROUTES.sessionPolicy(sessionThreadId, policyId),
+    {
+      method: "PUT",
+      body: input,
+      schema: PolicyMutationResponseSchema,
+      defaultErrorMessage: "Could not save session policy",
+    },
+  );
+  return response.policy;
+}
+
 export async function deleteSessionPolicy(
   sessionThreadId: string,
   policyId: string,

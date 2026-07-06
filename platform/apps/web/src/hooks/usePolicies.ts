@@ -11,6 +11,7 @@ import {
   fetchSessionPolicies,
   fetchSessionPolicyState,
   saveAgentPolicy,
+  saveSessionPolicy,
 } from "../api/policies";
 import { queryKeys } from "../api/query-keys";
 
@@ -78,6 +79,36 @@ export function useCreateSessionPolicyMutation(
   return useMutation({
     mutationFn: (request: CreateSessionPolicyRequest) =>
       createSessionPolicy(sessionThreadId ?? "", request),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.sessions.policies(
+            sessionThreadId ?? "",
+            workspaceId,
+          ),
+        }),
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.sessions.policyState(
+            sessionThreadId ?? "",
+            workspaceId,
+          ),
+        }),
+      ]);
+    },
+  });
+}
+
+export function useSaveSessionPolicyMutation(
+  sessionThreadId?: string | null,
+  workspaceId?: string | null,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      policyId: string;
+      request: CreateSessionPolicyRequest;
+    }) =>
+      saveSessionPolicy(sessionThreadId ?? "", input.policyId, input.request),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({

@@ -16,6 +16,7 @@ import {
   getAgentPolicies,
   getSessionPolicies,
   getSessionPolicyState,
+  updateSessionPolicy,
   upsertAgentPolicy,
 } from "../services/policies.js";
 
@@ -115,6 +116,25 @@ export function registerPolicyRoutes(app: Express) {
           request: body,
         });
         return res.status(201).json(PolicyMutationResponseSchema.parse({ policy }));
+      },
+    }),
+  );
+
+  app.put(
+    "/api/sessions/:sessionThreadId/policies/:policyId",
+    apiRoute({
+      requireAuth: true,
+      bodySchema: CreateSessionPolicyRequestSchema,
+      invalidBodyMessage: "Policy request is invalid",
+      onError: handlePolicyError,
+      async handler({ req, res, userId, body }) {
+        const policy = await updateSessionPolicy({
+          userId,
+          sessionThreadId: requireRouteParam(req, "sessionThreadId"),
+          policyId: requireRouteParam(req, "policyId"),
+          request: body,
+        });
+        return res.status(200).json(PolicyMutationResponseSchema.parse({ policy }));
       },
     }),
   );

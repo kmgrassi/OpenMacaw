@@ -46,7 +46,38 @@ export const PolicyParamsSchema = z.union([
   RiskScorePolicyParamsSchema,
 ]);
 
-export const PolicySchema = z.object({
+function validatePolicyParamsForKind(
+  policy: { kind: PolicyKind; params: z.infer<typeof PolicyParamsSchema> },
+  ctx: z.RefinementCtx,
+) {
+  const schema = policyParamsSchemaForKind(policy.kind);
+  const result = schema?.safeParse(policy.params);
+
+  if (result && !result.success) {
+    for (const issue of result.error.issues) {
+      ctx.addIssue({ ...issue, path: ["params", ...issue.path] });
+    }
+  }
+}
+
+function policyParamsSchemaForKind(kind: PolicyKind) {
+  switch (kind) {
+    case "max_tool_calls_per_session":
+      return MaxToolCallsPolicyParamsSchema;
+    case "cost_budget":
+      return CostBudgetPolicyParamsSchema;
+    case "ask_on_shell":
+      return AskOnShellPolicyParamsSchema;
+    case "ask_on_tool":
+      return AskOnToolPolicyParamsSchema;
+    case "block_tools":
+      return BlockToolsPolicyParamsSchema;
+    case "risk_score":
+      return RiskScorePolicyParamsSchema;
+  }
+}
+
+const PolicyBaseSchema = z.object({
   id: z.string(),
   workspaceId: z.string(),
   scope: PolicyScopeSchema,
@@ -63,7 +94,11 @@ export const PolicySchema = z.object({
   updatedAt: z.string().nullable(),
 });
 
-export const PolicyRowSchema = z.object({
+export const PolicySchema = PolicyBaseSchema.superRefine(
+  validatePolicyParamsForKind,
+);
+
+const PolicyRowBaseSchema = z.object({
   id: z.string(),
   workspace_id: z.string(),
   scope: PolicyScopeSchema,
@@ -79,6 +114,10 @@ export const PolicyRowSchema = z.object({
   created_at: z.string(),
   updated_at: z.string().nullable().optional(),
 });
+
+export const PolicyRowSchema = PolicyRowBaseSchema.superRefine(
+  validatePolicyParamsForKind,
+);
 
 export const PolicySessionStateSchema = z.object({
   workspaceId: z.string(),
@@ -111,7 +150,7 @@ export const AgentPoliciesResponseSchema = z.object({
   availableKinds: z.array(PolicyKindDefinitionSchema),
 });
 
-export const UpsertAgentPolicyRequestSchema = z.object({
+const PolicyMutationRequestBaseSchema = z.object({
   workspaceId: z.string().trim().min(1),
   kind: PolicyKindSchema,
   params: PolicyParamsSchema,
@@ -120,14 +159,11 @@ export const UpsertAgentPolicyRequestSchema = z.object({
   reason: z.string().trim().min(1).nullable().optional(),
 });
 
-export const CreateSessionPolicyRequestSchema = z.object({
-  workspaceId: z.string().trim().min(1),
-  kind: PolicyKindSchema,
-  params: PolicyParamsSchema,
-  priority: z.number().int().default(0),
-  enabled: z.boolean().default(true),
-  reason: z.string().trim().min(1).nullable().optional(),
-});
+export const UpsertAgentPolicyRequestSchema =
+  PolicyMutationRequestBaseSchema.superRefine(validatePolicyParamsForKind);
+
+export const CreateSessionPolicyRequestSchema =
+  PolicyMutationRequestBaseSchema.superRefine(validatePolicyParamsForKind);
 
 export const SessionPoliciesResponseSchema = z.object({
   policies: z.array(PolicySchema),

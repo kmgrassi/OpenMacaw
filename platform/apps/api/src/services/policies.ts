@@ -119,6 +119,19 @@ export async function upsertAgentPolicy(input: {
     workspaceId: input.request.workspaceId,
   });
 
+  const { data: existing, error: existingError } = await policyTable()
+    .select("id,scope,agent_id,workspace_id")
+    .eq("id", input.policyId)
+    .maybeSingle<Pick<PolicyTableRow, "id" | "scope" | "agent_id" | "workspace_id">>();
+
+  if (existingError) throw normalizeSupabaseError("policy lookup", existingError);
+  if (
+    existing &&
+    (existing.workspace_id !== workspaceId || existing.scope !== "agent" || existing.agent_id !== input.agentId)
+  ) {
+    throw new ApiRouteError(409, "policy_scope_mismatch", "Only agent-scoped policies can be edited here");
+  }
+
   const payload = {
     id: input.policyId,
     workspace_id: workspaceId,
@@ -234,6 +247,48 @@ export async function createSessionPolicy(input: {
 
   if (error) throw normalizeSupabaseError("policy insert", error);
   if (!data) throw new ApiRouteError(502, "policy_insert_failed", "Could not create policy");
+  return mapPolicy(data);
+}
+
+export async function updateSessionPolicy(input: {
+  userId: string;
+  sessionThreadId: string;
+  policyId: string;
+  request: CreateSessionPolicyRequest;
+}) {
+  const sessionThreadId = await assertSessionAccess({
+    userId: input.userId,
+    workspaceId: input.request.workspaceId,
+    sessionThreadId: input.sessionThreadId,
+  });
+
+  const payload = {
+    workspace_id: input.request.workspaceId,
+    scope: "session",
+    agent_id: null,
+    session_thread_id: sessionThreadId,
+    kind: input.request.kind,
+    params: input.request.params as Json,
+    priority: input.request.priority,
+    enabled: input.request.enabled,
+    source: "manual",
+    reason: input.request.reason ?? null,
+    created_by_user_id: input.userId,
+  };
+
+  const { data, error } = await policyTable()
+    .update(payload as never)
+    .eq("id", input.policyId)
+    .eq("workspace_id", input.request.workspaceId)
+    .eq("scope", "session")
+    .eq("session_thread_id", sessionThreadId)
+    .select(
+      "id,workspace_id,scope,agent_id,session_thread_id,kind,params,priority,enabled,source,reason,created_by_user_id,created_at,updated_at",
+    )
+    .maybeSingle<PolicyTableRow>();
+
+  if (error) throw normalizeSupabaseError("policy update", error);
+  if (!data) throw new ApiRouteError(404, "policy_not_found", "Session policy was not found");
   return mapPolicy(data);
 }
 
