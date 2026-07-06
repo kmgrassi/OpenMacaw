@@ -8,6 +8,7 @@ import { snoozeWorkItemForWorkspace, wakeWorkItemForWorkspace } from "../service
 import {
   assertWorkspaceMembership,
   claimWebhookDelivery,
+  fingerprintSignedWebhookPayload,
   isRecentLinearWebhookTimestamp,
   mapWorkItemIngestResponse,
   normalizeGitHubWebhook,
@@ -175,6 +176,7 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
     if (!req.rawBody || !verifyGithubSignature(req.rawBody, config.githubWebhookSecret, signature)) {
       return res.status(401).json(errorPayload("invalid_signature", "GitHub webhook signature verification failed"));
     }
+    const signedPayloadFingerprint = fingerprintSignedWebhookPayload(req.rawBody);
 
     const eventName = req.header("x-github-event")?.trim() || "";
     if (!eventName) {
@@ -202,7 +204,8 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
 
       const claimed = await claimWebhookDelivery({
         source: "github",
-        deliveryId,
+        deliveryId: signedPayloadFingerprint,
+        duplicateDeliveryIds: [deliveryId],
         eventName,
         workspaceId: normalized.workspaceId,
         externalId: normalized.externalId,
@@ -215,7 +218,9 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
         const saved = await upsertWorkItemFromNormalizedInput(normalized);
         return res.status(202).json(mapWorkItemIngestResponse(saved));
       } catch (error) {
-        await releaseWebhookDeliveryClaim({ source: "github", deliveryId }).catch(() => undefined);
+        await releaseWebhookDeliveryClaim({ source: "github", deliveryId: signedPayloadFingerprint }).catch(
+          () => undefined,
+        );
         throw error;
       }
     } catch (error) {

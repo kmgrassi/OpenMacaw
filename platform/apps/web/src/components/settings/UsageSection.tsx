@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useGatewayContext } from "../../context/GatewayContext";
 import { fetchLearningCost } from "../../api/learning-cost";
 import type { LearningCostResponse } from "../../../../../contracts/learning-cost";
+import type { SessionsUsageResult } from "../../api/ws-types";
 import { useLoadOnConnect } from "../../hooks/useLoadOnConnect";
 import { Alert } from "../ui/Alert";
 import { Card } from "../ui/Card";
@@ -10,47 +11,6 @@ import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
 import { LoadingState } from "../ui/LoadingState";
 import { PageHeader } from "../ui/PageHeader";
-
-type UsageTotals = {
-  input: number;
-  output: number;
-  cacheRead: number;
-  cacheWrite: number;
-  totalTokens: number;
-  totalCost: number;
-};
-
-type DailyEntry = {
-  date: string;
-  tokens: number;
-  cost: number;
-  messages: number;
-};
-
-type ByModelEntry = {
-  provider?: string;
-  model?: string;
-  count: number;
-  totals: UsageTotals;
-};
-
-type UsageResult = {
-  updatedAt: number;
-  startDate: string;
-  endDate: string;
-  totals: UsageTotals;
-  aggregates: {
-    messages: {
-      total: number;
-      user: number;
-      assistant: number;
-      toolCalls: number;
-      errors: number;
-    };
-    byModel: ByModelEntry[];
-    daily: DailyEntry[];
-  };
-};
 
 function formatCost(cost: number) {
   return `$${cost.toFixed(4)}`;
@@ -64,7 +24,7 @@ function formatTokens(n: number) {
 
 export function UsageSection() {
   const { request, connected, scope } = useGatewayContext();
-  const [result, setResult] = useState<UsageResult | null>(null);
+  const [result, setResult] = useState<SessionsUsageResult | null>(null);
   const [learningCost, setLearningCost] = useState<LearningCostResponse | null>(
     null,
   );
@@ -85,12 +45,12 @@ export function UsageSection() {
     setError(null);
     try {
       const [sessionsRes, costRes, learningCostRes] = await Promise.all([
-        request<UsageResult | undefined>("sessions.usage", {
+        request("sessions.usage", {
           startDate,
           endDate,
           limit: 1000,
         }),
-        request<{ totals?: UsageTotals } | undefined>("usage.cost", {
+        request("usage.cost", {
           startDate,
           endDate,
         }),
@@ -104,8 +64,9 @@ export function UsageSection() {
       ]);
       if (sessionsRes) {
         // Merge cost totals if available
-        if (costRes?.totals) {
-          sessionsRes.totals = costRes.totals;
+        const costTotals = costRes?.totals;
+        if (costTotals) {
+          sessionsRes.totals = costTotals;
         }
         setResult(sessionsRes);
       }

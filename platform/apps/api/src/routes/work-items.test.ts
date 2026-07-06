@@ -462,6 +462,122 @@ describe("work item routes", () => {
     expect(tables.webhook_delivery).toHaveLength(1);
   });
 
+  it("skips GitHub webhook replays even when the attacker changes the unsigned delivery header", async () => {
+    config.githubWebhookSecret = "github-secret";
+    config.githubRepoWorkspaceMap = { "openmacaw/repo": workspaceId };
+    tables.work_items.push(
+      workItemRow({
+        id: "66666666-6666-4666-8666-666666666666",
+        source: "github",
+        title: "Old replay-safe title",
+        metadata: { external_id: "openmacaw/repo:issue:23" },
+        "metadata->>external_id": "openmacaw/repo:issue:23",
+      }),
+    );
+
+    const payload = JSON.stringify({
+      action: "opened",
+      repository: {
+        full_name: "openmacaw/repo",
+        html_url: "https://github.com/openmacaw/repo",
+      },
+      issue: {
+        number: 23,
+        title: "Replay-safe webhook ingest",
+        body: "Reject forged redeliveries that reuse a captured signed body.",
+        state: "open",
+        html_url: "https://github.com/openmacaw/repo/issues/23",
+        labels: [],
+      },
+    });
+
+    const first = await fetch(`${baseUrl}/api/webhooks/github`, {
+      method: "POST",
+      headers: {
+        connection: "close",
+        "content-type": "application/json",
+        "x-github-event": "issues",
+        "x-github-delivery": "delivery-original",
+        "x-hub-signature-256": githubSignature("github-secret", payload),
+      },
+      body: payload,
+    });
+    expect(first.status).toBe(202);
+    expect(tables.work_items).toHaveLength(3);
+    expect(tables.webhook_delivery).toHaveLength(1);
+
+    const replay = await fetch(`${baseUrl}/api/webhooks/github`, {
+      method: "POST",
+      headers: {
+        connection: "close",
+        "content-type": "application/json",
+        "x-github-event": "issues",
+        "x-github-delivery": "delivery-forged-replay",
+        "x-hub-signature-256": githubSignature("github-secret", payload),
+      },
+      body: payload,
+    });
+
+    expect(replay.status).toBe(202);
+    await expect(replay.json()).resolves.toMatchObject({
+      accepted: true,
+      skipped: true,
+      reason: "duplicate_delivery",
+    });
+    expect(tables.work_items).toHaveLength(3);
+    expect(tables.webhook_delivery).toHaveLength(1);
+  });
+
+  it("skips GitHub webhook replays claimed with legacy delivery IDs", async () => {
+    config.githubWebhookSecret = "github-secret";
+    config.githubRepoWorkspaceMap = { "openmacaw/repo": workspaceId };
+    tables.webhook_delivery.push({
+      id: "legacy-delivery-claim",
+      source: "github",
+      delivery_id: "delivery-legacy",
+      event_name: "issues",
+      workspace_id: workspaceId,
+      external_id: "openmacaw/repo:issue:29",
+    });
+
+    const payload = JSON.stringify({
+      action: "opened",
+      repository: {
+        full_name: "openmacaw/repo",
+        html_url: "https://github.com/openmacaw/repo",
+      },
+      issue: {
+        number: 29,
+        title: "Legacy delivery replay",
+        body: "A request processed before fingerprint rollout must stay blocked.",
+        state: "open",
+        html_url: "https://github.com/openmacaw/repo/issues/29",
+        labels: [],
+      },
+    });
+
+    const replay = await fetch(`${baseUrl}/api/webhooks/github`, {
+      method: "POST",
+      headers: {
+        connection: "close",
+        "content-type": "application/json",
+        "x-github-event": "issues",
+        "x-github-delivery": "delivery-legacy",
+        "x-hub-signature-256": githubSignature("github-secret", payload),
+      },
+      body: payload,
+    });
+
+    expect(replay.status).toBe(202);
+    await expect(replay.json()).resolves.toMatchObject({
+      accepted: true,
+      skipped: true,
+      reason: "duplicate_delivery",
+    });
+    expect(tables.work_items).toHaveLength(2);
+    expect(tables.webhook_delivery).toHaveLength(1);
+  });
+
   it("releases the GitHub delivery claim when downstream processing fails", async () => {
     config.githubWebhookSecret = "github-secret";
     config.githubRepoWorkspaceMap = { "openmacaw/repo": workspaceId };

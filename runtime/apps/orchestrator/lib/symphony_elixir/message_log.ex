@@ -427,6 +427,7 @@ defmodule SymphonyElixir.MessageLog do
       "message_kind" => "assistant_tool_call",
       "tool_slug" => tool_name,
       "status" => status,
+      "approval_state" => map_value(call, :approval_state),
       "arguments" => tool_arguments(call),
       "result" => json_map(output),
       "output_summary" => output_summary(output),

@@ -3,6 +3,7 @@ defmodule SymphonyElixir.Runner.ToolCallingLoopTest do
 
   alias SymphonyElixir.LocalRelay.Registry
   alias SymphonyElixir.Runner.ToolCallingLoop
+  alias SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher
 
   setup do
     Registry.reset!()
@@ -69,6 +70,125 @@ defmodule SymphonyElixir.Runner.ToolCallingLoopTest do
     assert_receive {:continuation_frame, %{"messages" => messages}}
     assert Enum.any?(messages, &match?(%{"role" => "tool", "content" => ":tool_execution_timeout"}, &1))
     assert_receive {:runner_event, %{event: :tool_call_failed, payload: %{"tool_name" => "read_file", "success" => false}}}
+  end
+
+  test "policy ask denial becomes a tool error without dispatching the helper tool" do
+    parent = self()
+    helper = start_policy_denial_helper(parent)
+    register_helper(helper)
+
+    session =
+      parent
+      |> session()
+      |> Map.put(:policies, [
+        %{
+          "scope" => "session",
+          "kind" => "ask_on_tool",
+          "params" => %{"tools" => ["read_file"]},
+          "enabled" => true
+        }
+      ])
+      |> Map.put(:policy_approval_callback, fn request ->
+        send(parent, {:approval_request, request})
+        :denied
+      end)
+
+    assert {:ok, result} = ToolCallingLoop.run(session, %{max_iterations: 3, timeout_per_tool_ms: 100, total_timeout_ms: 1_000})
+    assert result["output_text"] == "handled policy denial"
+
+    assert_receive {:approval_request, %{"tool_name" => "read_file"}}
+    assert_receive {:continuation_frame, %{"messages" => messages}}
+    assert Enum.any?(messages, &match?(%{"role" => "tool", "content" => "policy_denied"}, &1))
+    refute_received {:tool_execution_request, _frame}
+
+    assert_receive {:runner_event, %{event: :approval_requested, payload: %{"approval_state" => "requested"}}}
+    assert_receive {:runner_event, %{event: :approval_resolved, payload: %{"approval_state" => "denied"}}}
+    assert_receive {:runner_event, %{event: :tool_call_failed, payload: %{"approval_state" => "denied", "error_code" => "policy_denied"}}}
+  end
+
+  test "pending policy ask suspends cloud tool loop without dispatching the helper tool" do
+    parent = self()
+    helper = start_policy_denial_helper(parent)
+    register_helper(helper)
+
+    session =
+      parent
+      |> session()
+      |> Map.put(:policies, [
+        %{
+          "scope" => "session",
+          "kind" => "ask_on_tool",
+          "params" => %{"tools" => ["read_file"]},
+          "enabled" => true
+        }
+      ])
+
+    assert {:error, {:pending_policy_approval, %{"tool_name" => "read_file", "approval_state" => "requested"}}} =
+             ToolCallingLoop.run(session, %{max_iterations: 3, timeout_per_tool_ms: 100, total_timeout_ms: 1_000})
+
+    refute_received {:tool_execution_request, _frame}
+    refute_received {:continuation_frame, _frame}
+    assert_receive {:runner_event, %{event: :approval_requested, payload: %{"approval_state" => "requested"}}}
+    refute_received {:runner_event, %{event: :tool_call_failed}}
+  end
+
+  test "direct tools surface structured policy failures" do
+    parent = self()
+
+    session =
+      parent
+      |> session()
+      |> Map.put(:provider, :openai_compatible)
+      |> Map.put(:workspace, System.tmp_dir!())
+      |> Map.put(:policies, [
+        %{
+          "scope" => "session",
+          "kind" => "block_tools",
+          "params" => %{"tools" => ["read_file"]},
+          "enabled" => true
+        }
+      ])
+
+    assert {:ok, [_message]} =
+             ToolExecutionDispatcher.execute_direct_tool_calls(session, %{iteration: 0}, [
+               %{id: "call-1", name: "read_file", arguments: %{"path" => "README.md"}}
+             ])
+
+    assert_receive {:runner_event,
+                    %{
+                      event: :tool_call_failed,
+                      payload: %{
+                        "tool_name" => "read_file",
+                        "success" => false,
+                        "error_code" => "policy_denied"
+                      }
+                    }}
+  end
+
+  test "direct tools suspend on pending policy ask" do
+    parent = self()
+
+    session =
+      parent
+      |> session()
+      |> Map.put(:provider, :openai_compatible)
+      |> Map.put(:workspace, System.tmp_dir!())
+      |> Map.put(:policies, [
+        %{
+          "scope" => "session",
+          "kind" => "ask_on_tool",
+          "params" => %{"tools" => ["read_file"]},
+          "enabled" => true
+        }
+      ])
+
+    assert {:error, {:pending_policy_approval, %{"tool_name" => "read_file", "approval_state" => "requested"}}} =
+             ToolExecutionDispatcher.execute_direct_tool_calls(session, %{iteration: 0}, [
+               %{id: "call-1", name: "read_file", arguments: %{"path" => "README.md"}}
+             ])
+
+    assert_receive {:runner_event, %{event: :approval_requested, payload: %{"approval_state" => "requested"}}}
+    refute_received {:runner_event, %{event: :tool_call_failed}}
   end
 
   test "total timeout cancels the loop" do
@@ -236,6 +356,29 @@ defmodule SymphonyElixir.Runner.ToolCallingLoopTest do
             {:local_relay_frame, frame} ->
               send(parent, {:continuation_frame, frame})
               Registry.complete(correlation_id, %{"output_text" => "handled timeout"})
+          end
+      end
+    end)
+  end
+
+  defp start_policy_denial_helper(parent) do
+    spawn_link(fn ->
+      receive do
+        {:local_relay_dispatch, %{"correlation_id" => correlation_id}} ->
+          request_read_file(correlation_id)
+
+          receive do
+            {:local_relay_tool_execution_request, frame} ->
+              send(parent, {:tool_execution_request, frame})
+          after
+            50 ->
+              :ok
+          end
+
+          receive do
+            {:local_relay_frame, frame} ->
+              send(parent, {:continuation_frame, frame})
+              Registry.complete(correlation_id, %{"output_text" => "handled policy denial"})
           end
       end
     end)

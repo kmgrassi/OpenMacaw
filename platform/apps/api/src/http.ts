@@ -217,6 +217,15 @@ export function requestWorkspaceId(req: Request): string | null {
   return null;
 }
 
+export function requireWorkspaceId(req: Request, message = "workspaceId is required"): string {
+  const workspaceId = requestWorkspaceId(req);
+  if (!workspaceId) {
+    throw new ApiRouteError(400, "invalid_request", message);
+  }
+
+  return workspaceId;
+}
+
 export function parseHeaders(source: Record<string, undefined | string | string[]>): Record<string, string> {
   const headers: Record<string, string> = {};
 

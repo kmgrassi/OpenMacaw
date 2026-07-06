@@ -46,6 +46,40 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutorTest do
     assert String.trim(result["output"]["stderr"]) == "err"
   end
 
+  test "policy ask gates shell.exec before execution", %{root: root, workspace: workspace} do
+    assert {:ok, prepared} = CodingExecutor.prepare(%{"existing_workspace" => "repo"}, workspace_root: root)
+
+    frames =
+      capture_frames(fn emit ->
+        CodingExecutor.execute_frame(
+          %{
+            "type" => "tool_execution_request",
+            "schema_version" => "1",
+            "correlation_id" => "corr-policy",
+            "tool_call_id" => "call-shell-policy",
+            "name" => "shell.exec",
+            "arguments" => %{"argv" => ["sh", "-c", "touch should-not-exist"], "cwd" => "."},
+            "policies" => [
+              %{
+                "scope" => "session",
+                "kind" => "ask_on_shell",
+                "params" => %{},
+                "enabled" => true
+              }
+            ]
+          },
+          prepared,
+          emit
+        )
+      end)
+
+    result = Enum.find(frames, &(&1["type"] == "tool_call_result"))
+    assert result["success"] == false
+    assert result["output"]["error_code"] == "policy_ask"
+    assert result["output"]["approval_state"] == "requested"
+    refute File.exists?(Path.join(workspace, "should-not-exist"))
+  end
+
   test "applies patches inside the prepared workspace", %{root: root, workspace: workspace} do
     File.write!(Path.join(workspace, "message.txt"), "before\n")
     assert {:ok, prepared} = CodingExecutor.prepare(%{"existing_workspace" => "repo"}, workspace_root: root)
@@ -173,8 +207,9 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutorTest do
 
     result = Enum.find(frames, &(&1["type"] == "tool_call_result"))
     assert result["success"] == false
-    assert result["output"]["error"] == "tool_execution_failed"
-    assert result["output"]["reason"] =~ "policy_denied"
+    assert result["output"]["error_code"] == "policy_denied"
+    assert result["output"]["error"] == "Tool is blocked by policy"
+    assert result["output"]["policy"]["tool_name"] == "shell.exec"
   end
 
   test "run_loop keeps policy state for cloud executor sessions without session_thread_id", %{root: root} do
@@ -223,8 +258,9 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutorTest do
 
     assert first["success"] == true
     assert second["success"] == false
-    assert second["output"]["reason"] =~ "policy_denied"
-    assert second["output"]["reason"] =~ "limit of 1"
+    assert second["output"]["error_code"] == "policy_denied"
+    assert second["output"]["error"] =~ "limit of 1"
+    assert second["output"]["policy"]["reason"] =~ "limit of 1"
   end
 
   test "rejects existing workspaces outside the workspace root", %{root: root} do
