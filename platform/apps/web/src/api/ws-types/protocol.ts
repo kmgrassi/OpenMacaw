@@ -199,7 +199,7 @@ export type GatewayMethodResult = {
   "chat.send": ChatSendResult;
   "chat.abort": ChatAbortResult;
   "config.get": ConfigSnapshot | undefined;
-  "config.set": GatewayAck | undefined;
+  "config.set": ConfigSnapshot | undefined;
   "sessions.list": SessionsListResponse | undefined;
   "sessions.delete": GatewayAck | undefined;
   "sessions.reset": GatewayAck | undefined;
