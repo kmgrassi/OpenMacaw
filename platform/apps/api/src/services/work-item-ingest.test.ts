@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  fingerprintSignedWebhookPayload,
   isRecentLinearWebhookTimestamp,
   normalizeGitHubWebhook,
   normalizeLinearWebhook,
@@ -154,6 +155,7 @@ describe("work-item ingest helpers", () => {
     const secret = "github-secret";
     const signature = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 
+    expect(fingerprintSignedWebhookPayload(body)).toHaveLength(64);
     expect(verifyGithubSignature(body, secret, signature)).toBe(true);
     expect(verifyGithubSignature(body, secret, "sha256=deadbeef")).toBe(false);
   });
