@@ -16,6 +16,8 @@
   <dict>
     <key>HOME</key>
     <string>/Users/__USER__</string>
+    <key>OPENMACAW_LOCAL_API_ALLOWED_ORIGINS</key>
+    <string>https://app.openmacaw.ai</string>
   </dict>
 
   <key>RunAtLoad</key>
