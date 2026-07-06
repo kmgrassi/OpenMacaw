@@ -29,6 +29,9 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
           emit_tool_finished(session, state, call, result_frame, started_at)
           {:cont, {:ok, append_tool_result(state, call, result_frame)}}
 
+        {:error, {:policy_ask, escalation}} ->
+          {:halt, {:error, {:pending_policy_approval, escalation}}}
+
         {:error, reason} ->
           result_frame = failed_tool_result(call, reason)
           emit_tool_finished(session, state, call, result_frame, started_at)
@@ -37,9 +40,10 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
     end)
   end
 
-  @spec execute_direct_tool_calls(session :: map(), state :: map(), tool_calls :: [map()]) :: [map()]
+  @spec execute_direct_tool_calls(session :: map(), state :: map(), tool_calls :: [map()]) ::
+          {:ok, [map()]} | {:error, term()}
   def execute_direct_tool_calls(session, state, tool_calls) do
-    Enum.map(tool_calls, fn call ->
+    Enum.reduce_while(tool_calls, {:ok, []}, fn call, {:ok, messages} ->
       started_at = monotonic_ms()
       emit_tool_started(session, state, call)
 
@@ -58,10 +62,15 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
             {:ok, %{"success" => false, "output" => message}}
         end
 
-      normalized_result = normalize_direct_tool_result(result)
-      emit_tool_finished(session, state, call, normalized_result, started_at)
+      case result do
+        {:error, {:policy_ask, escalation}} ->
+          {:halt, {:error, {:pending_policy_approval, escalation}}}
 
-      direct_tool_result_message(session, call, normalized_result)
+        _other ->
+          normalized_result = direct_tool_result_frame(call, result)
+          emit_tool_finished(session, state, call, normalized_result, started_at)
+          {:cont, {:ok, messages ++ [direct_tool_result_message(session, call, normalized_result)]}}
+      end
     end)
   end
 
@@ -89,6 +98,10 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.ToolExecutionDispatcher do
   end
 
   def normalize_direct_tool_result(output), do: %{"success" => true, "output" => to_string(output)}
+
+  defp direct_tool_result_frame(call, {:error, {:policy_denied, _reason} = reason}), do: failed_tool_result(call, reason)
+  defp direct_tool_result_frame(call, {:error, {:policy_ask, _escalation} = reason}), do: failed_tool_result(call, reason)
+  defp direct_tool_result_frame(_call, result), do: normalize_direct_tool_result(result)
 
   @spec runtime_context(map()) :: map()
   def runtime_context(session), do: ToolExecutionContext.from_session(session)
