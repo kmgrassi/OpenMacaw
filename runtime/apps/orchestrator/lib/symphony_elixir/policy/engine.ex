@@ -195,7 +195,13 @@ defmodule SymphonyElixir.Policy.Engine do
     map_value(event, :session_thread_id) ||
       map_value(session, :session_thread_id) ||
       map_value(metadata, :session_thread_id) ||
-      map_value(frame, :session_thread_id)
+      map_value(frame, :session_thread_id) ||
+      map_value(event, :session_id) ||
+      map_value(session, :session_id) ||
+      map_value(metadata, :session_id) ||
+      map_value(frame, :session_id) ||
+      map_value(frame, :scope_session_key) ||
+      map_value(frame, :session_key)
   end
 
   defp workspace_id(event) do

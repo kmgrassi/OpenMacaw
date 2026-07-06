@@ -2676,6 +2676,44 @@ export type Database = {
         };
         Relationships: [];
       };
+      policy_session_state: {
+        Row: {
+          id: string;
+          key: string;
+          session_thread_id: string;
+          updated_at: string;
+          value_json: Json | null;
+          value_numeric: number | null;
+          workspace_id: string;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          session_thread_id: string;
+          updated_at?: string;
+          value_json?: Json | null;
+          value_numeric?: number | null;
+          workspace_id: string;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          session_thread_id?: string;
+          updated_at?: string;
+          value_json?: Json | null;
+          value_numeric?: number | null;
+          workspace_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "policy_session_state_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       openclaw_agent_session_index: {
         Row: {
           agent_id: string;

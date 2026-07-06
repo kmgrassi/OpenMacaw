@@ -82,6 +82,42 @@ defmodule SymphonyElixir.Policy.EngineTest do
     assert_received {:request, "POST", "/rest/v1/policy_session_state", %{"on_conflict" => "session_thread_id,key"}}
   end
 
+  test "uses session_id as policy state key when session_thread_id is absent" do
+    test_name = :"policy_engine_session_id_#{System.unique_integer([:positive])}"
+    client = PostgRESTClient.new(%{endpoint: "https://test.supabase.co", api_key: "secret"}, plug: {Req.Test, test_name})
+    parent = self()
+
+    Req.Test.stub(test_name, fn conn ->
+      send(parent, {:request, conn.method, conn.request_path, URI.decode_query(conn.query_string), conn.body_params})
+
+      case conn.method do
+        "GET" ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(200, Jason.encode!([]))
+
+        "POST" ->
+          Plug.Conn.send_resp(conn, 201, "")
+      end
+    end)
+
+    server = :"policy_engine_#{System.unique_integer([:positive])}"
+    server_pid = start_supervised!({Engine, name: server})
+    Req.Test.allow(test_name, self(), server_pid)
+
+    event =
+      tool_event([policy("max_tool_calls_per_session", %{"limit" => 2})])
+      |> put_in([:session, :session_thread_id], nil)
+      |> put_in([:session, :session_id], "runner-session-1")
+      |> put_in([:session, :workspace_id], "workspace-1")
+
+    assert :allow = Engine.evaluate(event, server: server, postgrest_client: client)
+
+    assert_received {:request, "GET", "/rest/v1/policy_session_state", %{"session_thread_id" => "eq.runner-session-1"}, _body}
+
+    assert_received {:request, "POST", "/rest/v1/policy_session_state", %{"on_conflict" => "session_thread_id,key"}, %{"session_thread_id" => "runner-session-1", "key" => "tool_call_count"}}
+  end
+
   defp tool_event(policies) do
     %{
       type: :tool_call,

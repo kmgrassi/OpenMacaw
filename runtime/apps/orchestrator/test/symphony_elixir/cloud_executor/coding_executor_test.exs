@@ -177,6 +177,56 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutorTest do
     assert result["output"]["reason"] =~ "policy_denied"
   end
 
+  test "run_loop keeps policy state for cloud executor sessions without session_thread_id", %{root: root} do
+    assert {:ok, prepared} = CodingExecutor.prepare(%{"existing_workspace" => "repo"}, workspace_root: root)
+
+    policies = [
+      %{
+        "scope" => "session",
+        "kind" => "max_tool_calls_per_session",
+        "params" => %{"limit" => 1},
+        "priority" => 0,
+        "enabled" => true
+      }
+    ]
+
+    frames = [
+      Jason.encode!(%{
+        "type" => "tool_execution_request",
+        "schema_version" => "1",
+        "tool_call_id" => "call-one",
+        "name" => "shell.exec",
+        "arguments" => %{"argv" => ["sh", "-c", "echo one"], "cwd" => "."},
+        "workspace_id" => "workspace-1",
+        "session_id" => "cloud-session-1",
+        "policies" => policies
+      }),
+      Jason.encode!(%{
+        "type" => "tool_execution_request",
+        "schema_version" => "1",
+        "tool_call_id" => "call-two",
+        "name" => "shell.exec",
+        "arguments" => %{"argv" => ["sh", "-c", "echo two"], "cwd" => "."},
+        "workspace_id" => "workspace-1",
+        "session_id" => "cloud-session-1",
+        "policies" => policies
+      })
+    ]
+
+    emitted =
+      capture_frames(fn emit ->
+        CodingExecutor.run_loop(prepared, input: frames, output: emit)
+      end)
+
+    first = Enum.find(emitted, &(&1["type"] == "tool_call_result" and &1["tool_call_id"] == "call-one"))
+    second = Enum.find(emitted, &(&1["type"] == "tool_call_result" and &1["tool_call_id"] == "call-two"))
+
+    assert first["success"] == true
+    assert second["success"] == false
+    assert second["output"]["reason"] =~ "policy_denied"
+    assert second["output"]["reason"] =~ "limit of 1"
+  end
+
   test "rejects existing workspaces outside the workspace root", %{root: root} do
     assert {:error, %{"code" => "existing_workspace_denied"}} =
              CodingExecutor.prepare(%{"existing_workspace" => "../outside"}, workspace_root: root)
