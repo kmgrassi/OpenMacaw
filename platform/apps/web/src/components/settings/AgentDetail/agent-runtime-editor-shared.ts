@@ -18,6 +18,7 @@ import {
   credentialValidationLabel,
   matchesProviderFilter,
 } from "../credential-picker/credential-picker-utils";
+import { runtimeProviderLabel } from "../runtime-provider-utils";
 
 export type LocalRuntimeRunnerOption = {
   id: string;
@@ -120,10 +121,7 @@ export function credentialRefFromValue(
 }
 
 export function providerLabel(provider: string) {
-  return provider
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  return runtimeProviderLabel(provider);
 }
 
 export function localRunnerLabel(option: LocalRuntimeRunnerOption) {

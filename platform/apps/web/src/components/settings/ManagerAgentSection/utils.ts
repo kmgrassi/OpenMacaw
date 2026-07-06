@@ -1,4 +1,3 @@
-import { CREDENTIAL_PROVIDERS } from "../../../../../../contracts/credentials";
 import type { AgentRuntimeProfile } from "../../../../../../contracts/agents";
 import type {
   ManagerAgentDueTaskQuery,
@@ -10,6 +9,9 @@ import {
   formatDisplayLabel,
   normalizeDisplayLabel,
 } from "../../../lib/display-labels";
+import {
+  managerRuntimeProviderLabel,
+} from "../runtime-provider-utils";
 
 export type SchedulerRuntimeProvider = AgentRuntimeProfile["provider"];
 
@@ -53,15 +55,9 @@ export const MANAGER_STATES = [
 export type ManagerState = (typeof MANAGER_STATES)[number];
 
 export const providerOptions = MANAGER_PROVIDERS.map((provider) => {
-  const metadata = CREDENTIAL_PROVIDERS.find(
-    (candidate) => candidate.provider === provider,
-  );
   return {
     value: provider,
-    label:
-      provider === "openai_compatible"
-        ? "OpenAI-compatible local"
-        : (metadata?.label.replace(" API key", "") ?? provider),
+    label: managerRuntimeProviderLabel(provider),
   };
 });
 
@@ -74,14 +70,7 @@ export function credentialRowId(credential: SavedCredential): string {
 }
 
 export function providerLabel(provider: string | null | undefined) {
-  if (provider === "openai_compatible") return "OpenAI-compatible local";
-  return (
-    CREDENTIAL_PROVIDERS.find(
-      (candidate) => candidate.provider === provider,
-    )?.label.replace(" API key", "") ??
-    provider ??
-    "Unknown provider"
-  );
+  return managerRuntimeProviderLabel(provider);
 }
 
 export function statusBadgeVariant(

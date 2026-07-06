@@ -1,4 +1,5 @@
 import type { LocalToolCallCapability } from "../../../api/local-runtime";
+import { runtimeProviderLabel } from "../runtime-provider-utils";
 
 type BadgeVariant = "default" | "success" | "warning" | "error";
 
@@ -6,7 +7,7 @@ export const LOCAL_HELPER_INSTALL_COMMAND =
   "cd local-runtime-helper && go install ./cmd/local-runtime-helper";
 
 export const PROVIDER_OPTIONS = [
-  { value: "openai_compatible", label: "OpenAI Compatible" },
+  { value: "openai_compatible", label: runtimeProviderLabel("openai_compatible") },
   { value: "ollama", label: "Ollama" },
   { value: "llama-cpp", label: "llama.cpp" },
   { value: "vllm", label: "vLLM" },
