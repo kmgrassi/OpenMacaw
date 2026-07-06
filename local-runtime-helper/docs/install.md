@@ -117,6 +117,20 @@ Use a comma-separated list if you need both hosted and local development
 origins. Avoid broad allowlists; any allowed origin can trigger local helper
 browser actions.
 
+If you run the helper with the `launchd` setup below, a shell `export` is not
+inherited by the background service. Add the variable to the generated plist's
+`EnvironmentVariables` block before bootstrapping it:
+
+```xml
+<key>EnvironmentVariables</key>
+<dict>
+  <key>HOME</key>
+  <string>/Users/__USER__</string>
+  <key>OPENMACAW_LOCAL_API_ALLOWED_ORIGINS</key>
+  <string>https://app.openmacaw.ai</string>
+</dict>
+```
+
 ## Run With launchd On macOS
 
 Copy the launchd template and replace `__USER__` plus the binary path if needed:
