@@ -19,6 +19,7 @@ import {
   AgentLiveStreamQuerySchema,
   AgentLiveStreamEventSchema,
 } from "./agent-live-io.js";
+import { SessionPolicyStateResponseSchema } from "./session-policy.js";
 
 const WorkspaceQuerySchema = z.object({
   workspaceId: z.string().uuid(),
@@ -91,6 +92,13 @@ export const PlatformApiContracts = {
     pathParams: z.object({ agentId: z.string().uuid() }),
     query: AgentLiveStreamQuerySchema,
     response: AgentLiveStreamEventSchema,
+  },
+  getSessionPolicyState: {
+    method: "GET",
+    path: "/api/sessions/:sessionThreadId/policy-state",
+    pathParams: z.object({ sessionThreadId: z.string().uuid() }),
+    query: WorkspaceQuerySchema,
+    response: SessionPolicyStateResponseSchema,
   },
   listTools: {
     method: "GET",

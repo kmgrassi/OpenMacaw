@@ -9,9 +9,8 @@ import {
 } from "../device-identity";
 import type {
   ConnectParams,
-  ChatAbortParams,
-  ChatSendParams,
   GatewayMethod,
+  GatewayMethodParams,
   GatewayMethodResult,
   GatewayError,
 } from "../ws-types";
@@ -79,7 +78,7 @@ export class GatewayClient {
 
   request<Method extends GatewayMethod>(
     method: Method,
-    params: ParametersForMethod<Method>,
+    params: GatewayMethodParams[Method],
   ): Promise<GatewayMethodResult[Method]>;
   request<T = unknown>(method: string, params?: unknown): Promise<T>;
   request<T = unknown>(method: string, params?: unknown): Promise<T> {
@@ -302,12 +301,3 @@ export class GatewayClient {
     }
   }
 }
-
-type ParametersForMethod<Method extends GatewayMethod> =
-  Method extends "connect"
-    ? ConnectParams
-    : Method extends "chat.send"
-      ? ChatSendParams
-      : Method extends "chat.abort"
-        ? ChatAbortParams
-        : never;

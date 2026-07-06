@@ -93,20 +93,20 @@ defmodule SymphonyElixir.Runner.ToolCallingLoop.DirectProviderLoop do
         repeated_calls = repeated_call_counts(state.repeated_calls, tool_calls)
 
         with :ok <- ensure_no_repeated_calls(%{repeated_calls: repeated_calls}) do
-          tool_messages = ToolExecutionDispatcher.execute_direct_tool_calls(session, state, tool_calls)
+          with {:ok, tool_messages} <- ToolExecutionDispatcher.execute_direct_tool_calls(session, state, tool_calls) do
+            next_state = %{
+              state
+              | iteration: state.iteration + 1,
+                output: output,
+                usage: usage,
+                repeated_calls: repeated_calls,
+                messages:
+                  state.messages ++
+                    direct_assistant_tool_call_messages(output, tool_calls) ++ tool_messages
+            }
 
-          next_state = %{
-            state
-            | iteration: state.iteration + 1,
-              output: output,
-              usage: usage,
-              repeated_calls: repeated_calls,
-              messages:
-                state.messages ++
-                  direct_assistant_tool_call_messages(output, tool_calls) ++ tool_messages
-          }
-
-          direct_loop(session, config, next_state)
+            direct_loop(session, config, next_state)
+          end
         end
     end
   end

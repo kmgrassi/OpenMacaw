@@ -1,25 +1,4 @@
-type GatewayRequest = <T = unknown>(method: string, params?: unknown) => Promise<T>;
-
-type SessionsListResponse = {
-  ts?: number;
-  count?: number;
-  sessions?: Array<{
-    key: string;
-    id?: string;
-    agentId?: string;
-    sessionId?: string;
-    kind?: string;
-    label?: string;
-    displayName?: string;
-    surface?: string;
-    updatedAt?: number | null;
-    lastMessageAt?: number;
-    inputTokens?: number;
-    outputTokens?: number;
-    totalTokens?: number;
-    model?: string;
-  }>;
-};
+import type { GatewayRequest, SessionsListResponse } from "./ws-types";
 
 export type OrchestratorSession = {
   key: string;
@@ -48,11 +27,14 @@ export async function listOrchestratorSessions(
   request: GatewayRequest,
   limit = 50,
 ): Promise<OrchestratorSessionsResult> {
-  const result = await request<SessionsListResponse | undefined>("sessions.list", {
-    includeGlobal: false,
-    includeUnknown: true,
-    limit,
-  });
+  const result = await request<SessionsListResponse | undefined>(
+    "sessions.list",
+    {
+      includeGlobal: false,
+      includeUnknown: true,
+      limit,
+    },
+  );
 
   const sessions = (result?.sessions ?? []).map((session) => ({
     key: session.key,
@@ -78,7 +60,9 @@ export async function listOrchestratorSessions(
   };
 }
 
-export async function hasOrchestratorSessions(request: GatewayRequest): Promise<boolean> {
+export async function hasOrchestratorSessions(
+  request: GatewayRequest,
+): Promise<boolean> {
   const result = await listOrchestratorSessions(request, 1);
   return result.count > 0 || result.sessions.length > 0;
 }

@@ -649,7 +649,7 @@ create table if not exists public.session_thread (
 
 create table if not exists public.policy (
   id uuid primary key default gen_random_uuid(),
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  workspace_id uuid not null,
   scope text not null,
   agent_id uuid references public.agent(id) on delete cascade,
   session_thread_id uuid references public.session_thread(id) on delete cascade,
@@ -659,7 +659,7 @@ create table if not exists public.policy (
   enabled boolean not null default true,
   source text not null default 'manual',
   reason text,
-  created_by_user_id uuid references public."user"(id) on delete set null,
+  created_by_user_id uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint policy_scope_check check (scope in ('workspace', 'agent', 'session')),
@@ -692,7 +692,7 @@ comment on column public.policy.params is
   'Kind-specific policy parameters validated by the corresponding contract schema.';
 
 create table if not exists public.policy_session_state (
-  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  workspace_id uuid not null,
   session_thread_id uuid not null references public.session_thread(id) on delete cascade,
   key text not null,
   value_numeric numeric,
@@ -1046,6 +1046,84 @@ create trigger trg_validate_escalation_workspace
 before insert or update on public.escalation
 for each row execute function public.tg_validate_escalation_workspace();
 
+create or replace function public.tg_validate_policy_workspace()
+returns trigger language plpgsql as $$
+declare
+  v_agent_workspace_id uuid;
+  v_session_workspace_id uuid;
+begin
+  if new.scope = 'agent' then
+    select workspace_id into v_agent_workspace_id
+    from public.agent
+    where id = new.agent_id;
+
+    if v_agent_workspace_id is null then
+      raise exception 'policy: parent agent % not found', new.agent_id
+        using errcode = 'foreign_key_violation';
+    end if;
+
+    if v_agent_workspace_id <> new.workspace_id then
+      raise exception 'policy: workspace_id % does not match agent workspace_id %',
+        new.workspace_id, v_agent_workspace_id
+        using errcode = 'check_violation';
+    end if;
+  end if;
+
+  if new.scope = 'session' then
+    select workspace_id into v_session_workspace_id
+    from public.session_thread
+    where id = new.session_thread_id;
+
+    if v_session_workspace_id is null then
+      raise exception 'policy: parent session_thread % not found', new.session_thread_id
+        using errcode = 'foreign_key_violation';
+    end if;
+
+    if v_session_workspace_id <> new.workspace_id then
+      raise exception 'policy: workspace_id % does not match session_thread workspace_id %',
+        new.workspace_id, v_session_workspace_id
+        using errcode = 'check_violation';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function public.tg_validate_policy_session_state_workspace()
+returns trigger language plpgsql as $$
+declare
+  v_session_workspace_id uuid;
+begin
+  select workspace_id into v_session_workspace_id
+  from public.session_thread
+  where id = new.session_thread_id;
+
+  if v_session_workspace_id is null then
+    raise exception 'policy_session_state: parent session_thread % not found', new.session_thread_id
+      using errcode = 'foreign_key_violation';
+  end if;
+
+  if v_session_workspace_id <> new.workspace_id then
+    raise exception 'policy_session_state: workspace_id % does not match session_thread workspace_id %',
+      new.workspace_id, v_session_workspace_id
+      using errcode = 'check_violation';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_validate_policy_workspace on public.policy;
+create trigger trg_validate_policy_workspace
+before insert or update on public.policy
+for each row execute function public.tg_validate_policy_workspace();
+
+drop trigger if exists trg_validate_policy_session_state_workspace on public.policy_session_state;
+create trigger trg_validate_policy_session_state_workspace
+before insert or update on public.policy_session_state
+for each row execute function public.tg_validate_policy_session_state_workspace();
+
 -- Compatibility columns expected by platform resource-dispatch code.
 alter table public.workspace_resource add column if not exists resource_type text;
 alter table public.workspace_resource add column if not exists provider text;
@@ -1337,6 +1415,24 @@ begin
       add constraint agent_resource_grant_resource_id_fkey
       foreign key (resource_id) references public.workspace_resource(id) on delete cascade;
   end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'policy_workspace_id_fkey') then
+    alter table public.policy
+      add constraint policy_workspace_id_fkey
+      foreign key (workspace_id) references public.workspaces(id) on delete cascade;
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'policy_created_by_user_id_fkey') then
+    alter table public.policy
+      add constraint policy_created_by_user_id_fkey
+      foreign key (created_by_user_id) references public."user"(id) on delete set null;
+  end if;
+
+  if not exists (select 1 from pg_constraint where conname = 'policy_session_state_workspace_id_fkey') then
+    alter table public.policy_session_state
+      add constraint policy_session_state_workspace_id_fkey
+      foreign key (workspace_id) references public.workspaces(id) on delete cascade;
+  end if;
 end $$;
 
 -- Core uniqueness and lookup indexes used by OpenMacaw services.
@@ -1364,6 +1460,10 @@ create index if not exists skill_source_run_idx on public.skill (source_run_id) 
 create index if not exists message_thread_created_idx on public.message (thread_id, created_at);
 create index if not exists plan_workspace_idx on public.plan (workspace_id);
 create unique index if not exists planning_profile_active_scope_key on public.planning_profile (scope_type, scope_id) where deleted_at is null and is_active = true;
+create index if not exists policy_workspace_scope_priority_idx on public.policy (workspace_id, scope, priority, created_at);
+create index if not exists policy_agent_enabled_idx on public.policy (workspace_id, agent_id, priority, created_at) where scope = 'agent' and enabled = true;
+create index if not exists policy_session_enabled_idx on public.policy (workspace_id, session_thread_id, priority, created_at) where scope = 'session' and enabled = true;
+create index if not exists policy_session_state_workspace_idx on public.policy_session_state (workspace_id, session_thread_id);
 create index if not exists provider_failure_workspace_created_idx on public.provider_failure (workspace_id, created_at desc);
 create index if not exists provider_failure_workspace_summary_idx on public.provider_failure (workspace_id, provider, model, error_code, created_at desc);
 create index if not exists routing_rule_machine_idx on public.routing_rule (machine_id);
@@ -1372,15 +1472,6 @@ create index if not exists routing_rule_match_rule_idx on public.routing_rule_ma
 create index if not exists scheduled_task_due_idx on public.scheduled_task (enabled, next_run_at);
 create index if not exists scheduled_task_run_task_idx on public.scheduled_task_run (scheduled_task_id, created_at desc);
 create index if not exists session_thread_workspace_agent_idx on public.session_thread (workspace_id, agent_id);
-create index if not exists policy_workspace_scope_priority_idx on public.policy (workspace_id, scope, priority, created_at);
-create index if not exists policy_agent_enabled_idx
-  on public.policy (workspace_id, agent_id, priority, created_at)
-  where scope = 'agent' and enabled = true;
-create index if not exists policy_session_enabled_idx
-  on public.policy (workspace_id, session_thread_id, priority, created_at)
-  where scope = 'session' and enabled = true;
-create index if not exists policy_session_state_workspace_idx
-  on public.policy_session_state (workspace_id, session_thread_id);
 create unique index if not exists tool_slug_workspace_key on public.tool (coalesce(workspace_id, '00000000-0000-0000-0000-000000000000'::uuid), slug);
 create index if not exists work_items_workspace_state_idx on public.work_items (workspace_id, state);
 create index if not exists work_item_comments_work_item_idx on public.work_item_comments (work_item_id);
@@ -1496,84 +1587,6 @@ returns boolean language sql stable security definer set search_path = public as
       and wm.user_id = public.current_app_user_id()
   );
 $$;
-
-create or replace function public.tg_validate_policy_workspace()
-returns trigger language plpgsql as $$
-declare
-  v_agent_workspace_id uuid;
-  v_session_workspace_id uuid;
-begin
-  if new.scope = 'agent' then
-    select workspace_id into v_agent_workspace_id
-    from public.agent
-    where id = new.agent_id;
-
-    if v_agent_workspace_id is null then
-      raise exception 'policy: parent agent % not found', new.agent_id
-        using errcode = 'foreign_key_violation';
-    end if;
-
-    if v_agent_workspace_id <> new.workspace_id then
-      raise exception 'policy: workspace_id % does not match agent workspace_id %',
-        new.workspace_id, v_agent_workspace_id
-        using errcode = 'check_violation';
-    end if;
-  end if;
-
-  if new.scope = 'session' then
-    select workspace_id into v_session_workspace_id
-    from public.session_thread
-    where id = new.session_thread_id;
-
-    if v_session_workspace_id is null then
-      raise exception 'policy: parent session_thread % not found', new.session_thread_id
-        using errcode = 'foreign_key_violation';
-    end if;
-
-    if v_session_workspace_id <> new.workspace_id then
-      raise exception 'policy: workspace_id % does not match session_thread workspace_id %',
-        new.workspace_id, v_session_workspace_id
-        using errcode = 'check_violation';
-    end if;
-  end if;
-
-  return new;
-end;
-$$;
-
-create or replace function public.tg_validate_policy_session_state_workspace()
-returns trigger language plpgsql as $$
-declare
-  v_session_workspace_id uuid;
-begin
-  select workspace_id into v_session_workspace_id
-  from public.session_thread
-  where id = new.session_thread_id;
-
-  if v_session_workspace_id is null then
-    raise exception 'policy_session_state: parent session_thread % not found', new.session_thread_id
-      using errcode = 'foreign_key_violation';
-  end if;
-
-  if v_session_workspace_id <> new.workspace_id then
-    raise exception 'policy_session_state: workspace_id % does not match session_thread workspace_id %',
-      new.workspace_id, v_session_workspace_id
-      using errcode = 'check_violation';
-  end if;
-
-  return new;
-end;
-$$;
-
-drop trigger if exists trg_validate_policy_workspace on public.policy;
-create trigger trg_validate_policy_workspace
-before insert or update on public.policy
-for each row execute function public.tg_validate_policy_workspace();
-
-drop trigger if exists trg_validate_policy_session_state_workspace on public.policy_session_state;
-create trigger trg_validate_policy_session_state_workspace
-before insert or update on public.policy_session_state
-for each row execute function public.tg_validate_policy_session_state_workspace();
 
 create or replace function public.is_workspace_admin(p_workspace_id uuid)
 returns boolean language sql stable security definer set search_path = public as $$
