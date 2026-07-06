@@ -587,10 +587,10 @@ async function main() {
           "policy_kinds",
         ),
       })
-    : false;
+    : hasCrossRepoToken();
   if (!localRuntimePolicyEvaluatorRegistry) {
     console.warn(
-      `  warning: local ${RUNTIME_POLICY_EVALUATOR_REGISTRY} not found; policy drift cannot be validated`,
+      `  warning: local ${RUNTIME_POLICY_EVALUATOR_REGISTRY} not found; remote runtime check will run when CROSS_REPO_GITHUB_TOKEN is set`,
     );
   }
 
@@ -708,6 +708,9 @@ async function main() {
   const runtimeScheduledTaskDelivery = await fetchText(
     `${RUNTIME_RAW}/${RUNTIME_SCHEDULED_TASK_DELIVERY}`,
   );
+  const runtimePolicyEvaluatorRegistry = await fetchText(
+    `${RUNTIME_RAW}/${RUNTIME_POLICY_EVALUATOR_REGISTRY}`,
+  );
   const runtimeRunnerKinds = extractElixirAttrList(
     runtimeProfile,
     "supported_runner_kinds",
@@ -730,6 +733,10 @@ async function main() {
   const runtimeAgentTypes = extractElixirAttrList(
     runtimeAgentInventory,
     "supported_kinds",
+  );
+  const runtimePolicyKinds = extractElixirAttrList(
+    runtimePolicyEvaluatorRegistry,
+    "policy_kinds",
   );
 
   console.log("\nRuntime allowlist coverage of platform writes:");
@@ -771,6 +778,11 @@ async function main() {
       name: "runtime AgentInventory @supported_kinds = platform AgentTypeSchema",
       left: platformAgentTypes,
       right: runtimeAgentTypes,
+    }),
+    assertSameSet({
+      name: "runtime Policy.EvaluatorRegistry @policy_kinds = platform POLICY_KINDS",
+      left: platformPolicyKinds,
+      right: runtimePolicyKinds,
     }),
   ].every(Boolean);
 

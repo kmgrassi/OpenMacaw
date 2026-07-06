@@ -86,6 +86,19 @@ export const PolicyParamsSchema = z.discriminatedUnion("kind", [
 
 export const PolicySourceSchema = z.enum(["manual", "system", "template"]);
 
+function requireMatchingPolicyParamsKind(
+  policy: { kind: PolicyKind; params: PolicyParams },
+  ctx: z.RefinementCtx,
+) {
+  if (policy.params.kind !== policy.kind) {
+    ctx.addIssue({
+      code: "custom",
+      message: "params.kind must match policy kind",
+      path: ["params", "kind"],
+    });
+  }
+}
+
 export const POLICY_KIND_REGISTRY = {
   max_tool_calls_per_session: {
     kind: "max_tool_calls_per_session",
@@ -126,37 +139,41 @@ export const POLICY_KIND_REGISTRY = {
   }
 >;
 
-export const PolicySchema = z.object({
-  id: z.string().uuid(),
-  workspaceId: z.string().uuid(),
-  scope: PolicyScopeSchema,
-  agentId: z.string().uuid().nullable(),
-  sessionThreadId: z.string().uuid().nullable(),
-  kind: PolicyKindSchema,
-  params: PolicyParamsSchema,
-  priority: z.number().int(),
-  enabled: z.boolean(),
-  source: PolicySourceSchema,
-  reason: z.string().nullable(),
-  createdByUserId: z.string().uuid().nullable(),
-  createdAt: z.string().datetime(),
-});
+export const PolicySchema = z
+  .object({
+    id: z.string().uuid(),
+    workspaceId: z.string().uuid(),
+    scope: PolicyScopeSchema,
+    agentId: z.string().uuid().nullable(),
+    sessionThreadId: z.string().uuid().nullable(),
+    kind: PolicyKindSchema,
+    params: PolicyParamsSchema,
+    priority: z.number().int(),
+    enabled: z.boolean(),
+    source: PolicySourceSchema,
+    reason: z.string().nullable(),
+    createdByUserId: z.string().uuid().nullable(),
+    createdAt: z.string().datetime(),
+  })
+  .superRefine(requireMatchingPolicyParamsKind);
 
-export const PolicyRowSchema = z.object({
-  id: z.string().uuid(),
-  workspace_id: z.string().uuid(),
-  scope: PolicyScopeSchema,
-  agent_id: z.string().uuid().nullable(),
-  session_thread_id: z.string().uuid().nullable(),
-  kind: PolicyKindSchema,
-  params: PolicyParamsSchema,
-  priority: z.number().int(),
-  enabled: z.boolean(),
-  source: PolicySourceSchema,
-  reason: z.string().nullable(),
-  created_by_user_id: z.string().uuid().nullable(),
-  created_at: z.string().datetime(),
-});
+export const PolicyRowSchema = z
+  .object({
+    id: z.string().uuid(),
+    workspace_id: z.string().uuid(),
+    scope: PolicyScopeSchema,
+    agent_id: z.string().uuid().nullable(),
+    session_thread_id: z.string().uuid().nullable(),
+    kind: PolicyKindSchema,
+    params: PolicyParamsSchema,
+    priority: z.number().int(),
+    enabled: z.boolean(),
+    source: PolicySourceSchema,
+    reason: z.string().nullable(),
+    created_by_user_id: z.string().uuid().nullable(),
+    created_at: z.string().datetime(),
+  })
+  .superRefine(requireMatchingPolicyParamsKind);
 
 export type PolicyScope = z.infer<typeof PolicyScopeSchema>;
 export type PolicyVerdict = z.infer<typeof PolicyVerdictSchema>;

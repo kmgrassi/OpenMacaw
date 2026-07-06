@@ -96,6 +96,26 @@ describe("policy contract", () => {
     expect(parsed.params.kind).toBe("block_tools");
   });
 
+  it("rejects API-shaped policies when params kind does not match the policy kind", () => {
+    const result = PolicySchema.safeParse({
+      id: policyId,
+      workspaceId,
+      scope: "agent",
+      agentId,
+      sessionThreadId: null,
+      kind: "block_tools",
+      params: { kind: "ask_on_tool", tools: ["shell.exec"] },
+      priority: 10,
+      enabled: true,
+      source: "manual",
+      reason: null,
+      createdByUserId: userId,
+      createdAt: "2026-06-30T12:00:00.000Z",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   it("parses DB-shaped policy rows", () => {
     const parsed = PolicyRowSchema.parse({
       id: policyId,
@@ -114,6 +134,26 @@ describe("policy contract", () => {
     });
 
     expect(parsed.session_thread_id).toBe(sessionThreadId);
+  });
+
+  it("rejects DB-shaped policy rows when params kind does not match the policy kind", () => {
+    const result = PolicyRowSchema.safeParse({
+      id: policyId,
+      workspace_id: workspaceId,
+      scope: "session",
+      agent_id: null,
+      session_thread_id: sessionThreadId,
+      kind: "ask_on_tool",
+      params: { kind: "block_tools", tools: ["apply_patch"] },
+      priority: 0,
+      enabled: true,
+      source: "system",
+      reason: null,
+      created_by_user_id: userId,
+      created_at: "2026-06-30T12:00:00.000Z",
+    });
+
+    expect(result.success).toBe(false);
   });
 
   it("includes policy_ask in escalation reason kinds", () => {
