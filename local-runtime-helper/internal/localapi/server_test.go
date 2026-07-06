@@ -3,11 +3,12 @@ package localapi
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
 
-func TestHealthAllowsProductionAppOrigin(t *testing.T) {
+func TestHealthRejectsProductionAppOriginByDefault(t *testing.T) {
 	s := NewServer("127.0.0.1:0", nil)
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	req.RemoteAddr = "127.0.0.1:50000"
@@ -16,11 +17,11 @@ func TestHealthAllowsProductionAppOrigin(t *testing.T) {
 
 	s.server.Handler.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
 	}
-	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://app.openmacaw.ai" {
-		t.Fatalf("Access-Control-Allow-Origin = %q", got)
+	if !strings.Contains(rec.Body.String(), "origin_forbidden") {
+		t.Fatalf("body = %s", rec.Body.String())
 	}
 }
 
@@ -37,6 +38,34 @@ func TestRejectsNonLoopbackRequests(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "loopback_required") {
 		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
+func TestHealthAllowsConfiguredProductionAppOrigin(t *testing.T) {
+	t.Setenv("OPENMACAW_LOCAL_API_ALLOWED_ORIGINS", "https://app.openmacaw.ai,http://localhost:5173")
+	s := NewServer("127.0.0.1:0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.RemoteAddr = "127.0.0.1:50000"
+	req.Header.Set("Origin", "https://app.openmacaw.ai")
+	rec := httptest.NewRecorder()
+
+	s.server.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "https://app.openmacaw.ai" {
+		t.Fatalf("Access-Control-Allow-Origin = %q", got)
+	}
+}
+
+func TestAllowedOriginsDefaultsToLocalhostOnly(t *testing.T) {
+	_ = os.Unsetenv("OPENMACAW_LOCAL_API_ALLOWED_ORIGINS")
+
+	got := allowedOrigins()
+
+	if len(got) != 2 || got[0] != "http://localhost:5173" || got[1] != "http://127.0.0.1:5173" {
+		t.Fatalf("allowedOrigins() = %#v", got)
 	}
 }
 
