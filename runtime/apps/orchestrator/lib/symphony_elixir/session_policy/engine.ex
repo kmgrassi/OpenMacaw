@@ -143,7 +143,7 @@ defmodule SymphonyElixir.SessionPolicy.Engine do
 
   defp risk_weight(params, tool_name) do
     weights = map_value(params, ["weights", :weights]) || %{}
-    numeric_value(weights, [tool_name, String.to_atom(tool_name), "default", :default]) || 1
+    numeric_value(weights, [tool_name, "default", :default]) || 1
   end
 
   defp verdict_value(params) do
@@ -168,7 +168,7 @@ defmodule SymphonyElixir.SessionPolicy.Engine do
     Map.put(state, key, numeric_state(state, key) + amount)
   end
 
-  defp numeric_state(state, key), do: numeric_value(state, [key, String.to_atom(key)]) || 0
+  defp numeric_state(state, key), do: numeric_value(state, [key]) || 0
 
   defp reason(kind, code, details), do: %{kind: kind, code: code, details: details}
 
@@ -210,7 +210,7 @@ defmodule SymphonyElixir.SessionPolicy.Engine do
     end
   end
 
-  defp number_list(map, key) when is_binary(key), do: number_list(map, [key, String.to_atom(key)])
+  defp number_list(map, key) when is_binary(key), do: number_list(map, [key])
 
   defp number_list(map, keys) do
     case value_at(map, keys) do

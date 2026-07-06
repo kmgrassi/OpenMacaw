@@ -10,6 +10,7 @@ import { registerSessionPolicyRoutes } from "./session-policy.js";
 type Row = Record<string, unknown>;
 type Tables = {
   workspace_members: Row[];
+  workspaces: Row[];
   session_thread: Row[];
   policy_session_state: Row[];
 };
@@ -21,6 +22,7 @@ const otherWorkspaceId = "99999999-9999-4999-8999-999999999999";
 
 const tables: Tables = {
   workspace_members: [],
+  workspaces: [],
   session_thread: [],
   policy_session_state: [],
 };
@@ -34,6 +36,7 @@ let baseUrl = "";
 
 function resetTables() {
   tables.workspace_members = [{ workspace_id: workspaceId, user_id: userId }];
+  tables.workspaces = [{ id: workspaceId, owner_user_id: "other-user" }];
   tables.session_thread = [{ id: sessionThreadId, workspace_id: workspaceId }];
   tables.policy_session_state = [
     {
@@ -122,6 +125,19 @@ describe("session policy routes", () => {
         { key: "cost_budget_asked_thresholds", valueJson: [0.05] },
         { key: "risk_points", valueNumeric: 4 },
       ],
+    });
+  });
+
+  it("allows workspace owners without workspace_members rows", async () => {
+    tables.workspace_members = [];
+    tables.workspaces = [{ id: workspaceId, owner_user_id: userId }];
+
+    const response = await request(`/api/sessions/${sessionThreadId}/policy-state?workspaceId=${workspaceId}`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      sessionThreadId,
+      workspaceId,
     });
   });
 

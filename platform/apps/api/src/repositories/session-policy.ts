@@ -14,6 +14,10 @@ type WorkspaceMemberRow = {
   user_id: string;
 };
 
+type WorkspaceOwnerRow = {
+  id: string;
+};
+
 type PolicySessionStateRow = {
   key: string;
   value_numeric: number | string | null;
@@ -65,7 +69,16 @@ async function assertWorkspaceMember(input: { workspaceId: string; userId: strin
 
   assertSupabaseNoError("workspace_members policy-state authorization query", error);
   if (!(data as WorkspaceMemberRow | null)) {
-    throw new ApiRouteError(403, "workspace_forbidden", "You do not have access to this workspace");
+    const { data: owned, error: ownerError } = await table("workspaces")
+      .select("id")
+      .eq("id", input.workspaceId)
+      .eq("owner_user_id", input.userId)
+      .maybeSingle();
+
+    assertSupabaseNoError("workspaces policy-state owner authorization query", ownerError);
+    if (!(owned as WorkspaceOwnerRow | null)) {
+      throw new ApiRouteError(403, "workspace_forbidden", "You do not have access to this workspace");
+    }
   }
 }
 

@@ -80,4 +80,25 @@ defmodule SymphonyElixir.SessionPolicy.EngineTest do
     assert denied.verdict == :deny
     assert denied.state["risk_points"] == 1
   end
+
+  test "risk_score does not create atoms for custom tool names or state keys" do
+    tool_name = "custom.tool.#{System.unique_integer([:positive])}"
+
+    policy = %{
+      "kind" => "risk_score",
+      "params" => %{
+        "guarded_tools" => [tool_name],
+        "threshold" => 10,
+        "weights" => %{tool_name => 4}
+      }
+    }
+
+    before_atoms = :erlang.system_info(:atom_count)
+    result = Engine.evaluate([policy], %{"type" => "tool_call", "target" => tool_name}, %{})
+    after_atoms = :erlang.system_info(:atom_count)
+
+    assert result.verdict == :allow
+    assert result.state["risk_points"] == 4
+    assert after_atoms == before_atoms
+  end
 end
