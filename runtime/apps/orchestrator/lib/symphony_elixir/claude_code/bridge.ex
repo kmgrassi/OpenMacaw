@@ -59,6 +59,15 @@ defmodule SymphonyElixir.ClaudeCode.Bridge do
     request(port, "turn/start", params, options, on_event)
   end
 
+  @spec interrupt(session() | port(), keyword()) :: :ok | {:error, term()}
+  def interrupt(%{port: port}, opts) when is_port(port), do: interrupt(port, opts)
+
+  def interrupt(port, _opts) when is_port(port) do
+    id = next_id()
+    payload = %{"id" => id, "method" => "turn/interrupt", "params" => %{}}
+    send_json(port, payload)
+  end
+
   @spec stop(session() | port()) :: :ok
   def stop(%{port: port, options: options}) when is_port(port) do
     _ = request(port, "session/stop", %{}, options)
@@ -193,6 +202,10 @@ defmodule SymphonyElixir.ClaudeCode.Bridge do
             Process.delete(:claude_code_starting_port)
             {:error, normalize_error(error)}
 
+          {:ok, %{"id" => request_id, "method" => "permission/can_use_tool"} = event} ->
+            respond_to_permission_request(port, request_id, event, on_event)
+            await_response(port, id, timeout_ms, on_event, buffer)
+
           {:ok, %{"method" => _method} = event} ->
             on_event.(event)
             await_response(port, id, timeout_ms, on_event, buffer)
@@ -262,6 +275,41 @@ defmodule SymphonyElixir.ClaudeCode.Bridge do
   defp normalize_error(%{"message" => message}), do: {:fatal, message}
   defp normalize_error(error), do: {:fatal, error}
 
+  defp respond_to_permission_request(port, request_id, event, on_event) do
+    decision =
+      case on_event.(event) do
+        {:ok, response} when is_map(response) -> response
+        {:ok, response} when is_list(response) -> Map.new(response)
+        response when is_map(response) -> response
+        response when is_list(response) -> Map.new(response)
+        _response -> %{"behavior" => "deny", "message" => "No Claude Code permission handler configured"}
+      end
+      |> normalize_permission_decision()
+
+    send_json(port, %{"id" => request_id, "result" => decision})
+  end
+
+  defp normalize_permission_decision(decision) do
+    decision = stringify_keys(decision)
+
+    case Map.get(decision, "behavior") do
+      "deny" ->
+        %{
+          "behavior" => "deny",
+          "message" => Map.get(decision, "message") || "Denied by host"
+        }
+        |> reject_blank_values()
+
+      _ ->
+        %{
+          "behavior" => "allow",
+          "updatedInput" => Map.get(decision, "updatedInput") || Map.get(decision, "updated_input"),
+          "updatedPermissions" => Map.get(decision, "updatedPermissions") || Map.get(decision, "updated_permissions")
+        }
+        |> reject_blank_values()
+    end
+  end
+
   defp next_id, do: System.unique_integer([:positive]) |> Integer.to_string()
 
   defp request_timeout(options) do
@@ -308,6 +356,13 @@ defmodule SymphonyElixir.ClaudeCode.Bridge do
       _ ->
         nil
     end
+  end
+
+  defp stringify_keys(map) do
+    Map.new(map, fn
+      {key, value} when is_atom(key) -> {Atom.to_string(key), value}
+      {key, value} -> {key, value}
+    end)
   end
 
   defp shell_escape(value) do

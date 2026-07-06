@@ -55,20 +55,50 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     assert result.result == "done"
     assert result.session_id == "fake-session"
 
-    assert_received {:claude_event, %{"method" => "message/delta", "params" => %{"textDelta" => "working"}}}
-    assert_received {:claude_event, %{"method" => "usage/updated"}}
+    assert_received {:claude_event, %{event: :notification, payload: %{"params" => %{"text_delta" => "working"}}}}
+    assert_received {:claude_event, %{event: :notification, usage: %{"input_tokens" => 1, "output_tokens" => 2, "total_tokens" => 3}}}
 
     assert :ok = ClaudeCode.stop_session(session)
   end
 
-  test "real bridge emits can_use_tool events and default-allows tool use", %{workspace: workspace} do
+  test "can run a real Claude bridge round trip when explicitly configured", %{workspace: workspace} do
+    bridge_command = System.get_env("OPENMACAW_REAL_CLAUDE_BRIDGE_COMMAND")
+
+    if bridge_command && System.get_env("OPENMACAW_RUN_REAL_PROCESS_TESTS") == "1" do
+      config = %{
+        "bridge_command" => bridge_command,
+        "model" => System.get_env("OPENMACAW_REAL_CLAUDE_MODEL", "sonnet"),
+        "max_turns" => 1
+      }
+
+      assert {:ok, session} = ClaudeCode.start_session(config, workspace)
+
+      try do
+        assert {:ok, result} = ClaudeCode.run_turn(session, "Reply with exactly: claude-real-process-ok", work_item())
+        assert is_map(result)
+      after
+        ClaudeCode.stop_session(session)
+      end
+    else
+      assert is_nil(bridge_command) || System.get_env("OPENMACAW_RUN_REAL_PROCESS_TESTS") != "1"
+    end
+  end
+
+  test "real bridge preserves can_use_tool SDK arguments in permission requests", %{workspace: workspace} do
     bridge = stubbed_sdk_bridge!()
     events_recipient = self()
 
     config = %{
       "bridge_command" => "node #{shell_escape(bridge)}",
       "permission_mode" => "acceptEdits",
-      "on_message" => fn event -> send(events_recipient, {:claude_event, event}) end
+      "on_message" => fn event ->
+        send(events_recipient, {:claude_event, event})
+
+        case event do
+          %{payload: %{"method" => "permission/can_use_tool"}} -> %{"behavior" => "allow"}
+          _event -> :ok
+        end
+      end
     }
 
     assert {:ok, session} = ClaudeCode.start_session(config, workspace)
@@ -77,22 +107,24 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
 
     assert_received {:claude_event,
                      %{
-                       "method" => "tool/can_use_tool",
-                       "params" => %{
-                         "tool" => "Bash",
-                         "toolName" => "Bash",
-                         "toolUseId" => "toolu_1",
-                         "input" => %{"command" => "pwd"},
-                         "permissionMode" => "acceptEdits",
-                         "decision" => "allow",
-                         "source" => "can_use_tool"
+                       event: :notification,
+                       payload: %{
+                         "method" => "permission/can_use_tool",
+                         "params" => %{
+                           "toolName" => "Bash",
+                           "toolUseId" => "toolu_1",
+                           "input" => %{"command" => "pwd"}
+                         }
                        }
                      }}
 
     assert_received {:claude_event,
                      %{
-                       "method" => "sdk/message",
-                       "params" => %{"type" => "permission_result", "result" => %{"behavior" => "allow"}}
+                       event: :approval_resolved,
+                       payload: %{
+                         "method" => "approval.resolved",
+                         "params" => %{"behavior" => "allow"}
+                       }
                      }}
 
     assert :ok = ClaudeCode.stop_session(session)
@@ -127,6 +159,63 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     assert :ok = ClaudeCode.stop_session(session)
   end
 
+  test "sends interrupt commands through the bridge", %{workspace: workspace} do
+    bridge = fake_bridge!("interrupt_status")
+
+    assert {:ok, session} = ClaudeCode.start_session(%{"bridge_command" => "node #{shell_escape(bridge)}"}, workspace)
+    assert :ok = ClaudeCode.interrupt(session, [])
+
+    assert {:ok, result} = ClaudeCode.run_turn(session, "status", work_item())
+    assert result.result == "interrupted:true"
+
+    assert :ok = ClaudeCode.stop_session(session)
+  end
+
+  test "answers can_use_tool permission requests through the bridge callback", %{workspace: workspace} do
+    bridge = fake_bridge!("permission_roundtrip")
+    events_recipient = self()
+
+    config = %{
+      "bridge_command" => "node #{shell_escape(bridge)}",
+      "on_message" => fn event ->
+        send(events_recipient, {:claude_event, event})
+
+        case event do
+          %{payload: %{"method" => "permission/can_use_tool"}} -> %{"behavior" => "deny", "message" => "not for this test"}
+          _event -> :ok
+        end
+      end
+    }
+
+    assert {:ok, session} = ClaudeCode.start_session(config, workspace)
+    assert {:ok, result} = ClaudeCode.run_turn(session, "try tool", work_item())
+    assert result.result == "deny:not for this test"
+
+    assert_received {:claude_event,
+                     %{
+                       event: :notification,
+                       metadata: %{bridge_id: "permission-1"},
+                       payload: %{"method" => "permission/can_use_tool", "params" => %{"toolName" => "Bash"}}
+                     }}
+
+    assert :ok = ClaudeCode.stop_session(session)
+  end
+
+  test "denies can_use_tool permission requests when callback has no decision", %{workspace: workspace} do
+    bridge = fake_bridge!("permission_roundtrip")
+
+    config = %{
+      "bridge_command" => "node #{shell_escape(bridge)}",
+      "on_message" => fn _event -> :ok end
+    }
+
+    assert {:ok, session} = ClaudeCode.start_session(config, workspace)
+    assert {:ok, result} = ClaudeCode.run_turn(session, "try tool", work_item())
+    assert result.result == "deny:No Claude Code permission handler configured"
+
+    assert :ok = ClaudeCode.stop_session(session)
+  end
+
   test "stop terminates the fake bridge", %{workspace: workspace} do
     bridge = fake_bridge!("success")
     assert {:ok, session} = ClaudeCode.start_session(%{"bridge_command" => "node #{shell_escape(bridge)}"}, workspace)
@@ -149,7 +238,7 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     assert %{
              input: :turn,
              output_stream: :runner_events,
-             interrupt: :unsupported,
+             interrupt: :supported,
              tool_activity: true,
              metadata: %{backend: "claude_agent_bridge"}
            } = ClaudeCode.stream_capabilities()
@@ -214,9 +303,17 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     const mode = #{Jason.encode!(mode)};
     const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
     const write = (payload) => process.stdout.write(`${JSON.stringify(payload)}\\n`);
+    let activeTurnId = null;
+    let interrupted = false;
 
     rl.on('line', (line) => {
       const message = JSON.parse(line);
+
+      if (message.id === 'permission-1' && message.result) {
+        write({ id: activeTurnId, result: { result: `${message.result.behavior}:${message.result.message || ''}`, sessionId: 'fake-session' } });
+        activeTurnId = null;
+        return;
+      }
 
       if (message.method === 'session/start') {
         if (mode === 'startup_failure') {
@@ -234,6 +331,23 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
       }
 
       if (message.method === 'turn/start') {
+        if (mode === 'interrupt') {
+          activeTurnId = message.id;
+          write({ method: 'turn/started', params: {} });
+          return;
+        }
+
+        if (mode === 'interrupt_status') {
+          write({ id: message.id, result: { result: `interrupted:${interrupted}`, sessionId: 'fake-session' } });
+          return;
+        }
+
+        if (mode === 'permission_roundtrip') {
+          activeTurnId = message.id;
+          write({ id: 'permission-1', method: 'permission/can_use_tool', params: { requestId: 'permission-1', toolName: 'Bash', input: { command: 'echo hi' } } });
+          return;
+        }
+
         if (mode === 'turn_failure') {
           write({ id: message.id, error: { reason: 'turn failed', retryable: true } });
           return;
@@ -247,6 +361,16 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
         write({ method: 'message/delta', params: { textDelta: 'working' } });
         write({ method: 'usage/updated', params: { inputTokens: 1, outputTokens: 2, totalTokens: 3 } });
         write({ id: message.id, result: { result: 'done', sessionId: 'fake-session' } });
+        return;
+      }
+
+      if (message.method === 'turn/interrupt') {
+        interrupted = true;
+        write({ method: 'turn/interrupted', params: {} });
+        if (activeTurnId) {
+          write({ id: activeTurnId, error: { reason: 'interrupted', retryable: false } });
+          activeTurnId = null;
+        }
         return;
       }
 
@@ -272,15 +396,18 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
 
     File.write!(Path.join(module_dir, "index.js"), """
     export async function* query(request) {
-      const result = await request.options.canUseTool(
-        'Bash',
-        { command: 'pwd' },
-        { permissionMode: request.options.permissionMode, toolUseID: 'toolu_1' }
-      );
+      for await (const _prompt of request.prompt) {
+        const result = await request.options.canUseTool(
+          'Bash',
+          { command: 'pwd' },
+          { permissionMode: request.options.permissionMode, toolUseID: 'toolu_1' }
+        );
 
-      yield { type: 'permission_result', result };
-      yield { type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } };
-      yield { type: 'result', result: 'done' };
+        yield { type: 'permission_result', result };
+        yield { type: 'assistant', message: { content: [{ type: 'text', text: 'done' }] } };
+        yield { type: 'result', result: 'done' };
+        return;
+      }
     }
     """)
 

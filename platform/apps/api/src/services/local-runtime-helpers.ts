@@ -1,11 +1,13 @@
-import type { PostgrestError } from "@supabase/supabase-js";
 import { AgentLocalRuntimeAssignResponseSchema } from "../../../../contracts/local-runtime.js";
 import { ApiRouteError } from "../http.js";
+import { narrowSupabase } from "../lib/narrow-supabase.js";
+import { parseNullableSupabaseRow, parseSupabaseRows } from "../lib/supabase-row-parsers.js";
 import { assertSupabaseNoError, assertSupabaseSuccess } from "../lib/supabase-errors.js";
 import { findStoredAgentRowById } from "../repositories/agents.js";
 import { getRoutingRuleLocalEndpointUrl } from "../repositories/routing-rules.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
 import { updateAgentRuntimeProfileForAuthenticatedUser } from "./agent-runtime-profile.js";
+import { LocalRuntimeMachineIdRowSchema, LocalRuntimeMachineMatchRowSchema } from "./local-runtime/row-schemas.js";
 import {
   LOCAL_RUNTIME_REGISTRATION_RULE_NAME_PREFIX,
   REGISTERED_LOCAL_RUNTIME_RUNNER_KINDS,
@@ -18,21 +20,6 @@ async function assertAgentAccessForWorkspace(input: { accessToken: string; agent
   }
   return agent;
 }
-
-type LocalRuntimeRuleColumnQuery = {
-  eq(column: string, value: string): LocalRuntimeRuleColumnQuery;
-  then<TResult1 = { data: unknown[] | null; error: PostgrestError | null }>(
-    onfulfilled?:
-      | ((value: { data: unknown[] | null; error: PostgrestError | null }) => TResult1 | PromiseLike<TResult1>)
-      | null,
-  ): Promise<TResult1>;
-};
-
-type LocalRuntimeUntypedSupabase = {
-  from(table: "routing_rule"): {
-    update(values: Record<string, unknown>): LocalRuntimeRuleColumnQuery;
-  };
-};
 
 export async function assignLocalModelToAgent(input: {
   workspaceId: string;
@@ -51,6 +38,7 @@ export async function assignLocalModelToAgent(input: {
   });
 
   const supabase = getServiceRoleSupabase();
+  const narrowedSupabase = narrowSupabase(supabase);
 
   const { data: rule, error: ruleError } = await supabase
     .from("routing_rule")
@@ -65,7 +53,7 @@ export async function assignLocalModelToAgent(input: {
     throw new ApiRouteError(404, "local_runtime_not_found", "Local runtime was not found");
   }
 
-  const { data: machineMatch, error: machineMatchError } = await supabase
+  const { data: machineMatch, error: machineMatchError } = await narrowedSupabase
     .from("routing_rule_match")
     .select("rule_id, value")
     .eq("workspace_id", input.workspaceId)
@@ -77,23 +65,28 @@ export async function assignLocalModelToAgent(input: {
   if (machineMatchError) {
     assertSupabaseSuccess("read local runtime machine match", machineMatch, machineMatchError);
   }
+  const parsedMachineMatch = parseNullableSupabaseRow(
+    "read local runtime machine match",
+    LocalRuntimeMachineMatchRowSchema,
+    machineMatch,
+  );
 
-  const machineId = input.machineId ?? (typeof machineMatch?.value === "string" ? machineMatch.value : null);
+  const machineId = input.machineId ?? parsedMachineMatch?.value?.trim() ?? null;
 
   if (!machineId) {
     throw new ApiRouteError(409, "local_runtime_incomplete", "Local runtime is missing machine metadata");
   }
 
-  if (input.machineId && machineMatch && machineMatch.value !== input.machineId) {
+  if (input.machineId && parsedMachineMatch && parsedMachineMatch.value !== input.machineId) {
     throw new ApiRouteError(409, "local_runtime_machine_mismatch", "Local runtime does not belong to that machine");
   }
 
-  if (!machineMatch) {
+  if (!parsedMachineMatch) {
     throw new ApiRouteError(409, "local_runtime_machine_mismatch", "Local runtime does not belong to that machine");
   }
 
   {
-    const { error: updateRuleError } = await (supabase as never as LocalRuntimeUntypedSupabase)
+    const { error: updateRuleError } = await narrowedSupabase
       .from("routing_rule")
       .update({ machine_id: machineId })
       .eq("id", input.localRuntimeId)
@@ -108,7 +101,7 @@ export async function assignLocalModelToAgent(input: {
   // runner_kind = local_relay; their single agent_id match is the agent's
   // own credential pointer and must not be deleted here. The `local:` name
   // prefix is the registration flow's invariant.
-  const { data: registrationRules, error: registrationRulesError } = await supabase
+  const { data: registrationRules, error: registrationRulesError } = await narrowedSupabase
     .from("routing_rule")
     .select("id")
     .eq("workspace_id", input.workspaceId)
@@ -117,9 +110,11 @@ export async function assignLocalModelToAgent(input: {
 
   assertSupabaseSuccess("list registered local runtime rules", registrationRules, registrationRulesError);
 
-  const registrationRuleIds = (registrationRules ?? [])
-    .map((row) => row.id)
-    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const registrationRuleIds = parseSupabaseRows(
+    "list registered local runtime rules",
+    LocalRuntimeMachineIdRowSchema,
+    Array.isArray(registrationRules) ? registrationRules : registrationRules ? [registrationRules] : null,
+  ).map((row) => row.id);
 
   if (registrationRuleIds.length > 0) {
     const { error: deleteMatchError } = await supabase

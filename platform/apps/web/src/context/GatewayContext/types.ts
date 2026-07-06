@@ -3,6 +3,7 @@ import type {
   AuthStateAgent,
   GatewayEventFrame,
   GatewayHelloOk,
+  GatewayRequest,
   PrepareError,
   RuntimeScope,
 } from "../../api/ws-types";
@@ -50,7 +51,7 @@ export type GatewayContextValue = {
   clearPrepareError: () => void;
   connect: () => Promise<void>;
   disconnect: () => void;
-  request: <T = unknown>(method: string, params?: unknown) => Promise<T>;
+  request: GatewayRequest;
   addEventListener: (handler: (evt: GatewayEventFrame) => void) => () => void;
 };
 

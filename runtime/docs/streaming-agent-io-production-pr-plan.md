@@ -132,8 +132,8 @@ ChatGateway→AgentIO switch can be dialed in.
     (beyond the fakes).
   - A runnable **CLI smoke**: `create → input → stream → interrupt` for both
     Codex and Claude, against local (`pnpm run start:local`) and prod.
-  - Retire the now-redundant standalone `/api/v1/codex/sessions` agent path (or
-    keep it internal-only).
+  - Retire the now-redundant standalone `/api/v1/codex/sessions` agent path
+    by keeping it internal-only at `/api/v1/internal/codex/sessions`.
 - **Deps:** PR1–PR5.
 
 ## Dependency graph
@@ -156,7 +156,8 @@ PR1 ─► PR2 ─────────────► PR5 ─► PR6
 - **Session affinity** across orchestrator instances (above) — single-instance
   vs distributed registry.
 - Idle-timeout default (5 min) and concurrency cap values for prod.
-- Should `/api/v1/codex/sessions` be removed or kept as a lower-level escape hatch?
+- Should `/api/v1/internal/codex/sessions` eventually be removed, or kept as a
+  lower-level internal escape hatch?
 
 ## References
 

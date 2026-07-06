@@ -137,7 +137,7 @@ defmodule SymphonyElixir.Runner.Planner.ResponsesApiTest do
     assert [%{"type" => "function_call_output", "call_id" => "call-1", "output" => output}] =
              follow_up_request["input"]
 
-    assert output =~ ~s("reason": "{:missing_argument, \\"workspace_id\\"}")
+    assert output =~ ~s("reason": "{:missing_argument, \\"scheduledTaskId\\"}")
 
     assert_received {:planner_event,
                      %{

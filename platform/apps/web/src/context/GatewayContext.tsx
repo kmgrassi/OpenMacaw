@@ -5,7 +5,11 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import type { AuthStateAgent, RuntimeScope } from "../api/ws-types";
+import type {
+  AuthStateAgent,
+  GatewayRequest,
+  RuntimeScope,
+} from "../api/ws-types";
 import {
   initializeWebSocket,
   prepareGatewayRuntime,
@@ -36,7 +40,8 @@ const GatewayContext = createContext<GatewayContextValue>({
   clearPrepareError: () => {},
   connect: () => Promise.reject(new Error("no gateway")),
   disconnect: () => {},
-  request: () => Promise.reject(new Error("no gateway")),
+  request: ((method: string, _params?: unknown) =>
+    Promise.reject(new Error(`no gateway for ${method}`))) as GatewayRequest,
   addEventListener: () => () => {},
 });
 
@@ -164,11 +169,11 @@ export function GatewayProvider({
   });
 
   const request = useCallback(
-    <T = unknown,>(method: string, params?: unknown): Promise<T> => {
+    ((method: string, params?: unknown) => {
       const client = state.clientRef.current;
       if (!client) return Promise.reject(new Error("no gateway client"));
-      return client.request<T>(method, params);
-    },
+      return client.request(method, params);
+    }) as GatewayRequest,
     [state.clientRef],
   );
 
@@ -201,7 +206,7 @@ export function GatewayProvider({
         };
         connect: () => Promise<void>;
         disconnect: () => void;
-        request: <T = unknown>(method: string, params?: unknown) => Promise<T>;
+        request: GatewayRequest;
       };
     };
 

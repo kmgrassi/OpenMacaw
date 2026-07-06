@@ -1,4 +1,8 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+
+export function fingerprintSignedWebhookPayload(rawBody: Buffer): string {
+  return createHash("sha256").update(rawBody).digest("hex");
+}
 
 export function verifyGithubSignature(rawBody: Buffer, secret: string, signatureHeader: string | undefined): boolean {
   if (!signatureHeader) return false;

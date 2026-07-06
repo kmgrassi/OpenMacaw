@@ -57,22 +57,22 @@ export function registerAgentDashboardRoutes(app: Express) {
       async handler({ req, res, accessToken, userId }) {
         const agentId = requireRouteParam(req, "agentId");
         const latestRun = await getLatestBrokerRun({
-          accessToken: accessToken ?? "",
-          userId: userId ?? "",
+          accessToken,
+          userId,
           agentId,
         });
         const [tasks, configState] = await Promise.all([
           latestRun
             ? getBrokerTasks({
-                accessToken: accessToken ?? "",
-                userId: userId ?? "",
+                accessToken,
+                userId,
                 agentId,
                 runIds: [latestRun.runId],
               })
             : Promise.resolve([]),
           getGatewayConfigState({
-            accessToken: accessToken ?? "",
-            userId: userId ?? "",
+            accessToken,
+            userId,
             agentId,
             workspaceId: requestWorkspaceId(req),
           }),
@@ -91,8 +91,8 @@ export function registerAgentDashboardRoutes(app: Express) {
       async handler({ req, res, accessToken, userId }) {
         const agentId = requireRouteParam(req, "agentId");
         const run = await getLatestBrokerRun({
-          accessToken: accessToken ?? "",
-          userId: userId ?? "",
+          accessToken,
+          userId,
           agentId,
         });
 
@@ -110,8 +110,8 @@ export function registerAgentDashboardRoutes(app: Express) {
         const agentId = requireRouteParam(req, "agentId");
         const page = requestPage(req);
         const result = await getBrokerRunHistory({
-          accessToken: accessToken ?? "",
-          userId: userId ?? "",
+          accessToken,
+          userId,
           agentId,
           page,
         });
@@ -141,8 +141,8 @@ export function registerAgentDashboardRoutes(app: Express) {
       async handler({ req, res, body, accessToken, userId }) {
         const agentId = requireRouteParam(req, "agentId");
         const tasks = await getBrokerTasks({
-          accessToken: accessToken ?? "",
-          userId: userId ?? "",
+          accessToken,
+          userId,
           agentId,
           runIds: body.runIds,
         });
@@ -162,8 +162,8 @@ export function registerAgentDashboardRoutes(app: Express) {
       async handler({ req, res, body, accessToken, userId }) {
         const agentId = requireRouteParam(req, "agentId");
         const event = await createAgentToolCallEvent({
-          accessToken: accessToken ?? "",
-          userId: userId ?? "",
+          accessToken,
+          userId,
           agentId,
           event: body,
         });
@@ -181,8 +181,8 @@ export function registerAgentDashboardRoutes(app: Express) {
       async handler({ req, res, accessToken, userId }) {
         const agentId = requireRouteParam(req, "agentId");
         const state = await getGatewayConfigState({
-          accessToken: accessToken ?? "",
-          userId: userId ?? "",
+          accessToken,
+          userId,
           agentId,
           workspaceId: requestWorkspaceId(req),
         });
@@ -210,8 +210,8 @@ export function registerAgentDashboardRoutes(app: Express) {
       async handler({ req, res, accessToken, userId }) {
         const agentId = requireRouteParam(req, "agentId");
         const version = await getAgentDashboardVersion({
-          accessToken: accessToken ?? "",
-          userId: userId ?? "",
+          accessToken,
+          userId,
           agentId,
           workspaceId: requestWorkspaceId(req),
         });

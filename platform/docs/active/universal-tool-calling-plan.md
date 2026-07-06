@@ -194,7 +194,6 @@ Agents reference them via `agent_tool` join. This means:
 
 **Files:**
 - `apps/web/src/components/agent-settings/ToolDefinitionsPanel.tsx` — Main panel
-- `apps/web/src/components/agent-settings/ToolDefinitionEditor.tsx` — Add/edit form
 - `apps/web/src/components/agent-settings/ToolDefinitionList.tsx` — Sortable list
 - `apps/web/src/hooks/useToolDefinitions.ts` — API hooks (React Query)
 

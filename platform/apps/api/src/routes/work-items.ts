@@ -7,11 +7,14 @@ import { ApiRouteError, apiRoute, errorPayload } from "../http.js";
 import { snoozeWorkItemForWorkspace, wakeWorkItemForWorkspace } from "../services/work-item-snooze.js";
 import {
   assertWorkspaceMembership,
+  claimWebhookDelivery,
+  fingerprintSignedWebhookPayload,
   isRecentLinearWebhookTimestamp,
   mapWorkItemIngestResponse,
   normalizeGitHubWebhook,
   normalizeLinearWebhook,
   normalizeManualWorkItem,
+  releaseWebhookDeliveryClaim,
   upsertWorkItemFromNormalizedInput,
   verifyGithubSignature,
   verifyLinearSignature,
@@ -173,17 +176,22 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
     if (!req.rawBody || !verifyGithubSignature(req.rawBody, config.githubWebhookSecret, signature)) {
       return res.status(401).json(errorPayload("invalid_signature", "GitHub webhook signature verification failed"));
     }
+    const signedPayloadFingerprint = fingerprintSignedWebhookPayload(req.rawBody);
 
     const eventName = req.header("x-github-event")?.trim() || "";
     if (!eventName) {
       return res.status(400).json(errorPayload("invalid_request", "Missing X-GitHub-Event header"));
+    }
+    const deliveryId = req.header("x-github-delivery")?.trim() || "";
+    if (!deliveryId) {
+      return res.status(400).json(errorPayload("invalid_request", "Missing X-GitHub-Delivery header"));
     }
 
     try {
       const normalized = normalizeGitHubWebhook(
         {
           eventName,
-          deliveryId: req.header("x-github-delivery") ?? null,
+          deliveryId,
           action: typeof req.body?.action === "string" ? req.body.action : null,
           payload: req.body ?? {},
         },
@@ -194,8 +202,27 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
         return res.status(202).json({ accepted: true, skipped: true, reason: "unsupported_event" });
       }
 
-      const saved = await upsertWorkItemFromNormalizedInput(normalized);
-      return res.status(202).json(mapWorkItemIngestResponse(saved));
+      const claimed = await claimWebhookDelivery({
+        source: "github",
+        deliveryId: signedPayloadFingerprint,
+        duplicateDeliveryIds: [deliveryId],
+        eventName,
+        workspaceId: normalized.workspaceId,
+        externalId: normalized.externalId,
+      });
+      if (!claimed) {
+        return res.status(202).json({ accepted: true, skipped: true, reason: "duplicate_delivery" });
+      }
+
+      try {
+        const saved = await upsertWorkItemFromNormalizedInput(normalized);
+        return res.status(202).json(mapWorkItemIngestResponse(saved));
+      } catch (error) {
+        await releaseWebhookDeliveryClaim({ source: "github", deliveryId: signedPayloadFingerprint }).catch(
+          () => undefined,
+        );
+        throw error;
+      }
     } catch (error) {
       return res
         .status(502)
@@ -214,6 +241,10 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
     if (!req.rawBody || !verifyLinearSignature(req.rawBody, config.linearWebhookSecret, signature)) {
       return res.status(401).json(errorPayload("invalid_signature", "Linear webhook signature verification failed"));
     }
+    const deliveryId = req.header("linear-delivery")?.trim() || "";
+    if (!deliveryId) {
+      return res.status(400).json(errorPayload("invalid_request", "Missing Linear-Delivery header"));
+    }
 
     if (!isRecentLinearWebhookTimestamp(req.body?.webhookTimestamp)) {
       return res
@@ -225,7 +256,7 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
       const normalized = normalizeLinearWebhook(
         {
           eventName: req.header("linear-event")?.trim() || "",
-          deliveryId: req.header("linear-delivery") ?? null,
+          deliveryId,
           payload: req.body ?? {},
         },
         workspaceRoutingFromConfig(config),
@@ -235,8 +266,24 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
         return res.status(202).json({ accepted: true, skipped: true, reason: "unsupported_event" });
       }
 
-      const saved = await upsertWorkItemFromNormalizedInput(normalized);
-      return res.status(202).json(mapWorkItemIngestResponse(saved));
+      const claimed = await claimWebhookDelivery({
+        source: "linear",
+        deliveryId,
+        eventName: req.header("linear-event")?.trim() || "",
+        workspaceId: normalized.workspaceId,
+        externalId: normalized.externalId,
+      });
+      if (!claimed) {
+        return res.status(202).json({ accepted: true, skipped: true, reason: "duplicate_delivery" });
+      }
+
+      try {
+        const saved = await upsertWorkItemFromNormalizedInput(normalized);
+        return res.status(202).json(mapWorkItemIngestResponse(saved));
+      } catch (error) {
+        await releaseWebhookDeliveryClaim({ source: "linear", deliveryId }).catch(() => undefined);
+        throw error;
+      }
     } catch (error) {
       return res
         .status(502)

@@ -1,5 +1,6 @@
 import type { GatewayErrorCode } from "./errors";
 import type { ChatEventState } from "./chat";
+import type { RuntimeMessageContent } from "./message-content";
 import type { SessionKey } from "./scope";
 
 export type RuntimeEventPayload = {
@@ -42,23 +43,6 @@ export type RuntimeEventPayload = {
   totalTokens?: number;
   total_tokens?: number;
 };
-
-export type RuntimeMessageContent =
-  | string
-  | {
-      text?: string;
-      delta?: string;
-      message?: string;
-      content?: RuntimeMessageContent;
-    }
-  | Array<
-      | string
-      | {
-          text?: string;
-          content?: string;
-          delta?: string;
-        }
-    >;
 
 export type TokenUsagePayload = {
   inputTokens?: number;

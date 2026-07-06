@@ -63,6 +63,18 @@ function handlePlanCreateError(res: Response, error: unknown) {
   });
 }
 
+function handlePlanReviewError(res: Response, error: unknown) {
+  if (error instanceof ApiRouteError) {
+    return res.status(error.status).json(errorPayload(error.code, error.message, error.details));
+  }
+
+  return handleApiRouteError(res, error, {
+    status: 502,
+    code: "plan_reviews_failed",
+    message: "Could not read plan reviews",
+  });
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
@@ -138,6 +150,7 @@ export function registerPlanRoutes(
     "/api/workspaces/:workspaceId/plan-reviews",
     apiRoute({
       requireAuth: true,
+      onError: handlePlanReviewError,
       async handler({ req, res, userId }) {
         const workspaceId = requireRouteParam(req, "workspaceId");
         await requireWorkspaceAccess(userId, workspaceId);

@@ -111,6 +111,7 @@ defmodule SymphonyElixir.ToolCallPersistence do
       "input" => input_payload(call_id, tool_name, arguments),
       "output" => output,
       "tool_id" => first_present([map_value(payload, :tool_id), map_value(payload, :toolId), map_value(details, :tool_id)]),
+      "approval_state" => first_present([map_value(payload, :approval_state), map_value(payload, :approvalState), map_value(details, :approval_state)]),
       "error_code" => first_present([map_value(params, :errorCode), map_value(payload, :error_code), map_value(details, :error_code)]),
       "retryable" => first_present([map_value(params, :retryable), map_value(payload, :retryable), map_value(details, :retryable)])
     }

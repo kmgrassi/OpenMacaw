@@ -7,6 +7,7 @@ defmodule SymphonyElixirWeb.CodexSessionController do
 
   alias SymphonyElixir.Codex.SessionRegistry
 
+  @spec create(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def create(conn, params) do
     workspace = Map.get(params, "workspace")
     runner_config = Map.get(params, "runner_config") || %{}
@@ -26,6 +27,7 @@ defmodule SymphonyElixirWeb.CodexSessionController do
     end
   end
 
+  @spec input(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def input(conn, %{"session_id" => session_id} = params) do
     prompt = Map.get(params, "prompt") || Map.get(params, "message")
     issue = Map.get(params, "issue") || %{}
@@ -38,6 +40,7 @@ defmodule SymphonyElixirWeb.CodexSessionController do
     end
   end
 
+  @spec interrupt(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def interrupt(conn, %{"session_id" => session_id}) do
     case SessionRegistry.interrupt(session_id) do
       {:ok, session} -> json(conn, %{ok: true, session: session})
@@ -47,6 +50,7 @@ defmodule SymphonyElixirWeb.CodexSessionController do
     end
   end
 
+  @spec delete(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def delete(conn, %{"session_id" => session_id}) do
     case SessionRegistry.stop_session(session_id) do
       :ok -> json(conn, %{ok: true})

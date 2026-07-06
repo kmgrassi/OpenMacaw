@@ -11,6 +11,7 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
 
   alias SymphonyElixir.CloudExecutor.PublicRepository
   alias SymphonyElixir.PathSafety
+  alias SymphonyElixir.PolicyGate
   alias SymphonyElixir.Runner.CodingTools.ShellExecutor
   alias SymphonyElixir.Tools.ApplyPatch
   alias SymphonyElixir.Tools.ShellExec
@@ -76,9 +77,14 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
     output.(progress_frame("tool_call_started", %{"tool_call_id" => tool_call_id, "name" => name}))
 
     {success?, tool_output} =
-      case execute_tool(name, arguments, prepared, tool_call_id, output) do
-        {:ok, success?, result} -> {success?, result}
-        {:error, reason} -> {false, error_output("tool_execution_failed", reason)}
+      with :allow <- evaluate_policy(frame, name, arguments) do
+        case execute_tool(name, arguments, prepared, tool_call_id, output) do
+          {:ok, success?, result} -> {success?, result}
+          {:error, reason} -> {false, error_output("tool_execution_failed", reason)}
+        end
+      else
+        {:policy_ask, escalation} -> {false, policy_error_output("policy_ask", "Tool call is waiting for policy approval", escalation)}
+        {:policy_denied, reason} -> {false, policy_error_output("policy_denied", policy_reason_message(reason), reason)}
       end
 
     duration_ms = max(monotonic_ms() - started_at, 0)
@@ -234,6 +240,25 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
     {:error, {:unsupported_tool, name}}
   end
 
+  defp evaluate_policy(frame, name, arguments) do
+    session =
+      %{
+        policies: Map.get(frame, "policies") || Map.get(frame, "policy_set") || [],
+        workspace_id: Map.get(frame, "workspace_id"),
+        agent_id: Map.get(frame, "agent_id"),
+        session_id: Map.get(frame, "session_thread_id") || Map.get(frame, "session_id"),
+        run_id: Map.get(frame, "run_id"),
+        work_item_id: Map.get(frame, "work_item_id")
+      }
+      |> reject_nil_values()
+
+    case PolicyGate.evaluate(%{type: :tool_call, target: name, data: arguments, session: session}) do
+      :allow -> :allow
+      {:ask, escalation} -> {:policy_ask, escalation}
+      {:deny, reason} -> {:policy_denied, reason}
+    end
+  end
+
   defp prepare_workspace_root(path) do
     expanded = Path.expand(path)
 
@@ -346,6 +371,20 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
   end
 
   defp error_output(code, reason), do: %{"ok" => false, "error" => code, "reason" => inspect(reason)}
+
+  defp policy_error_output(code, message, policy) do
+    %{
+      "success" => false,
+      "error_code" => code,
+      "error" => message,
+      "approval_state" => Map.get(policy, "approval_state"),
+      "policy" => policy
+    }
+    |> reject_nil_values()
+  end
+
+  defp policy_reason_message(%{"reason" => reason}) when is_binary(reason), do: reason
+  defp policy_reason_message(reason), do: inspect(reason)
 
   defp error(code, detail), do: %{"code" => code, "detail" => inspect(detail)}
 

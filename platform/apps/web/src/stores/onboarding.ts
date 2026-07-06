@@ -45,15 +45,6 @@ const STORAGE_KEYS_TO_SANITIZE = [
   "parallel-agent-onboarding",
 ];
 
-const PersistedOnboardingEnvelopeSchema = z.object({
-  state: z.record(z.string(), z.unknown()).optional(),
-  version: z.number().optional(),
-});
-
-type PersistedOnboardingEnvelope = z.infer<
-  typeof PersistedOnboardingEnvelopeSchema
->;
-
 type OnboardingState = {
   currentCard: OnboardingCard;
   path: OnboardingPath;
@@ -83,6 +74,58 @@ type OnboardingState = {
   reset: () => void;
 };
 
+type OnboardingStateData = Omit<
+  OnboardingState,
+  | "setPath"
+  | "setCurrentCard"
+  | "setSelectedAgentIds"
+  | "advanceCard"
+  | "goBack"
+  | "goToLaunch"
+  | "setProvider"
+  | "setCloudApiKey"
+  | "setLocalEndpoint"
+  | "setLocalModel"
+  | "setLocalRepositoryPath"
+  | "setSaving"
+  | "setError"
+  | "resumeIncompleteStep"
+  | "reset"
+>;
+
+type PersistedOnboardingFields = Pick<
+  OnboardingStateData,
+  | "currentCard"
+  | "path"
+  | "selectedAgentIds"
+  | "provider"
+  | "localEndpoint"
+  | "localModel"
+  | "localRepositoryPath"
+>;
+
+type PersistedOnboardingState = Pick<
+  PersistedOnboardingFields,
+  "currentCard"
+> &
+  Partial<Omit<PersistedOnboardingFields, "currentCard">>;
+
+type RawPersistedOnboardingEnvelope = {
+  state?: Record<string, unknown>;
+  version?: number;
+};
+
+type SanitizedPersistedOnboardingEnvelope = {
+  state?: PersistedOnboardingState;
+  version?: number;
+};
+
+const PersistedOnboardingEnvelopeSchema: z.ZodType<RawPersistedOnboardingEnvelope> =
+  z.object({
+    state: z.record(z.string(), z.unknown()).optional(),
+    version: z.number().optional(),
+  });
+
 const CLOUD_CARD_ORDER: OnboardingCard[] = [
   "choose-path",
   "cloud-key",
@@ -96,12 +139,16 @@ export function normalizePersistedOnboardingCard(
 }
 
 export function sanitizePersistedOnboardingEnvelope(
-  parsed: PersistedOnboardingEnvelope,
-): PersistedOnboardingEnvelope {
-  if (!parsed.state) return parsed;
+  parsed: RawPersistedOnboardingEnvelope,
+): SanitizedPersistedOnboardingEnvelope {
+  if (!parsed.state) {
+    return {
+      version: parsed.version,
+    };
+  }
 
   const { cloudApiKey: _cloudApiKey, ...state } = parsed.state;
-  const sanitizedState: Record<string, unknown> = {
+  const sanitizedState: PersistedOnboardingState = {
     currentCard: normalizePersistedOnboardingCard(state.currentCard),
   };
 
@@ -190,7 +237,7 @@ const INITIAL_STATE = {
   localRepositoryPath: "",
   saving: false,
   error: null,
-};
+} satisfies OnboardingStateData;
 
 function sanitizePersistedOnboardingState() {
   if (
@@ -274,7 +321,7 @@ export const useOnboardingStore = create<OnboardingState>()(
         localEndpoint: state.localEndpoint,
         localModel: state.localModel,
         localRepositoryPath: state.localRepositoryPath,
-      }),
+      } satisfies PersistedOnboardingState),
     },
   ),
 );
