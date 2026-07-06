@@ -53,7 +53,26 @@ export const PolicyKindParamsSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("risk_score"), params: RiskScoreParamsSchema }),
 ]);
 
-export const PolicySchema = z.object({
+function validatePolicyKindParams(
+  policy: { kind: PolicyKind; params: Record<string, unknown> },
+  ctx: z.RefinementCtx,
+) {
+  const result = PolicyKindParamsSchema.safeParse({
+    kind: policy.kind,
+    params: policy.params,
+  });
+  if (!result.success) {
+    for (const issue of result.error.issues) {
+      ctx.addIssue({
+        ...issue,
+        path:
+          issue.path[0] === "params" ? issue.path : ["params", ...issue.path],
+      });
+    }
+  }
+}
+
+const PolicyBaseSchema = z.object({
   id: z.string().uuid(),
   workspaceId: z.string().uuid(),
   scope: PolicyScopeSchema,
@@ -69,7 +88,11 @@ export const PolicySchema = z.object({
   createdAt: z.string(),
 });
 
-export const PolicyRowSchema = z.object({
+export const PolicySchema = PolicyBaseSchema.superRefine(
+  validatePolicyKindParams,
+);
+
+const PolicyRowBaseSchema = z.object({
   id: z.string().uuid(),
   workspace_id: z.string().uuid(),
   scope: PolicyScopeSchema,
@@ -85,7 +108,11 @@ export const PolicyRowSchema = z.object({
   created_at: z.string(),
 });
 
-export const RuntimePolicySchema = PolicySchema.pick({
+export const PolicyRowSchema = PolicyRowBaseSchema.superRefine(
+  validatePolicyKindParams,
+);
+
+export const RuntimePolicySchema = PolicyBaseSchema.pick({
   id: true,
   workspaceId: true,
   scope: true,
@@ -96,7 +123,7 @@ export const RuntimePolicySchema = PolicySchema.pick({
   priority: true,
   source: true,
   reason: true,
-});
+}).superRefine(validatePolicyKindParams);
 
 export const PolicyKindMetadataSchema = z.object({
   kind: PolicyKindSchema,

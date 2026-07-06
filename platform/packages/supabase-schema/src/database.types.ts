@@ -2676,6 +2676,72 @@ export type Database = {
         };
         Relationships: [];
       };
+      policy: {
+        Row: {
+          agent_id: string | null;
+          created_at: string;
+          created_by_user_id: string | null;
+          enabled: boolean;
+          id: string;
+          kind: string;
+          params: Json;
+          priority: number;
+          reason: string | null;
+          scope: string;
+          session_thread_id: string | null;
+          source: string;
+          updated_at: string;
+          workspace_id: string;
+        };
+        Insert: {
+          agent_id?: string | null;
+          created_at?: string;
+          created_by_user_id?: string | null;
+          enabled?: boolean;
+          id?: string;
+          kind: string;
+          params?: Json;
+          priority?: number;
+          reason?: string | null;
+          scope: string;
+          session_thread_id?: string | null;
+          source?: string;
+          updated_at?: string;
+          workspace_id: string;
+        };
+        Update: {
+          agent_id?: string | null;
+          created_at?: string;
+          created_by_user_id?: string | null;
+          enabled?: boolean;
+          id?: string;
+          kind?: string;
+          params?: Json;
+          priority?: number;
+          reason?: string | null;
+          scope?: string;
+          session_thread_id?: string | null;
+          source?: string;
+          updated_at?: string;
+          workspace_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "policy_agent_id_fkey";
+            columns: ["agent_id"];
+            isOneToOne: false;
+            referencedRelation: "agent";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "policy_workspace_id_fkey";
+            columns: ["workspace_id"];
+            isOneToOne: false;
+            referencedRelation: "workspaces";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       openclaw_agent_session_index: {
         Row: {
           agent_id: string;
