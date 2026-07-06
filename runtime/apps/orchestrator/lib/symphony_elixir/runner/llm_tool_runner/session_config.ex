@@ -12,6 +12,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionConfig do
   @default_model "gpt-5.1"
   @local_relay_fallback_excluded_tools ["git.run"]
 
+  @spec build_session(map(), String.t(), map(), module(), term()) :: map()
   def build_session(config, workspace, credential, model_client, state) do
     tool_specs = config |> tool_specs(model_client) |> mark_helper_cli_tools(model_client)
     allowed_tools = ToolRegistry.definition_names(tool_specs)
@@ -43,8 +44,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionConfig do
       base_url: config_value(config, "base_url") || default_base_url(model_client),
       req_options: req_options(config, model_client),
       credentials: credentials(config),
-      history_window:
-        config_non_negative_integer(config, "history_window", MessageHistory.default_limit()),
+      history_window: config_non_negative_integer(config, "history_window", MessageHistory.default_limit()),
       user_id: config_value(config, "user_id"),
       trace_id: config_value(config, "trace_id") || Process.get(:symphony_trace_id),
       on_message: Map.get(config, :on_message),
@@ -52,16 +52,17 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionConfig do
     }
   end
 
+  @spec probe_only?(term()) :: boolean()
   def probe_only?(config) when is_map(config),
     do: config[:probe_only] == true or config["probe_only"] == true
 
   def probe_only?(_config), do: false
 
+  @spec resolve_credential(map(), module()) :: {:ok, map()} | {:error, term()}
   def resolve_credential(config, ModelClient.LocalRelay) do
     credential_id = config_value(config, "credential_id")
 
-    {:ok,
-     %{api_key: config_value(config, "api_key") || "local-runtime", credential_id: credential_id}}
+    {:ok, %{api_key: config_value(config, "api_key") || "local-runtime", credential_id: credential_id}}
   end
 
   def resolve_credential(config, ModelClient.OpenAICompatibleChat) do
@@ -82,10 +83,12 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionConfig do
     end
   end
 
+  @spec tool_specs(map(), module()) :: [map()]
   def tool_specs(config, model_client) do
     ToolRegistry.effective_definitions(config, fallback_tool_names(config, model_client))
   end
 
+  @spec mark_helper_cli_tools([map()], module()) :: [map()]
   def mark_helper_cli_tools(tool_specs, ModelClient.LocalRelay) when is_list(tool_specs) do
     Enum.map(tool_specs, fn spec ->
       if is_map(spec) and tool_spec_name(spec) in local_helper_tools() do
@@ -98,6 +101,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionConfig do
 
   def mark_helper_cli_tools(tool_specs, _model_client), do: tool_specs
 
+  @spec model_client(map()) :: module()
   def model_client(config) do
     case config_value(config, "model_client") || config_value(config, "manager_model_client") ||
            provider(config) do
@@ -109,9 +113,11 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionConfig do
     end
   end
 
+  @spec provider(map()) :: String.t()
   def provider(config),
     do: config_value(config, "provider") || config_value(config, "model_provider") || "openai"
 
+  @spec provider_model(term()) :: String.t() | nil
   def provider_model(model) when is_binary(model) do
     model
     |> String.trim()
@@ -125,9 +131,11 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionConfig do
 
   def provider_model(_model), do: nil
 
+  @spec default_base_url(module()) :: String.t()
   def default_base_url(ModelClient.OpenAICompatibleChat), do: @openai_compatible_base_url
   def default_base_url(_model_client), do: @responses_url
 
+  @spec req_options(map(), module()) :: keyword()
   def req_options(config, ModelClient.OpenAICompatibleChat) do
     configured = config_value(config, "req_options") || []
 
@@ -151,10 +159,12 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionConfig do
     |> Keyword.merge(env_options)
   end
 
+  @spec cutover_enabled?(map()) :: boolean()
   def cutover_enabled?(session) do
     Map.get(session, :fallbacks, []) != [] or Map.get(session, :model_tier_floor, "any") != "any"
   end
 
+  @spec credential_ref(map()) :: map() | nil
   def credential_ref(config) do
     cond do
       ref = config_value(config, "credential_ref") ->
@@ -168,10 +178,12 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionConfig do
     end
   end
 
+  @spec config_value(map(), String.t()) :: term()
   def config_value(config, key) when is_map(config) do
     Map.get(config, key) || Map.get(config, String.to_atom(key))
   end
 
+  @spec config_integer(map(), String.t(), integer()) :: integer()
   def config_integer(config, key, default) do
     case config_value(config, key) do
       value when is_integer(value) and value > 0 ->
@@ -188,6 +200,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionConfig do
     end
   end
 
+  @spec config_non_negative_integer(map(), String.t(), non_neg_integer()) :: non_neg_integer()
   def config_non_negative_integer(config, key, default) do
     case config_value(config, key) do
       value when is_integer(value) and value >= 0 ->
@@ -204,6 +217,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.SessionConfig do
     end
   end
 
+  @spec runtime_prompt(map()) :: String.t()
   def runtime_prompt(config) do
     base =
       case agent_type(config) do

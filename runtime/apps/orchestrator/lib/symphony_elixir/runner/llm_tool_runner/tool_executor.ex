@@ -5,6 +5,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.ToolExecutor do
   alias SymphonyElixir.Runner.LlmToolRunner.SessionConfig
   alias SymphonyElixir.{ToolExecutionContext, ToolRegistry}
 
+  @spec execute(String.t(), map(), map(), String.t() | nil, String.t() | nil) :: map()
   def execute(tool, arguments, session, tool_call_id, correlation_id)
       when is_binary(correlation_id) and is_binary(tool_call_id) do
     if helper_executed_tool?(tool, session) do

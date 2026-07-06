@@ -7,6 +7,7 @@ defmodule SymphonyElixir.Runner.LlmToolRunner.Cutover do
   alias SymphonyElixir.Runner.LlmToolRunner.SessionConfig
   alias SymphonyElixir.WorkerBridge.SecretResolver
 
+  @spec create_response(map(), map(), non_neg_integer()) :: {:ok, map()} | {:error, term()}
   def create_response(session, request, attempt) do
     context = %{
       workspace_id: Map.get(session, :workspace_id),
