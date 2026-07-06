@@ -205,6 +205,7 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
       const claimed = await claimWebhookDelivery({
         source: "github",
         deliveryId: signedPayloadFingerprint,
+        duplicateDeliveryIds: [deliveryId],
         eventName,
         workspaceId: normalized.workspaceId,
         externalId: normalized.externalId,
