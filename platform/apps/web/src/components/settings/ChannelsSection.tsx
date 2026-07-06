@@ -1,4 +1,8 @@
 import { useState } from "react";
+import type {
+  ChannelAccountSnapshot,
+  ChannelsStatusSnapshot,
+} from "../../api/ws-types";
 import { useGatewayContext } from "../../context/GatewayContext";
 import { useLoadOnConnect } from "../../hooks/useLoadOnConnect";
 import { Alert } from "../ui/Alert";
@@ -7,24 +11,6 @@ import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { LoadingState } from "../ui/LoadingState";
-
-type ChannelAccountSnapshot = {
-  accountId: string;
-  name?: string | null;
-  enabled?: boolean | null;
-  configured?: boolean | null;
-  linked?: boolean | null;
-  running?: boolean | null;
-  connected?: boolean | null;
-  lastError?: string | null;
-};
-
-type ChannelsStatusSnapshot = {
-  channelOrder: string[];
-  channelLabels: Record<string, string>;
-  channelDetailLabels?: Record<string, string>;
-  channelAccounts: Record<string, ChannelAccountSnapshot[]>;
-};
 
 export function ChannelsSection() {
   const { request, connected } = useGatewayContext();
@@ -42,10 +28,10 @@ export function ChannelsSection() {
     setLoading(true);
     setError(null);
     try {
-      const res = await request<ChannelsStatusSnapshot | null>(
-        "channels.status",
-        { probe: true, timeoutMs: 8000 },
-      );
+      const res = await request("channels.status", {
+        probe: true,
+        timeoutMs: 8000,
+      });
       setSnapshot(res);
     } catch (err) {
       setError(String(err));
@@ -59,17 +45,14 @@ export function ChannelsSection() {
   const startWhatsAppLogin = async () => {
     setWaBusy(true);
     try {
-      const res = await request<{ message?: string; qrDataUrl?: string }>(
-        "web.login.start",
-        { force: false, timeoutMs: 30000 },
-      );
+      const res = await request("web.login.start", {
+        force: false,
+        timeoutMs: 30000,
+      });
       setWaMsg(res.message ?? null);
       setWaQr(res.qrDataUrl ?? null);
       // Wait for scan
-      const wait = await request<{ message?: string; connected?: boolean }>(
-        "web.login.wait",
-        { timeoutMs: 120000 },
-      );
+      const wait = await request("web.login.wait", { timeoutMs: 120000 });
       setWaMsg(wait.message ?? null);
       if (wait.connected) {
         setWaQr(null);

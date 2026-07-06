@@ -16,5 +16,9 @@ export {
 export { claimWebhookDelivery, releaseWebhookDeliveryClaim } from "./work-item-ingest/delivery-claims.js";
 export { assertWorkspaceMembership, upsertWorkItemFromNormalizedInput } from "./work-item-ingest/persistence.js";
 export { mapWorkItemIngestResponse } from "./work-item-ingest/responses.js";
-export { verifyGithubSignature, verifyLinearSignature } from "./work-item-ingest/signatures.js";
+export {
+  fingerprintSignedWebhookPayload,
+  verifyGithubSignature,
+  verifyLinearSignature,
+} from "./work-item-ingest/signatures.js";
 export { isRecentLinearWebhookTimestamp } from "./work-item-ingest/validation.js";

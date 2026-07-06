@@ -12,7 +12,7 @@ import {
   UpdateToolDefinitionRequestSchema,
   UpsertAgentToolGrantRequestSchema,
 } from "../../../../contracts/tool-definition.js";
-import { apiRoute, errorPayload, handleApiRouteError, requestWorkspaceId, requireRouteParam } from "../http.js";
+import { apiRoute, handleApiRouteError, requestWorkspaceId, requireRouteParam, requireWorkspaceId } from "../http.js";
 import { findSetupAgentById } from "../repositories/agents.js";
 import {
   appendToolExamples,
@@ -44,10 +44,13 @@ export function registerAgentToolRoutes(app: Express) {
       onError: handleToolError,
       async handler({ req, res, accessToken }) {
         const agentId = requireRouteParam(req, "agentId");
-        const workspaceId = requestWorkspaceId(req);
-        const agent = await findSetupAgentById(accessToken ?? "", agentId);
+        const workspaceId = requireWorkspaceId(req);
+        const agent = await findSetupAgentById(accessToken, agentId);
         if (!agent || agent.workspace_id !== workspaceId) {
-          return res.status(404).json(errorPayload("agent_not_found", "Agent was not found"));
+          return res.status(404).json({
+            code: "agent_not_found",
+            message: "Agent was not found",
+          });
         }
 
         const sessionThreadId =
@@ -58,7 +61,7 @@ export function registerAgentToolRoutes(app: Express) {
           agentId,
           workspaceId,
           sessionThreadId,
-          supabase: getUserScopedSupabase(accessToken ?? ""),
+          supabase: getUserScopedSupabase(accessToken),
         });
         return res.status(200).json(AgentPolicySettingsResponseSchema.parse(result));
       },
@@ -73,8 +76,8 @@ export function registerAgentToolRoutes(app: Express) {
       async handler({ req, res, accessToken, userId }) {
         const agentId = requireRouteParam(req, "agentId");
         const result = await getAgentToolSettings({
-          accessToken: accessToken ?? "",
-          userId: userId ?? "",
+          accessToken,
+          userId,
           agentId,
           workspaceId: requestWorkspaceId(req),
         });
@@ -94,8 +97,8 @@ export function registerAgentToolRoutes(app: Express) {
         const agentId = requireRouteParam(req, "agentId");
         const templateId = requireRouteParam(req, "templateId");
         const result = await applyToolPolicyTemplateToAgent({
-          accessToken: accessToken ?? "",
-          userId: userId ?? "",
+          accessToken,
+          userId,
           agentId,
           templateId,
           workspaceId: body.workspaceId,
@@ -116,8 +119,8 @@ export function registerAgentToolRoutes(app: Express) {
         const agentId = requireRouteParam(req, "agentId");
         const toolId = requireRouteParam(req, "toolId");
         const result = await setAgentToolGrant({
-          accessToken: accessToken ?? "",
-          userId: userId ?? "",
+          accessToken,
+          userId,
           agentId,
           toolId,
           mode: body.mode,
@@ -138,8 +141,8 @@ export function registerAgentToolRoutes(app: Express) {
         const agentId = requireRouteParam(req, "agentId");
         const toolId = requireRouteParam(req, "toolId");
         const result = await deleteAgentToolGrant({
-          accessToken: accessToken ?? "",
-          userId: userId ?? "",
+          accessToken,
+          userId,
           agentId,
           toolId,
           workspaceId: requestWorkspaceId(req),
@@ -168,12 +171,8 @@ export function registerAgentToolRoutes(app: Express) {
       requireAuth: true,
       onError: handleToolError,
       async handler({ req, res, userId }) {
-        const workspaceId = requestWorkspaceId(req);
-        if (!workspaceId) {
-          return res.status(400).json(errorPayload("invalid_request", "workspaceId is required"));
-        }
-
-        const tools = await listTools({ userId: userId ?? "", workspaceId });
+        const workspaceId = requireWorkspaceId(req);
+        const tools = await listTools({ userId, workspaceId });
         return res.status(200).json(ToolDefinitionListResponseSchema.parse({ tools }));
       },
     }),
@@ -187,7 +186,7 @@ export function registerAgentToolRoutes(app: Express) {
       invalidBodyMessage: "Tool definition is invalid",
       onError: handleToolError,
       async handler({ res, body, userId }) {
-        const tool = await createTool({ userId: userId ?? "", request: body });
+        const tool = await createTool({ userId, request: body });
         return res.status(201).json(ToolDefinitionResponseSchema.parse({ tool }));
       },
     }),
@@ -202,7 +201,7 @@ export function registerAgentToolRoutes(app: Express) {
       onError: handleToolError,
       async handler({ req, res, body, userId }) {
         const toolId = requireRouteParam(req, "toolId");
-        const tool = await updateTool({ userId: userId ?? "", toolId, request: body });
+        const tool = await updateTool({ userId, toolId, request: body });
         return res.status(200).json(ToolDefinitionResponseSchema.parse({ tool }));
       },
     }),
@@ -217,7 +216,7 @@ export function registerAgentToolRoutes(app: Express) {
       onError: handleToolError,
       async handler({ req, res, body, userId }) {
         const toolId = requireRouteParam(req, "toolId");
-        const tool = await appendToolExamples({ userId: userId ?? "", toolId, request: body });
+        const tool = await appendToolExamples({ userId, toolId, request: body });
         return res.status(200).json(ToolDefinitionResponseSchema.parse({ tool }));
       },
     }),
@@ -232,7 +231,7 @@ export function registerAgentToolRoutes(app: Express) {
       onError: handleToolError,
       async handler({ req, res, body, userId }) {
         const slug = requireRouteParam(req, "slug");
-        const tool = await appendToolExamples({ userId: userId ?? "", slug, request: body });
+        const tool = await appendToolExamples({ userId, slug, request: body });
         return res.status(200).json(ToolDefinitionResponseSchema.parse({ tool }));
       },
     }),
@@ -244,12 +243,8 @@ export function registerAgentToolRoutes(app: Express) {
       requireAuth: true,
       onError: handleToolError,
       async handler({ req, res, userId }) {
-        const workspaceId = requestWorkspaceId(req);
-        if (!workspaceId) {
-          return res.status(400).json(errorPayload("invalid_request", "workspaceId is required"));
-        }
-
-        await deleteTool({ userId: userId ?? "", workspaceId, toolId: requireRouteParam(req, "toolId") });
+        const workspaceId = requireWorkspaceId(req);
+        await deleteTool({ userId, workspaceId, toolId: requireRouteParam(req, "toolId") });
         return res.status(204).send();
       },
     }),

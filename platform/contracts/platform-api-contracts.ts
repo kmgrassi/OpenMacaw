@@ -20,6 +20,7 @@ import {
   AgentLiveStreamEventSchema,
 } from "./agent-live-io.js";
 import { AgentPolicySettingsResponseSchema } from "./policy.js";
+import { SessionPolicyStateResponseSchema } from "./session-policy.js";
 
 const WorkspaceQuerySchema = z.object({
   workspaceId: z.string().uuid(),
@@ -28,13 +29,6 @@ const WorkspaceQuerySchema = z.object({
 const EmptyResponseSchema = z.object({}).passthrough();
 
 export const PlatformApiContracts = {
-  listAgentTools: {
-    method: "GET",
-    path: "/api/agents/:agentId/tools",
-    pathParams: z.object({ agentId: z.string().uuid() }),
-    query: WorkspaceQuerySchema,
-    response: AgentToolSettingsResponseSchema,
-  },
   listAgentPolicies: {
     method: "GET",
     path: "/api/agents/:agentId/policies",
@@ -43,6 +37,13 @@ export const PlatformApiContracts = {
       sessionThreadId: z.string().trim().min(1).optional(),
     }),
     response: AgentPolicySettingsResponseSchema,
+  },
+  listAgentTools: {
+    method: "GET",
+    path: "/api/agents/:agentId/tools",
+    pathParams: z.object({ agentId: z.string().uuid() }),
+    query: WorkspaceQuerySchema,
+    response: AgentToolSettingsResponseSchema,
   },
   applyAgentToolTemplate: {
     method: "POST",
@@ -101,6 +102,13 @@ export const PlatformApiContracts = {
     pathParams: z.object({ agentId: z.string().uuid() }),
     query: AgentLiveStreamQuerySchema,
     response: AgentLiveStreamEventSchema,
+  },
+  getSessionPolicyState: {
+    method: "GET",
+    path: "/api/sessions/:sessionThreadId/policy-state",
+    pathParams: z.object({ sessionThreadId: z.string().uuid() }),
+    query: WorkspaceQuerySchema,
+    response: SessionPolicyStateResponseSchema,
   },
   listTools: {
     method: "GET",

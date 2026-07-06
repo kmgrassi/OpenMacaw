@@ -290,7 +290,7 @@ describe("runtime dispatch proxy contract", () => {
           agentId,
           sessionThreadId: null,
           kind: "block_tools",
-          params: { tools: ["shell.exec"] },
+          params: { kind: "block_tools", tools: ["shell.exec"] },
           priority: 10,
           source: "manual",
           reason: "test policy",
@@ -381,7 +381,7 @@ describe("runtime dispatch proxy contract", () => {
       policies: [
         {
           kind: "block_tools",
-          params: { tools: ["shell.exec"] },
+          params: { kind: "block_tools", tools: ["shell.exec"] },
           scope: "agent",
         },
       ],
@@ -461,7 +461,7 @@ describe("runtime dispatch proxy contract", () => {
       policies: [
         {
           kind: "block_tools",
-          params: { tools: ["shell.exec"] },
+          params: { kind: "block_tools", tools: ["shell.exec"] },
           scope: "agent",
         },
       ],

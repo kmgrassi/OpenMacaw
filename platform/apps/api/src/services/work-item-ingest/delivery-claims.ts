@@ -21,6 +21,7 @@ type UntypedSupabaseInsertBuilder = {
 type UntypedSupabaseQueryBuilder = {
   select(columns: string): UntypedSupabaseQueryBuilder;
   eq(column: string, value: unknown): UntypedSupabaseQueryBuilder;
+  in(column: string, value: unknown[]): UntypedSupabaseQueryBuilder;
   limit(count: number): UntypedSupabaseQueryBuilder;
   insert(value: WebhookDeliveryInsertRow): UntypedSupabaseInsertBuilder;
   delete(): UntypedSupabaseQueryBuilder;
@@ -42,17 +43,19 @@ function isUniqueViolation(error: unknown): boolean {
 export async function claimWebhookDelivery(input: {
   source: WebhookDeliverySource;
   deliveryId: string;
+  duplicateDeliveryIds?: string[];
   eventName: string;
   workspaceId: string;
   externalId: string;
 }): Promise<boolean> {
+  const deliveryIds = Array.from(new Set([input.deliveryId, ...(input.duplicateDeliveryIds ?? [])]));
   const existing = await executeSupabaseRows<WebhookDeliveryRow>(
     "webhook delivery lookup",
     deliverySupabase()
       .from("webhook_delivery")
       .select("id")
       .eq("source", input.source)
-      .eq("delivery_id", input.deliveryId)
+      .in("delivery_id", deliveryIds)
       .limit(1) as never,
   );
   if (existing.length > 0) {

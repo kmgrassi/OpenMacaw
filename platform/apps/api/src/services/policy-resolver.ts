@@ -25,16 +25,20 @@ const TIER_ORDER: Record<PolicyScope, number> = {
 const PARAMS_SCHEMAS: Record<PolicyKind, Record<string, unknown>> = {
   max_tool_calls_per_session: {
     type: "object",
-    required: ["limit"],
-    properties: { limit: { type: "integer", minimum: 1 } },
+    required: ["kind", "limit"],
+    properties: {
+      kind: { const: "max_tool_calls_per_session" },
+      limit: { type: "integer", minimum: 1 },
+    },
     additionalProperties: false,
   },
   cost_budget: {
     type: "object",
-    required: ["maxCostUsd"],
+    required: ["kind", "max_cost_usd"],
     properties: {
-      maxCostUsd: { type: "number", exclusiveMinimum: 0 },
-      askThresholdsUsd: {
+      kind: { const: "cost_budget" },
+      max_cost_usd: { type: "number", exclusiveMinimum: 0 },
+      ask_thresholds_usd: {
         type: "array",
         items: { type: "number", exclusiveMinimum: 0 },
       },
@@ -43,25 +47,34 @@ const PARAMS_SCHEMAS: Record<PolicyKind, Record<string, unknown>> = {
   },
   ask_on_shell: {
     type: "object",
+    required: ["kind"],
+    properties: { kind: { const: "ask_on_shell" } },
     additionalProperties: false,
   },
   ask_on_tool: {
     type: "object",
-    required: ["tools"],
-    properties: { tools: { type: "array", items: { type: "string" }, minItems: 1 } },
+    required: ["kind", "tools"],
+    properties: {
+      kind: { const: "ask_on_tool" },
+      tools: { type: "array", items: { type: "string" }, minItems: 1 },
+    },
     additionalProperties: false,
   },
   block_tools: {
     type: "object",
-    required: ["tools"],
-    properties: { tools: { type: "array", items: { type: "string" }, minItems: 1 } },
+    required: ["kind", "tools"],
+    properties: {
+      kind: { const: "block_tools" },
+      tools: { type: "array", items: { type: "string" }, minItems: 1 },
+    },
     additionalProperties: false,
   },
   risk_score: {
     type: "object",
-    required: ["guardedTools", "threshold"],
+    required: ["kind", "guarded_tools", "threshold"],
     properties: {
-      guardedTools: { type: "array", items: { type: "string" }, minItems: 1 },
+      kind: { const: "risk_score" },
+      guarded_tools: { type: "array", items: { type: "string" }, minItems: 1 },
       threshold: { type: "number", exclusiveMinimum: 0 },
       weights: {
         type: "object",

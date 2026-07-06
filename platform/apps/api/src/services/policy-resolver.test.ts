@@ -5,7 +5,7 @@ import type { PolicyRow } from "../../../../contracts/policy.js";
 
 const workspaceId = "22222222-2222-4222-8222-222222222222";
 const agentId = "33333333-3333-4333-8333-333333333333";
-const sessionThreadId = "session-thread-1";
+const sessionThreadId = "77777777-7777-4777-8777-777777777777";
 
 function policyRow(overrides: Partial<PolicyRow>): PolicyRow {
   return {
@@ -15,7 +15,7 @@ function policyRow(overrides: Partial<PolicyRow>): PolicyRow {
     agent_id: null,
     session_thread_id: null,
     kind: "block_tools",
-    params: { tools: ["shell.exec"] },
+    params: { kind: "block_tools", tools: ["shell.exec"] },
     priority: 100,
     enabled: true,
     source: "manual",
@@ -69,7 +69,7 @@ describe("resolveSessionPolicies", () => {
       scope: "agent",
       agent_id: agentId,
       kind: "max_tool_calls_per_session",
-      params: { limit: 3 },
+      params: { kind: "max_tool_calls_per_session", limit: 3 },
       priority: 10,
     });
     const sessionPolicy = policyRow({
@@ -77,7 +77,7 @@ describe("resolveSessionPolicies", () => {
       scope: "session",
       session_thread_id: sessionThreadId,
       kind: "ask_on_shell",
-      params: {},
+      params: { kind: "ask_on_shell" },
       priority: 20,
     });
     const { supabase, queries } = supabaseWithRows([workspacePolicy, agentPolicy, sessionPolicy]);
