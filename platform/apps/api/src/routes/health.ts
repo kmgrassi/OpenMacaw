@@ -1,10 +1,25 @@
 import type { Express, Request, Response } from "express";
 
 import type { ApiConfig } from "../config.js";
-import { errorPayload, handleProxyError, mapLauncherError } from "../http.js";
+import { ApiRouteError, handleApiRouteError, handleProxyError, mapLauncherError } from "../http.js";
+import { isLoopbackRequest } from "./dev-route-guard.js";
 import type { LauncherClient } from "../services/launcher.js";
 import { requestAgentId, resolveRuntimeTargetForAgent } from "../services/runtime-target.js";
 import { createUpstreamRequester, type UpstreamResponse } from "../services/upstream.js";
+
+function baseHealthPayload(ok: boolean) {
+  return {
+    ok,
+    service: "symphony-express-server",
+  };
+}
+
+function publicHealthPayload(launcherOk: boolean) {
+  return {
+    ...baseHealthPayload(launcherOk),
+    launcher: { ok: launcherOk },
+  };
+}
 
 async function buildHealthPayload(
   req: Request,
@@ -24,18 +39,16 @@ async function buildHealthPayload(
   if (!agentId) {
     return {
       status: launcherOk ? 200 : 503,
-      body: {
-        ok: launcherOk,
-        service: "symphony-express-server",
-        launcherBaseUrl: config.launcherBaseUrl,
-        launcherHealth: launcherHealth,
-        runtimeTarget: null,
-        orchestratorHealth: errorPayload(
-          "runtime_unscoped",
-          "No agentId was provided, so runtime health was not checked",
-        ),
-      },
+      body: publicHealthPayload(launcherOk),
     };
+  }
+
+  if (!isLoopbackRequest(req)) {
+    throw new ApiRouteError(
+      403,
+      "health_scope_forbidden",
+      "Scoped runtime health is only available from loopback addresses",
+    );
   }
 
   let target = await resolveRuntimeTargetForAgent(agentId, launcherRequest);
@@ -59,8 +72,7 @@ async function buildHealthPayload(
   return {
     status: launcherOk && orchestratorOk ? 200 : 503,
     body: {
-      ok: launcherOk && orchestratorOk,
-      service: "symphony-express-server",
+      ...baseHealthPayload(launcherOk && orchestratorOk),
       launcherBaseUrl: config.launcherBaseUrl,
       launcherHealth: launcherHealth,
       runtimeTarget: {
@@ -85,6 +97,13 @@ export function registerHealthRoutes(
       const payload = await buildHealthPayload(req, config, launcherClient, launcherRequest);
       return res.status(payload.status).json(payload.body);
     } catch (error) {
+      if (error instanceof ApiRouteError) {
+        return handleApiRouteError(res, error, {
+          status: 500,
+          code: "health_failed",
+          message: "Health check failed",
+        });
+      }
       return handleProxyError(res, error);
     }
   });
@@ -101,6 +120,13 @@ export function registerHealthRoutes(
       const payload = await buildHealthPayload(req, config, launcherClient, launcherRequest);
       return res.status(payload.status).json(payload.body);
     } catch (error) {
+      if (error instanceof ApiRouteError) {
+        return handleApiRouteError(res, error, {
+          status: 500,
+          code: "health_failed",
+          message: "Health check failed",
+        });
+      }
       return handleProxyError(res, error);
     }
   });
