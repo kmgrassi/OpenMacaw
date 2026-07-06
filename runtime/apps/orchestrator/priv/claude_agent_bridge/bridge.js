@@ -23,12 +23,12 @@ function event(method, params) {
   write({ method, params });
 }
 
-function toolPermissionParams(input, options) {
+function toolPermissionParams(toolName, input, options) {
   return {
-    tool: input?.toolName || input?.tool_name || input?.name,
-    toolName: input?.toolName || input?.tool_name || input?.name,
-    toolUseId: input?.toolUseId || input?.tool_use_id || input?.id,
-    input: input?.input || input?.arguments,
+    tool: toolName,
+    toolName,
+    toolUseId: options?.toolUseID || options?.toolUseId || options?.tool_use_id,
+    input,
     permissionMode: options?.permissionMode,
     decision: "allow",
     source: "can_use_tool"
@@ -49,8 +49,8 @@ function sdkOptions(prompt) {
     }
   };
 
-  options.options.canUseTool = async (input, toolOptions) => {
-    event("tool/can_use_tool", toolPermissionParams(input, toolOptions));
+  options.options.canUseTool = async (toolName, input, toolOptions) => {
+    event("tool/can_use_tool", toolPermissionParams(toolName, input, toolOptions));
     return { behavior: "allow" };
   };
 

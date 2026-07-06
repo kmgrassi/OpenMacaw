@@ -273,8 +273,9 @@ defmodule SymphonyElixir.Runner.ClaudeCodeTest do
     File.write!(Path.join(module_dir, "index.js"), """
     export async function* query(request) {
       const result = await request.options.canUseTool(
-        { name: 'Bash', id: 'toolu_1', input: { command: 'pwd' } },
-        { permissionMode: request.options.permissionMode }
+        'Bash',
+        { command: 'pwd' },
+        { permissionMode: request.options.permissionMode, toolUseID: 'toolu_1' }
       );
 
       yield { type: 'permission_result', result };
