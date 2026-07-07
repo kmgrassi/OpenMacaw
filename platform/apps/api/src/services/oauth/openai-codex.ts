@@ -8,6 +8,8 @@
  * this server.
  */
 
+import { z } from "zod";
+
 const OPENAI_AUTH_BASE_URL = "https://auth.openai.com";
 const OPENAI_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const OPENAI_CODEX_TOKEN_URL = `${OPENAI_AUTH_BASE_URL}/oauth/token`;
@@ -63,10 +65,11 @@ function trimNonEmptyString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+const JsonObjectSchema = z.record(z.string(), z.unknown());
+
 function parseJsonObject(text: string): Record<string, unknown> | null {
   try {
-    const parsed = JSON.parse(text);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    return JsonObjectSchema.safeParse(JSON.parse(text)).data ?? null;
   } catch {
     return null;
   }
@@ -102,24 +105,31 @@ function formatErrorBody(status: number, bodyText: string): string {
   return bodyText ? `HTTP ${status} ${bodyText.slice(0, 256)}` : `HTTP ${status}`;
 }
 
-type CodexJwtPayload = {
-  exp?: unknown;
-  iss?: unknown;
-  sub?: unknown;
-  "https://api.openai.com/profile"?: { email?: unknown };
-  "https://api.openai.com/auth"?: {
-    chatgpt_account_id?: unknown;
-    chatgpt_plan_type?: unknown;
-  };
-};
+const CodexJwtPayloadSchema = z.object({
+  exp: z.union([z.number(), z.string()]).optional(),
+  iss: z.unknown().optional(),
+  sub: z.unknown().optional(),
+  "https://api.openai.com/profile": z
+    .object({
+      email: z.unknown().optional(),
+    })
+    .optional(),
+  "https://api.openai.com/auth": z
+    .object({
+      chatgpt_account_id: z.unknown().optional(),
+      chatgpt_plan_type: z.unknown().optional(),
+    })
+    .optional(),
+});
+
+type CodexJwtPayload = z.infer<typeof CodexJwtPayloadSchema>;
 
 function decodeJwtPayload(accessToken: string): CodexJwtPayload | null {
   const parts = accessToken.split(".");
   if (parts.length !== 3) return null;
   try {
     const decoded = Buffer.from(parts[1] ?? "", "base64url").toString("utf8");
-    const parsed = JSON.parse(decoded);
-    return parsed && typeof parsed === "object" ? (parsed as CodexJwtPayload) : null;
+    return CodexJwtPayloadSchema.safeParse(JSON.parse(decoded)).data ?? null;
   } catch {
     return null;
   }
