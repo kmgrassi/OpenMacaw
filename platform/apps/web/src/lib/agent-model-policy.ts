@@ -2,7 +2,6 @@ import {
   modelProviderFromId,
   type ModelCatalogEntry,
 } from "../../../../contracts/model-catalog";
-import { CREDENTIAL_PROVIDERS } from "../../../../contracts/credentials";
 import type { LocalRuntime, LocalRuntimeRunner } from "../api/local-runtime";
 import type {
   CredentialAlias,
@@ -10,6 +9,7 @@ import type {
   SavedCredential,
 } from "../api/credentials";
 import type { Agent } from "../types/agents";
+import { formatProviderLabel } from "./provider-labels";
 
 export const CLOUD_CODING_RUNNER_KIND = "codex";
 export const LOCAL_MODEL_CODING_RUNNER_KIND = "local_model_coding";
@@ -93,13 +93,7 @@ export function credentialRowId(credential: SavedCredential): string {
 }
 
 export function credentialProviderLabel(provider: string | null | undefined) {
-  return (
-    CREDENTIAL_PROVIDERS.find(
-      (candidate) => candidate.provider === provider,
-    )?.label.replace(" API key", "") ??
-    provider ??
-    "Unknown provider"
-  );
+  return formatProviderLabel(provider);
 }
 
 export function credentialRefValue(
