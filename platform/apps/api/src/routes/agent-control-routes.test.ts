@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentControlMessageRow } from "../../../../contracts/agent-control.js";
 import type { LauncherOrchestrator } from "../../../../contracts/launcher.js";
 import type { WorkerBridgeSessionRow } from "../../../../contracts/worker-bridge.js";
+import { ApiRouteError } from "../http.js";
 import type { LauncherClient } from "../services/launcher.js";
 import { registerProxyRoutes } from "./proxy.js";
 
@@ -262,6 +263,63 @@ describe("agent control routes", () => {
       },
     });
     expect(createAgentControlMessage).toHaveBeenCalledWith(expect.objectContaining({ targetAgentId, observerAgentId }));
+  });
+
+  it("requires agent access before returning launcher agent state", async () => {
+    launcherClient.getAgent = vi.fn().mockResolvedValue({
+      data: {
+        id: targetAgentId,
+        name: "Coding Agent",
+        workspace_id: workspaceId,
+        project_id: null,
+        description: null,
+        slug: null,
+        status: "running",
+        type: "coding",
+        session_id: "session-1",
+        context: null,
+        is_active: true,
+        model_settings: {},
+        tool_policy: {},
+        has_credentials: true,
+        created_at: null,
+        updated_at: null,
+      },
+    });
+
+    const response = await fetch(`${baseUrl}/api/agents/${targetAgentId}`, {
+      headers: { authorization: "Bearer test-token" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(assertAgentAccess).toHaveBeenCalledWith({
+      accessToken: "test-token",
+      userId,
+      agentId: targetAgentId,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        id: targetAgentId,
+        workspace_id: workspaceId,
+      },
+    });
+  });
+
+  it("blocks unauthorized launcher agent fetches", async () => {
+    launcherClient.getAgent = vi.fn();
+    assertAgentAccess.mockRejectedValueOnce(
+      new ApiRouteError(403, "workspace_forbidden", "User is not authorized for the target workspace"),
+    );
+
+    const response = await fetch(`${baseUrl}/api/agents/${targetAgentId}`, {
+      headers: { authorization: "Bearer test-token" },
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "workspace_forbidden" },
+    });
+    expect(launcherClient.getAgent).not.toHaveBeenCalled();
   });
 
   it("starts launcher-managed agents with approved skills snapshot", async () => {

@@ -6,6 +6,7 @@ import {
   requireRouteParam,
   requireVerifiedUser,
 } from "../http.js";
+import { assertAgentAccess } from "../services/agent-tools/access.js";
 import type { LauncherClient } from "../services/launcher.js";
 import { buildLauncherStartBody } from "./agent-control-launcher-body.js";
 import { createStructuredAgentMessage, getAgentMessages } from "./agent-control-message-routes.js";
@@ -16,9 +17,22 @@ import { assertRuntimePrepareSupported } from "../services/runtime-prepare.js";
 export function registerAgentControlRoutes(app: Express, launcherClient: LauncherClient) {
   app.get("/api/agents/:id", async (req: Request, res: Response) => {
     try {
-      const result = await launcherClient.getAgent(requireRouteParam(req, "id"));
+      const agentId = requireRouteParam(req, "id");
+      await assertAgentAccess({
+        accessToken: requireAccessToken(req),
+        userId: requireVerifiedUser(req),
+        agentId,
+      });
+      const result = await launcherClient.getAgent(agentId);
       return res.status(200).json(result);
     } catch (error) {
+      if (!(error instanceof Error && error.name.startsWith("Launcher"))) {
+        return handleApiRouteError(res, error, {
+          status: 502,
+          code: "agent_fetch_failed",
+          message: "Could not fetch agent",
+        });
+      }
       return handleLauncherError(res, error);
     }
   });
