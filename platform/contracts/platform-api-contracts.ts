@@ -20,6 +20,12 @@ import {
   AgentLiveStreamEventSchema,
 } from "./agent-live-io.js";
 import { SessionPolicyStateResponseSchema } from "./session-policy.js";
+import {
+  RenderLocalObserverPromptRequestSchema,
+  RenderLocalObserverPromptResponseSchema,
+  ValidateLocalObserverRecommendationRequestSchema,
+  ValidateLocalObserverRecommendationResponseSchema,
+} from "./local-observer-routing.js";
 
 const WorkspaceQuerySchema = z.object({
   workspaceId: z.string().uuid(),
@@ -99,6 +105,18 @@ export const PlatformApiContracts = {
     pathParams: z.object({ sessionThreadId: z.string().uuid() }),
     query: WorkspaceQuerySchema,
     response: SessionPolicyStateResponseSchema,
+  },
+  renderLocalObserverRoutingPrompt: {
+    method: "POST",
+    path: "/api/evals/local-observer-routing/render-prompt",
+    body: RenderLocalObserverPromptRequestSchema,
+    response: RenderLocalObserverPromptResponseSchema,
+  },
+  validateLocalObserverRoutingRecommendation: {
+    method: "POST",
+    path: "/api/evals/local-observer-routing/validate-recommendation",
+    body: ValidateLocalObserverRecommendationRequestSchema,
+    response: ValidateLocalObserverRecommendationResponseSchema,
   },
   listTools: {
     method: "GET",
