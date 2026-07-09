@@ -97,9 +97,37 @@ started with `./openmacaw run`, use the checked-in dev config instead:
 go run ./cmd/local-runtime-helper start --config ./dev-runtime.toml --log-level debug
 ```
 
+## Localhost API Origin Allowlist
+
+`local-runtime-helper` exposes a localhost browser API on `127.0.0.1:7317` for
+native directory picking. It now defaults that API to localhost web origins
+only:
+
+- `http://localhost:5173`
+- `http://127.0.0.1:5173`
+
+If you need the hosted app to reach the helper from `https://app.openmacaw.ai`,
+set an explicit allowlist before launching the daemon manually:
+
+```sh
+export OPENMACAW_LOCAL_API_ALLOWED_ORIGINS="https://app.openmacaw.ai"
+```
+
+Use a comma-separated list if you need both hosted and local development
+origins. Avoid broad allowlists; any allowed origin can trigger local helper
+browser actions.
+
+For launchd installs, shell exports are not inherited by the service. Put the
+allowlist in the LaunchAgent plist's `EnvironmentVariables` dictionary before
+bootstrapping the service, or edit the installed plist and restart it with
+`launchctl kickstart -k`.
+
 ## Run With launchd On macOS
 
-Copy the launchd template and replace `__USER__` plus the binary path if needed:
+Copy the launchd template and replace `__USER__` plus the binary path if needed.
+The template includes `OPENMACAW_LOCAL_API_ALLOWED_ORIGINS` for the hosted app;
+edit that value before bootstrapping if you need a different comma-separated
+allowlist:
 
 ```sh
 mkdir -p ~/Library/LaunchAgents

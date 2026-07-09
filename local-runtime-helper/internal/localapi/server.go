@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -162,9 +163,37 @@ func (s *Server) allowLocalBrowserRequest(w http.ResponseWriter, r *http.Request
 }
 
 func allowedOrigin(origin string) bool {
-	return origin == "https://app.openmacaw.ai" ||
-		origin == "http://localhost:5173" ||
-		origin == "http://127.0.0.1:5173"
+	for _, allowed := range allowedOrigins() {
+		if origin == allowed {
+			return true
+		}
+	}
+	return false
+}
+
+func allowedOrigins() []string {
+	if configured := strings.TrimSpace(os.Getenv("OPENMACAW_LOCAL_API_ALLOWED_ORIGINS")); configured != "" {
+		return splitOrigins(configured)
+	}
+
+	return []string{
+		"http://localhost:5173",
+		"http://127.0.0.1:5173",
+	}
+}
+
+func splitOrigins(value string) []string {
+	parts := strings.Split(value, ",")
+	origins := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			origins = append(origins, trimmed)
+		}
+	}
+
+	return origins
 }
 
 func pickDirectory(req PickDirectoryRequest) (string, error) {
