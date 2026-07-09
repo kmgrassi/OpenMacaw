@@ -122,6 +122,10 @@ In-flight work. Each entry should map to one or more open PRs.
 - [active/local-openclaw-helper-scope.md](active/local-openclaw-helper-scope.md)
   — Add OpenClaw as a first-class local-runtime kind: wizard, install command,
   routing-rule editor; cross-repo plan (platform, runtime, helper, harper-server).
+- [active/local-observer-routing-evals-scope.md](active/local-observer-routing-evals-scope.md)
+  — Agent-observer evals where a stronger evaluator periodically reviews
+  weaker/local agent traces and judges whether their tool-use or routing
+  decisions were correct.
 - [active/manager-as-regular-agent-scope.md](active/manager-as-regular-agent-scope.md)
   — Stop treating manager agents as a separate runtime + platform surface;
   collapse SessionResolver, Runner.Manager, dual-write, and manager-only
