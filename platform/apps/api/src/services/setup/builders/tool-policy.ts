@@ -50,12 +50,7 @@ export function learningToolPolicyDefaults(): ToolPolicy {
 export function codingToolPolicyDefaults(): ToolPolicy {
   return ToolPolicySchema.parse({
     coding: {
-      tools: [
-        GIT_COMMAND_TOOL_SLUG,
-        "shell.exec",
-        "apply_patch",
-        ...SCHEDULED_TASK_TOOL_SLUGS,
-      ],
+      tools: [GIT_COMMAND_TOOL_SLUG, "shell.exec", "apply_patch", ...SCHEDULED_TASK_TOOL_SLUGS],
       execution_kinds: ["filesystem", "shell"],
     },
   });

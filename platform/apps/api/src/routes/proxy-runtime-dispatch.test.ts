@@ -44,6 +44,10 @@ vi.mock("../services/resource-dispatch-resolution.js", () => ({
   resolveContainerDispatchResources: vi.fn(),
 }));
 
+vi.mock("../services/policy-resolver.js", () => ({
+  resolveSessionPolicies: vi.fn(),
+}));
+
 vi.mock("../repositories/agents.js", () => ({
   findSetupAgentById: vi.fn(),
   findStoredAgentRowById: vi.fn(),
@@ -62,6 +66,7 @@ const { assertLocalCodingToolsUseRuntimeTarget, resolveLocalCodingExecutionTarge
   await import("../services/local-coding-execution-target.js"),
 );
 const { resolveContainerDispatchResources } = vi.mocked(await import("../services/resource-dispatch-resolution.js"));
+const { resolveSessionPolicies } = vi.mocked(await import("../services/policy-resolver.js"));
 const { findSetupAgentById, findStoredAgentRowById } = vi.mocked(await import("../repositories/agents.js"));
 
 const agentId = "11111111-1111-4111-8111-111111111111";
@@ -273,6 +278,25 @@ describe("runtime dispatch proxy contract", () => {
         },
       },
     ]);
+    resolveSessionPolicies.mockResolvedValue({
+      workspacePolicies: [],
+      agentPolicies: [],
+      sessionPolicies: [],
+      effectivePolicies: [
+        {
+          id: "88888888-8888-4888-8888-888888888888",
+          workspaceId,
+          scope: "agent",
+          agentId,
+          sessionThreadId: null,
+          kind: "block_tools",
+          params: { kind: "block_tools", tools: ["shell.exec"] },
+          priority: 10,
+          source: "manual",
+          reason: "test policy",
+        },
+      ],
+    });
     findSetupAgentById.mockResolvedValue(
       setupAgent({
         workspacePolicy: {
@@ -354,6 +378,13 @@ describe("runtime dispatch proxy contract", () => {
         machineId: "77777777-7777-4777-8777-777777777777",
       },
       tool_assignments: [{ slug: "shell.exec", runnerKind: "local_model_coding" }],
+      policies: [
+        {
+          kind: "block_tools",
+          params: { kind: "block_tools", tools: ["shell.exec"] },
+          scope: "agent",
+        },
+      ],
     });
     expect(resolveLocalCodingExecutionTarget).toHaveBeenCalledWith({
       workspaceId,
@@ -427,6 +458,13 @@ describe("runtime dispatch proxy contract", () => {
         machineId: "77777777-7777-4777-8777-777777777777",
       },
       tool_assignments: [{ slug: "create_plan", runnerKind: "planner" }],
+      policies: [
+        {
+          kind: "block_tools",
+          params: { kind: "block_tools", tools: ["shell.exec"] },
+          scope: "agent",
+        },
+      ],
     });
     expect(assertLocalCodingToolsUseRuntimeTarget).not.toHaveBeenCalled();
     expect(resolveLocalCodingExecutionTarget).toHaveBeenCalledWith({

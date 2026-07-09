@@ -5,6 +5,7 @@ import type { WorkerBridgeSessionRow } from "../../../../../contracts/worker-bri
 import { logEvent } from "../../logger.js";
 import { executeSupabaseRows, getServiceRoleSupabase } from "../../supabase-client.js";
 import { isRoutingMetadataMatch, matchValue, resolveExecutionProfile } from "../execution-profile-resolver.js";
+import { resolveSessionPolicies } from "../policy-resolver.js";
 import { buildBlockers } from "./blockers.js";
 import { buildClaudeCodeDiagnostic, selectClaudeBridgeSession } from "./claude-code.js";
 import { buildCodexOAuthDiagnostic, selectCodexBridgeSession } from "./codex-oauth.js";
@@ -228,6 +229,49 @@ export async function loadAgentDiagnostic(input: {
     };
   }
 
+  let policiesSection: {
+    resolved: boolean;
+    workspacePolicies: unknown[];
+    agentPolicies: unknown[];
+    sessionPolicies: unknown[];
+    effectivePolicies: unknown[];
+    error: string | null;
+  } = {
+    resolved: false,
+    workspacePolicies: [],
+    agentPolicies: [],
+    sessionPolicies: [],
+    effectivePolicies: [],
+    error: workspaceId ? null : "no workspace",
+  };
+
+  if (workspaceId) {
+    try {
+      const policyResolution = await resolveSessionPolicies({
+        agentId,
+        workspaceId,
+        supabase,
+      });
+      policiesSection = {
+        resolved: true,
+        workspacePolicies: policyResolution.workspacePolicies,
+        agentPolicies: policyResolution.agentPolicies,
+        sessionPolicies: policyResolution.sessionPolicies,
+        effectivePolicies: policyResolution.effectivePolicies,
+        error: null,
+      };
+    } catch (error) {
+      policiesSection = {
+        resolved: false,
+        workspacePolicies: [],
+        agentPolicies: [],
+        sessionPolicies: [],
+        effectivePolicies: [],
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   // -----------------------------------------------------------------
   // Step 4: Local runtime status
   // -----------------------------------------------------------------
@@ -445,6 +489,7 @@ export async function loadAgentDiagnostic(input: {
     agent: agentSection,
     routing: routingSection,
     executionProfile: executionProfileSection,
+    policies: policiesSection,
     localRuntime: localRuntimeSection,
     codexOAuth: codexOAuthSection,
     claudeCode: claudeCodeSection,

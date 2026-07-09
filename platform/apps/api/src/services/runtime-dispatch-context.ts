@@ -13,12 +13,14 @@ import {
 import { loadToolExecutionConfig, type ToolExecutionConfig } from "../config.js";
 import { ApiRouteError } from "../http.js";
 import { findSetupAgentById } from "../repositories/agents.js";
+import { getUserScopedSupabase } from "../supabase-client.js";
 import { getToolsForAgent } from "./agent-tools.js";
 import { resolveExecutionProfile } from "./execution-profile-resolver.js";
 import {
   assertLocalCodingToolsUseRuntimeTarget,
   resolveLocalCodingExecutionTarget,
 } from "./local-coding-execution-target.js";
+import { resolveSessionPolicies } from "./policy-resolver.js";
 import { resolveContainerDispatchResources } from "./resource-dispatch-resolution.js";
 
 const LOCAL_MODEL_CODING_RUNNER = "local_model_coding";
@@ -286,6 +288,17 @@ function configuredWorkspaceRoot(agentToolPolicy: unknown): string | null {
   return typeof raw === "string" && raw.trim() !== "" ? raw.trim() : null;
 }
 
+function requestSessionThreadId(requestBody: unknown): string | null {
+  const body = asRecord(requestBody);
+  for (const key of ["sessionThreadId", "session_thread_id", "threadId", "thread_id"]) {
+    const value = body[key];
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  }
+  const dispatchMetadata = asRecord(body.dispatchMetadata);
+  const metadataSessionId = dispatchMetadata.sessionId;
+  return typeof metadataSessionId === "string" && metadataSessionId.trim() !== "" ? metadataSessionId.trim() : null;
+}
+
 export function shouldAttachRuntimeDispatchContext(profile: ExecutionProfile | null): boolean {
   return (
     profile?.runnerKind === LOCAL_MODEL_CODING_RUNNER ||
@@ -335,6 +348,12 @@ export async function buildRuntimeDispatchContext(input: {
     agentToolPolicy: agent.tool_policy,
     requestBody: input.requestBody,
   });
+  const policyResolution = await resolveSessionPolicies({
+    agentId: input.agentId,
+    workspaceId: resolution.profile.workspaceId,
+    sessionThreadId: requestSessionThreadId(input.requestBody),
+    supabase: getUserScopedSupabase(input.accessToken),
+  });
 
   return RuntimeDispatchContextSchema.parse({
     executionProfile: {
@@ -342,6 +361,7 @@ export async function buildRuntimeDispatchContext(input: {
       toolDefinitions: tools,
     },
     workspacePolicy: buildWorkspacePolicy(resolution.profile, agent.tool_policy),
+    policies: policyResolution.effectivePolicies,
     executionTarget,
     toolAssignments: tools,
   });
@@ -357,6 +377,7 @@ export function attachRuntimeDispatchContext(body: unknown, context: RuntimeDisp
     workspace_id: context.executionProfile.workspaceId,
     execution_profile: context.executionProfile,
     workspace_policy: context.workspacePolicy,
+    policies: context.policies,
     execution_target: context.executionTarget,
     tool_assignments: context.toolAssignments,
   };

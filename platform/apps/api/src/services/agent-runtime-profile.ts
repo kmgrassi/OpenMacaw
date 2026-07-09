@@ -347,10 +347,7 @@ export async function updateAgentRuntimeProfile(input: {
     fallbacks: input.body.fallbacks ?? [],
     modelTierFloor: input.body.modelTierFloor ?? "any",
     localEndpointUrl: input.body.localEndpointUrl ?? null,
-    localMachineId:
-      input.body.provider === "local"
-        ? input.localMachineId
-        : null,
+    localMachineId: input.body.provider === "local" ? input.localMachineId : null,
   });
 
   if (agentType === "manager") {

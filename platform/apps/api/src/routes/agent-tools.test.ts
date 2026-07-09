@@ -14,6 +14,8 @@ import {
   listTools,
   setAgentToolGrant,
 } from "../services/agent-tools.js";
+import { getAgentPolicySettings } from "../services/policy-resolver.js";
+import { findSetupAgentById } from "../repositories/agents.js";
 import { registerAgentToolRoutes } from "./agent-tools.js";
 
 vi.mock("../services/agent-tools.js", () => ({
@@ -28,6 +30,15 @@ vi.mock("../services/agent-tools.js", () => ({
   listTools: vi.fn(),
   setAgentToolGrant: vi.fn(),
   updateTool: vi.fn(),
+}));
+vi.mock("../services/policy-resolver.js", () => ({
+  getAgentPolicySettings: vi.fn(),
+}));
+vi.mock("../repositories/agents.js", () => ({
+  findSetupAgentById: vi.fn(),
+}));
+vi.mock("../supabase-client.js", () => ({
+  getUserScopedSupabase: vi.fn(() => ({ from: vi.fn() })),
 }));
 
 const userId = "11111111-1111-4111-8111-111111111111";
@@ -78,6 +89,52 @@ const responseToolSettings = {
   availableTools: [responseTool],
   grants: [responseGrant],
   tools: [responseResolvedTool],
+};
+const responsePolicySettings = {
+  availableKinds: [
+    {
+      kind: "block_tools" as const,
+      paramsSchema: {
+        type: "object",
+        required: ["tools"],
+        properties: { tools: { type: "array", items: { type: "string" }, minItems: 1 } },
+        additionalProperties: false,
+      },
+    },
+  ],
+  workspacePolicies: [
+    {
+      id: "77777777-7777-4777-8777-777777777777",
+      workspaceId,
+      scope: "workspace" as const,
+      agentId: null,
+      sessionThreadId: null,
+      kind: "block_tools" as const,
+      params: { kind: "block_tools" as const, tools: ["shell.exec"] },
+      priority: 10,
+      enabled: true,
+      source: "manual" as const,
+      reason: null,
+      createdByUserId: userId,
+      createdAt: "2026-06-30T00:00:00.000Z",
+    },
+  ],
+  agentPolicies: [],
+  sessionPolicies: [],
+  effectivePolicies: [
+    {
+      id: "77777777-7777-4777-8777-777777777777",
+      workspaceId,
+      scope: "workspace" as const,
+      agentId: null,
+      sessionThreadId: null,
+      kind: "block_tools" as const,
+      params: { kind: "block_tools" as const, tools: ["shell.exec"] },
+      priority: 10,
+      source: "manual" as const,
+      reason: null,
+    },
+  ],
 };
 
 type ExpressRouteLayer = {
@@ -141,6 +198,10 @@ describe("agent tool routes", () => {
 
   it("registers the tool routes declared in the Platform API contract registry", () => {
     const contractRoutes = Object.values(PlatformApiContracts)
+      .filter(
+        (contract) =>
+          contract.path.includes("/tools") || contract.path.includes("/tool-") || contract.path.endsWith("/policies"),
+      )
       .map((contract) => ({
         method: contract.method,
         path: contract.path,
@@ -173,6 +234,38 @@ describe("agent tool routes", () => {
       userId,
       agentId,
       workspaceId,
+    });
+  });
+
+  it("lists policies resolved for an agent", async () => {
+    vi.mocked(findSetupAgentById).mockResolvedValue({
+      id: agentId,
+      workspace_id: workspaceId,
+      name: "Coding agent",
+      status: "active",
+      type: "coding",
+      context: null,
+      model_settings: {},
+      tool_policy: {},
+      created_by_user_id: userId,
+      updated_at: "2026-06-30T00:00:00.000Z",
+    });
+    vi.mocked(getAgentPolicySettings).mockResolvedValue(responsePolicySettings);
+
+    const response = await fetch(
+      `${baseUrl}/api/agents/${agentId}/policies?workspaceId=${workspaceId}&sessionThreadId=session-thread-1`,
+      {
+        headers: { authorization: "Bearer test-token" },
+      },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(responsePolicySettings);
+    expect(getAgentPolicySettings).toHaveBeenCalledWith({
+      agentId,
+      workspaceId,
+      sessionThreadId: "session-thread-1",
+      supabase: expect.any(Object),
     });
   });
 

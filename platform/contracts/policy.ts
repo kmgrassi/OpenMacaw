@@ -177,6 +177,34 @@ export const PolicyRowSchema = z
   })
   .superRefine(requireMatchingPolicyParamsKind);
 
+export const RuntimePolicySchema = z
+  .object({
+    id: z.string().uuid(),
+    workspaceId: z.string().uuid(),
+    scope: PolicyScopeSchema,
+    agentId: z.string().uuid().nullable(),
+    sessionThreadId: z.string().uuid().nullable(),
+    kind: PolicyKindSchema,
+    params: PolicyParamsSchema,
+    priority: z.number().int(),
+    source: PolicySourceSchema,
+    reason: z.string().nullable(),
+  })
+  .superRefine(requireMatchingPolicyParamsKind);
+
+export const PolicyKindMetadataSchema = z.object({
+  kind: PolicyKindSchema,
+  paramsSchema: z.record(z.string(), z.unknown()),
+});
+
+export const AgentPolicySettingsResponseSchema = z.object({
+  availableKinds: z.array(PolicyKindMetadataSchema),
+  workspacePolicies: z.array(PolicySchema),
+  agentPolicies: z.array(PolicySchema),
+  sessionPolicies: z.array(PolicySchema),
+  effectivePolicies: z.array(RuntimePolicySchema),
+});
+
 export const PolicySessionStateSchema = z.object({
   workspaceId: z.string().uuid(),
   sessionThreadId: z.string().uuid(),
@@ -243,6 +271,11 @@ export type PolicyParams = z.infer<typeof PolicyParamsSchema>;
 export type PolicySource = z.infer<typeof PolicySourceSchema>;
 export type Policy = z.infer<typeof PolicySchema>;
 export type PolicyRow = z.infer<typeof PolicyRowSchema>;
+export type RuntimePolicy = z.infer<typeof RuntimePolicySchema>;
+export type PolicyKindMetadata = z.infer<typeof PolicyKindMetadataSchema>;
+export type AgentPolicySettingsResponse = z.infer<
+  typeof AgentPolicySettingsResponseSchema
+>;
 export type PolicySessionState = z.infer<typeof PolicySessionStateSchema>;
 export type PolicyKindDefinition = z.infer<typeof PolicyKindDefinitionSchema>;
 export type AgentPoliciesResponse = z.infer<typeof AgentPoliciesResponseSchema>;

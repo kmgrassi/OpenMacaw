@@ -465,11 +465,7 @@ async function syncAgentLocalEndpointMatch(input: {
   if (insertError) throw normalizeSupabaseError("routing_rule_match insert", insertError);
 }
 
-async function syncAgentLocalMachineMatch(input: {
-  ruleId: string;
-  workspaceId: string;
-  machineId?: string | null;
-}) {
+async function syncAgentLocalMachineMatch(input: { ruleId: string; workspaceId: string; machineId?: string | null }) {
   if (input.machineId === undefined) return;
 
   const supabase = getServiceRoleSupabase();

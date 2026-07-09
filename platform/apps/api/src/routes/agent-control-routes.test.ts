@@ -50,6 +50,7 @@ vi.mock("../services/runtime-dispatch-context.js", () => ({
       ...source,
       execution_profile: dispatchContext.executionProfile,
       workspace_policy: dispatchContext.workspacePolicy,
+      policies: dispatchContext.policies,
       execution_target: dispatchContext.executionTarget,
       tool_assignments: dispatchContext.toolAssignments,
     };
@@ -188,6 +189,7 @@ describe("agent control routes", () => {
     buildRuntimeDispatchContext.mockResolvedValue({
       executionProfile: { runnerKind: "llm_tool_runner" },
       workspacePolicy: { allowNetworking: true },
+      policies: [],
       executionTarget: { kind: "local_helper" },
       toolAssignments: [{ name: "git.run" }],
     } as never);
@@ -199,6 +201,7 @@ describe("agent control routes", () => {
         ...source,
         execution_profile: dispatchContext.executionProfile,
         workspace_policy: dispatchContext.workspacePolicy,
+        policies: dispatchContext.policies,
         execution_target: dispatchContext.executionTarget,
         tool_assignments: dispatchContext.toolAssignments,
       };
