@@ -223,6 +223,121 @@ func TestDispatchHelperManagedPromptFallback(t *testing.T) {
 	assertOutput(t, events, "fallback answer")
 }
 
+func TestDispatchHelperManagedPromptFallbackForOllamaNativeToolTemplateError(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		var req chatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if attempts == 1 {
+			if len(req.Tools) == 0 {
+				t.Fatal("first request did not include native tools")
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":{"message":"XML syntax error on line 25: element \u003cparameter\u003e closed by \u003c/function\u003e","type":"api_error"}}`))
+			return
+		}
+		if len(req.Tools) != 0 {
+			t.Fatalf("fallback tools = %#v, want none", req.Tools)
+		}
+		if req.Messages[0].Role != "system" {
+			t.Fatalf("first fallback message role = %q, want system", req.Messages[0].Role)
+		}
+		if attempts == 2 {
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"tool_call\":{\"id\":\"call_prompt\",\"name\":\"filesystem_read\",\"arguments\":{\"path\":\"README.md\"}}}"},"finish_reason":"stop"}]}`))
+			return
+		}
+		if got := req.Messages[len(req.Messages)-1].Role; got != "tool" {
+			t.Fatalf("last message role = %q, want tool", got)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"fallback answer"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	executor := &fakeToolExecutor{result: runner.ToolCallResult{ToolCallID: "call_prompt", Success: true, Output: "contents"}}
+	r, err := New(Config{Endpoint: server.URL + "/v1", Model: "local-model", ToolExecutor: executor})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	var events []any
+	err = r.Dispatch(context.Background(), runner.ChatCompletionInput{
+		Messages:        []runner.ChatMessage{{Role: "user", Content: "read"}},
+		ToolCallingMode: "helper_managed",
+		ToolDefinitions: []runner.ToolDefinition{{
+			Name:             "filesystem_read",
+			ParametersSchema: map[string]any{"type": "object"},
+			ExecutionKind:    "helper",
+		}},
+	}, func(event any) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if executor.calls != 1 {
+		t.Fatalf("executor calls = %d, want 1", executor.calls)
+	}
+	assertOutput(t, events, "fallback answer")
+}
+
+func TestDispatchHelperManagedPromptFallbackRetryDoesNotConsumeIteration(t *testing.T) {
+	attempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		var req chatRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if attempts == 1 {
+			if len(req.Tools) == 0 {
+				t.Fatal("first request did not include native tools")
+			}
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":{"message":"XML syntax error on line 25: element \u003cparameter\u003e closed by \u003c/function\u003e","type":"api_error"}}`))
+			return
+		}
+		if len(req.Tools) != 0 {
+			t.Fatalf("fallback tools = %#v, want none", req.Tools)
+		}
+		if req.Messages[0].Role != "system" {
+			t.Fatalf("first fallback message role = %q, want system", req.Messages[0].Role)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"fallback answer"},"finish_reason":"stop"}]}`))
+	}))
+	defer server.Close()
+
+	r, err := New(Config{Endpoint: server.URL + "/v1", Model: "local-model", ToolExecutor: &fakeToolExecutor{}})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	var events []any
+	err = r.Dispatch(context.Background(), runner.ChatCompletionInput{
+		Messages:        []runner.ChatMessage{{Role: "user", Content: "read"}},
+		ToolCallingMode: "helper_managed",
+		ToolCallingConfig: &runner.ToolCallingConfig{
+			MaxIterations: 1,
+		},
+		ToolDefinitions: []runner.ToolDefinition{{
+			Name:             "filesystem_read",
+			ParametersSchema: map[string]any{"type": "object"},
+			ExecutionKind:    "helper",
+		}},
+	}, func(event any) error {
+		events = append(events, event)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if attempts != 2 {
+		t.Fatalf("attempts = %d, want native request plus same-iteration fallback", attempts)
+	}
+	assertOutput(t, events, "fallback answer")
+}
+
 func TestDispatchHelperManagedPromptFallbackReturnsAbsentToolAsResult(t *testing.T) {
 	attempts := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

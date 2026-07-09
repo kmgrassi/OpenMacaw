@@ -37,3 +37,39 @@ export async function parseModelResponse(response: globalThis.Response): Promise
 
   return (await response.json()) as ChatCompletionResponse;
 }
+
+function normalizeProviderErrorText(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/\\u003c/g, "<")
+    .replace(/\\u003e/g, ">");
+}
+
+function mentionsToolProtocol(value: string) {
+  return value.includes("tools") || value.includes("functions") || value.includes("tool_choice");
+}
+
+function isOllamaNativeToolTemplateError(value: string) {
+  return (
+    value.includes("xml syntax error") &&
+    (value.includes("<parameter>") || value.includes("parameter")) &&
+    (value.includes("<function>") || value.includes("function"))
+  );
+}
+
+export async function shouldFallbackToPromptTools(response: globalThis.Response): Promise<boolean> {
+  if (response.ok) return false;
+
+  if (response.status === 400) return true;
+
+  if (response.status !== 422 && response.status !== 500) return false;
+
+  const errorText = normalizeProviderErrorText(
+    await response
+      .clone()
+      .text()
+      .catch(() => ""),
+  );
+  if (response.status === 422) return mentionsToolProtocol(errorText);
+  return mentionsToolProtocol(errorText) || isOllamaNativeToolTemplateError(errorText);
+}

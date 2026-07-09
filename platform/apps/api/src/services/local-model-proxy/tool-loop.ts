@@ -5,7 +5,7 @@ import { executeToolCall, type ToolExecutionContext } from "../tool-execution-cl
 import { toOpenAIToolSpecs, toolsByProviderFunctionName, type ToolDefinition } from "../tool-spec-translator.js";
 import { resolveLocalWorkspaceRoot } from "./endpoint.js";
 import { messageWithToolCalls, promptFallbackConversationMessages } from "./messages.js";
-import { callLocalModel, parseModelResponse } from "./upstream.js";
+import { callLocalModel, parseModelResponse, shouldFallbackToPromptTools } from "./upstream.js";
 import type { ChatCompletionResponse, ChatMessage } from "./types.js";
 
 const DEFAULT_TOOL_CALL_MAX_ITERATIONS = 10;
@@ -54,7 +54,7 @@ export async function chatWithTools(input: {
       tools: promptFallback ? undefined : openAiTools,
     });
 
-    if (response.status === 400 && !promptFallback) {
+    if (!promptFallback && (await shouldFallbackToPromptTools(response))) {
       promptFallback = true;
       response = await callLocalModel({
         chatUrl: input.chatUrl,
