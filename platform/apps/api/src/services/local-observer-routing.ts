@@ -177,6 +177,10 @@ function remediationKindFor(judgment: LocalObserverEvaluationJudgment) {
     return "none" as const;
   }
 
+  if (judgment.failureModes.includes("unsafe_action")) {
+    return "human_review" as const;
+  }
+
   if (
     judgment.failureModes.includes("bad_arguments") ||
     judgment.failureModes.includes("wrong_tool") ||
@@ -187,6 +191,7 @@ function remediationKindFor(judgment: LocalObserverEvaluationJudgment) {
 
   if (
     judgment.failureModes.includes("wasted_tokens") ||
+    judgment.failureModes.includes("unnecessary_tool_call") ||
     judgment.failureModes.includes("missed_escalation") ||
     judgment.failureModes.includes("premature_escalation")
   ) {
@@ -195,10 +200,6 @@ function remediationKindFor(judgment: LocalObserverEvaluationJudgment) {
 
   if (judgment.failureModes.includes("missed_context")) {
     return "code_change" as const;
-  }
-
-  if (judgment.failureModes.includes("unsafe_action")) {
-    return "human_review" as const;
   }
 
   return "eval_fixture" as const;

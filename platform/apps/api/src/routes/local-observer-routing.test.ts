@@ -258,6 +258,63 @@ describe("local observer routing routes", () => {
     expect(body.workItemDraft?.metadata.failureModes).toEqual(["wrong_tool", "wasted_tokens"]);
   });
 
+  it("routes unsafe actions to human review before other remediation kinds", async () => {
+    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/propose-remediation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        trace,
+        judgment: {
+          verdict: "incorrect",
+          confidence: 0.94,
+          reasoning: "The agent used the wrong tool and attempted an unsafe destructive action.",
+          observedBehavior: "The local routing agent called dispatch_runner with unsafe arguments.",
+          expectedBehavior: "The agent should have escalated for human review.",
+          failureModes: ["wrong_tool", "unsafe_action"],
+          strengths: [],
+          issues: ["Unsafe action should not be folded into schema remediation."],
+          suggestedFollowUp: "Ask a human reviewer to inspect the trace before automation changes.",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = ProposeLocalObserverRemediationResponseSchema.parse(await response.json());
+
+    expect(body.proposal.remediationKind).toBe("human_review");
+    expect(body.workItemDraft?.labels).toContain("remediation:human_review");
+    expect(body.workItemDraft?.labels).toContain("severity:high");
+  });
+
+  it("classifies unnecessary tool calls as prompt guidance", async () => {
+    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/propose-remediation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        trace,
+        judgment: {
+          verdict: "incorrect",
+          confidence: 0.86,
+          reasoning: "The PR needed no action, but the agent still dispatched a runner.",
+          observedBehavior: "The local routing agent called dispatch_runner unnecessarily.",
+          expectedBehavior: "The agent should have stopped without another tool call.",
+          failureModes: ["unnecessary_tool_call"],
+          strengths: [],
+          issues: ["Started a runner when no work remained."],
+          suggestedFollowUp: "Clarify no-op guidance for clean PR states.",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = ProposeLocalObserverRemediationResponseSchema.parse(await response.json());
+
+    expect(body.proposal.remediationKind).toBe("prompt_guidance");
+    expect(body.proposal.dedupeKey).toContain("unnecessary-tool-call");
+  });
+
   it("does not create a work-item draft for correct judgments", async () => {
     const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/propose-remediation`, {
       method: "POST",
