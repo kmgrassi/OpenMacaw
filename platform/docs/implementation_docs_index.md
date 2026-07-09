@@ -163,6 +163,9 @@ In-flight work. Each entry should map to one or more open PRs.
 - [active/query-invalidation-large-file-refactor.md](active/query-invalidation-large-file-refactor.md)
   — Split the frontend query invalidation module into focused helpers while
   keeping the public facade stable.
+- [active/stored-agent-activation-service-scope.md](active/stored-agent-activation-service-scope.md)
+  — Extract a shared service for stored-agent credential launch and agent
+  activation so validation and launcher orchestration stay aligned.
 - [active/provider-execution-adapter-rollout-scope.md](active/provider-execution-adapter-rollout-scope.md)
   — Add execution adapters for xAI, Google (Gemini), Mistral, Groq,
   OpenRouter, Together, Perplexity, Azure OpenAI, and Bedrock so all
