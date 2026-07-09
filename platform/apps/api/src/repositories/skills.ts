@@ -32,6 +32,7 @@ const SkillRowSchema = z.object({
 });
 
 type SkillRow = z.infer<typeof SkillRowSchema>;
+type SkillUpdatePayload = Partial<Pick<SkillRow, "name" | "description" | "body" | "status">>;
 
 export const MaterializedSkillSchema = z.object({
   id: z.string(),
@@ -53,22 +54,35 @@ export type SkillsSnapshot = z.infer<typeof SkillsSnapshotSchema>;
 const SKILL_SELECT =
   "id,workspace_id,agent_id,name,description,body,status,copied_from_skill_id,created_by_agent_id,created_by_user_id,source_run_id,created_at,updated_at" as const;
 
-type UntypedSkillQuery = {
-  select(columns: string): UntypedSkillQuery;
-  update(payload: Record<string, unknown>): UntypedSkillQuery;
-  eq(column: string, value: unknown): UntypedSkillQuery;
-  order(column: string, options?: Record<string, unknown>): UntypedSkillQuery;
-  limit(count: number): PromiseLike<{ data: unknown; error: Parameters<typeof normalizeSupabaseError>[1] | null }>;
-  maybeSingle(): PromiseLike<{ data: unknown; error: Parameters<typeof normalizeSupabaseError>[1] | null }>;
-  single(): PromiseLike<{ data: unknown; error: Parameters<typeof normalizeSupabaseError>[1] | null }>;
+type SupabaseError = Parameters<typeof normalizeSupabaseError>[1];
+
+type TypedSkillRowsResponse = PromiseLike<{
+  data: SkillRow[] | null;
+  error: SupabaseError | null;
+}>;
+
+type TypedSkillSingleResponse = PromiseLike<{
+  data: SkillRow | null;
+  error: SupabaseError | null;
+}>;
+
+type TypedSkillQuery = TypedSkillRowsResponse & {
+  select(columns: string): TypedSkillQuery;
+  update(payload: SkillUpdatePayload): TypedSkillQuery;
+  eq(column: string, value: unknown): TypedSkillQuery;
+  order(column: string, options?: { ascending?: boolean }): TypedSkillQuery;
+  limit(count: number): TypedSkillQuery;
+  maybeSingle(): TypedSkillSingleResponse;
+  single(): TypedSkillSingleResponse;
 };
 
-type UntypedSupabase = {
-  from(table: string): UntypedSkillQuery;
+type TypedSkillTable = {
+  select(columns: string): TypedSkillQuery;
+  update(payload: SkillUpdatePayload): TypedSkillQuery;
 };
 
-function skillTable() {
-  return (getServiceRoleSupabase() as unknown as UntypedSupabase).from("skill");
+function skillTable(): TypedSkillTable {
+  return getServiceRoleSupabase().from("skill" as never) as unknown as TypedSkillTable;
 }
 
 function toSkill(row: SkillRow): Skill {
@@ -89,7 +103,7 @@ function toSkill(row: SkillRow): Skill {
   });
 }
 
-function skillUpdatePayload(input: SkillUpdateRequest) {
+function skillUpdatePayload(input: SkillUpdateRequest): SkillUpdatePayload {
   const request = SkillUpdateRequestSchema.parse(input);
   return {
     ...(request.name !== undefined ? { name: request.name } : {}),
