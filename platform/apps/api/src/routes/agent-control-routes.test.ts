@@ -267,6 +267,38 @@ describe("agent control routes", () => {
     expect(createAgentControlMessage).toHaveBeenCalledWith(expect.objectContaining({ targetAgentId, observerAgentId }));
   });
 
+  it("requires auth before fetching agent details", async () => {
+    launcherClient.getAgent = vi.fn();
+
+    const response = await fetch(`${baseUrl}/api/agents/${targetAgentId}`);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "auth_required" },
+    });
+    expect(assertAgentAccess).not.toHaveBeenCalled();
+    expect(launcherClient.getAgent).not.toHaveBeenCalled();
+  });
+
+  it("checks workspace-scoped agent access before fetching agent details", async () => {
+    launcherClient.getAgent = vi.fn().mockResolvedValue({
+      status: 200,
+      data: { data: { id: targetAgentId, workspace_id: workspaceId } },
+    });
+
+    const response = await fetch(`${baseUrl}/api/agents/${targetAgentId}`, {
+      headers: { authorization: "Bearer test-token" },
+    });
+
+    expect(response.status).toBe(200);
+    expect(assertAgentAccess).toHaveBeenCalledWith({
+      accessToken: "test-token",
+      userId,
+      agentId: targetAgentId,
+    });
+    expect(launcherClient.getAgent).toHaveBeenCalledWith(targetAgentId);
+  });
+
   it("starts launcher-managed agents with approved skills snapshot", async () => {
     launcherClient.startAgent = vi.fn().mockResolvedValue({
       status: 202,

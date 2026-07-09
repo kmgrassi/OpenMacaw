@@ -53,15 +53,15 @@ defmodule SymphonyElixir.Launcher.Server do
   alias SymphonyElixir.Launcher.AgentStarter
   alias SymphonyElixir.Launcher.ConfigRegistry
   alias SymphonyElixir.Launcher.EngineInstanceSync
-  alias SymphonyElixir.Launcher.GatewayConfig
+  alias SymphonyElixir.Launcher.GatewayApply
   alias SymphonyElixir.Launcher.LifecycleLog
+  alias SymphonyElixir.Launcher.OrchestratorEntry
   alias SymphonyElixir.Launcher.RuntimeConfig
   alias SymphonyElixir.Launcher.StateManager
   alias SymphonyElixir.Launcher.WorkspaceRuntime
   alias SymphonyElixir.Orchestrator.Starter
   alias SymphonyElixir.Planning.PlanHandoff
   alias SymphonyElixir.RuntimeLog
-  alias SymphonyElixir.Time
 
   @dynamic_supervisor SymphonyElixir.Launcher.DynamicSupervisor
   @default_heartbeat_ms 30_000
@@ -86,10 +86,17 @@ defmodule SymphonyElixir.Launcher.Server do
     GenServer.call(__MODULE__, :list_orchestrators)
   end
 
-  @spec workspace_active_agents_count(String.t(), keyword()) :: {:ok, non_neg_integer()} | {:error, term()}
-  def workspace_active_agents_count(workspace_id, opts \\ []) when is_binary(workspace_id) and workspace_id != "" do
+  @spec workspace_active_agents_count(String.t(), keyword()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def workspace_active_agents_count(workspace_id, opts \\ [])
+      when is_binary(workspace_id) and workspace_id != "" do
     exclude_pid = Keyword.get(opts, :exclude_pid)
-    GenServer.call(__MODULE__, {:workspace_active_agents_count, workspace_id, exclude_pid}, 15_000)
+
+    GenServer.call(
+      __MODULE__,
+      {:workspace_active_agents_count, workspace_id, exclude_pid},
+      15_000
+    )
   catch
     :exit, _reason -> {:error, :launcher_unavailable}
   end
@@ -193,7 +200,10 @@ defmodule SymphonyElixir.Launcher.Server do
         RuntimeLog.log(
           :info,
           :agent_stop_requested,
-          runtime_log_fields(entry, LifecycleLog.start_fields(entry, %{desired_state: :stopped}))
+          OrchestratorEntry.runtime_log_fields(
+            entry,
+            LifecycleLog.start_fields(entry, %{desired_state: :stopped})
+          )
         )
 
         do_stop_orchestrator(entry)
@@ -206,13 +216,13 @@ defmodule SymphonyElixir.Launcher.Server do
         RuntimeLog.log(
           :info,
           :agent_stopped,
-          runtime_log_fields(
+          OrchestratorEntry.runtime_log_fields(
             stopped_entry,
             LifecycleLog.completion_fields(stopped_entry, started_at, %{desired_state: :stopped})
           )
         )
 
-        {:reply, {:ok, serialize_entry(stopped_entry)}, new_state}
+        {:reply, {:ok, OrchestratorEntry.serialize(stopped_entry)}, new_state}
     end
   end
 
@@ -230,7 +240,7 @@ defmodule SymphonyElixir.Launcher.Server do
     orchestrators =
       state.orchestrators
       |> Map.values()
-      |> Enum.map(&serialize_entry/1)
+      |> Enum.map(&OrchestratorEntry.serialize/1)
 
     {:reply, orchestrators, state}
   end
@@ -244,7 +254,7 @@ defmodule SymphonyElixir.Launcher.Server do
   def handle_call({:get_orchestrator, id}, _from, state) do
     case Map.get(state.orchestrators, id) do
       nil -> {:reply, {:error, :not_found}, state}
-      entry -> {:reply, {:ok, serialize_entry(entry)}, state}
+      entry -> {:reply, {:ok, OrchestratorEntry.serialize(entry)}, state}
     end
   end
 
@@ -292,7 +302,7 @@ defmodule SymphonyElixir.Launcher.Server do
         {:ok, profile} = ExecutionProfile.normalize_from_config(config)
         id = generate_id()
         port = next_orchestrator_port(state.next_port)
-        trace_id = trace_id_from_config(config)
+        trace_id = OrchestratorEntry.trace_id_from_config(config)
 
         RuntimeLog.log(
           :info,
@@ -312,21 +322,14 @@ defmodule SymphonyElixir.Launcher.Server do
           {:ok, pid} ->
             ref = Process.monitor(pid)
 
-            entry = %{
-              id: id,
-              pid: pid,
-              ref: ref,
-              port: port,
-              config: config,
-              started_at: DateTime.utc_now(),
-              status: :running,
-              agent_id: agent.id,
-              type: Agent.kind(agent),
-              agent_name: agent.name,
-              workspace_id: agent.workspace_id,
-              project_id: agent.project_id,
-              restart_count: 0
-            }
+            entry =
+              OrchestratorEntry.new(id, pid, ref, port, config, %{
+                agent_id: agent.id,
+                type: Agent.kind(agent),
+                agent_name: agent.name,
+                workspace_id: agent.workspace_id,
+                project_id: agent.project_id
+              })
 
             new_state = %{
               state
@@ -336,22 +339,22 @@ defmodule SymphonyElixir.Launcher.Server do
 
             StateManager.persist(new_state)
             EngineInstanceSync.record_state(entry, :running)
-            record_gateway_apply(resolution, :ok, id)
+            GatewayApply.record(resolution, :ok, id)
 
             RuntimeLog.log(
               :info,
               :agent_started,
-              runtime_log_fields(
+              OrchestratorEntry.runtime_log_fields(
                 entry,
                 LifecycleLog.completion_fields(entry, started_at, %{trace_id: trace_id})
                 |> Map.merge(ExecutionProfile.log_fields(profile))
               )
             )
 
-            {:reply, {:ok, serialize_entry(entry)}, new_state}
+            {:reply, {:ok, OrchestratorEntry.serialize(entry)}, new_state}
 
           {:error, reason} = error ->
-            record_gateway_apply(resolution, :error, nil, error: RuntimeConfig.format_error(reason))
+            GatewayApply.record(resolution, :error, nil, error: RuntimeConfig.format_error(reason))
 
             fields =
               LifecycleLog.log_failure(
@@ -379,7 +382,12 @@ defmodule SymphonyElixir.Launcher.Server do
           LifecycleLog.log_failure(
             :error,
             :agent_start_failed,
-            %{agent_id: agent.id, workspace_id: agent.workspace_id, desired_state: :running, actual_state: :failed},
+            %{
+              agent_id: agent.id,
+              workspace_id: agent.workspace_id,
+              desired_state: :running,
+              actual_state: :failed
+            },
             started_at,
             reason,
             operation: :config_resolution
@@ -395,20 +403,25 @@ defmodule SymphonyElixir.Launcher.Server do
         config = AgentStarter.inject_plan_handoff(config, handoff)
 
         cond do
-          incomplete_credential_refresh?(metadata) and RuntimeConfig.resolved_credentials?(entry.config) ->
-            RuntimeLog.log(:warning, :agent_start_credential_refresh_incomplete_reusing_runtime, %{
-              agent_id: agent.id,
-              workspace_id: agent.workspace_id,
-              run_id: entry.id,
-              port: entry.port,
-              reason: inspect(Map.get(metadata, :credential_refresh)),
-              retryable: true
-            })
+          incomplete_credential_refresh?(metadata) and
+              RuntimeConfig.resolved_credentials?(entry.config) ->
+            RuntimeLog.log(
+              :warning,
+              :agent_start_credential_refresh_incomplete_reusing_runtime,
+              %{
+                agent_id: agent.id,
+                workspace_id: agent.workspace_id,
+                run_id: entry.id,
+                port: entry.port,
+                reason: inspect(Map.get(metadata, :credential_refresh)),
+                retryable: true
+              }
+            )
 
-            {:reply, {:ok, serialize_entry(entry, true)}, state}
+            {:reply, {:ok, OrchestratorEntry.serialize(entry, true)}, state}
 
           RuntimeConfig.equivalent?(entry.config, config) ->
-            {:reply, {:ok, serialize_entry(entry, true)}, state}
+            {:reply, {:ok, OrchestratorEntry.serialize(entry, true)}, state}
 
           true ->
             restart_agent_orchestrator(agent, entry, state, config, resolution)
@@ -424,13 +437,13 @@ defmodule SymphonyElixir.Launcher.Server do
           retryable: true
         })
 
-        {:reply, {:ok, serialize_entry(entry, true)}, state}
+        {:reply, {:ok, OrchestratorEntry.serialize(entry, true)}, state}
     end
   end
 
   defp restart_agent_orchestrator(%Agent{} = agent, entry, state, config, resolution) do
     started_at = System.monotonic_time(:millisecond)
-    trace_id = trace_id_from_config(config)
+    trace_id = OrchestratorEntry.trace_id_from_config(config)
     {:ok, profile} = ExecutionProfile.normalize_from_config(config)
 
     RuntimeLog.log(
@@ -455,39 +468,38 @@ defmodule SymphonyElixir.Launcher.Server do
       {:ok, pid} ->
         ref = Process.monitor(pid)
 
-        updated_entry = %{
-          entry
-          | pid: pid,
-            ref: ref,
-            config: config,
-            started_at: DateTime.utc_now(),
-            status: :running,
+        updated_entry =
+          OrchestratorEntry.restarted(entry, pid, ref, config, %{
             type: Agent.kind(agent),
             agent_name: agent.name,
             workspace_id: agent.workspace_id,
-            project_id: agent.project_id,
-            restart_count: Map.get(entry, :restart_count, 0) + 1
+            project_id: agent.project_id
+          })
+
+        new_state = %{
+          state
+          | orchestrators: Map.put(state.orchestrators, entry.id, updated_entry)
         }
 
-        new_state = %{state | orchestrators: Map.put(state.orchestrators, entry.id, updated_entry)}
         StateManager.persist(new_state)
         EngineInstanceSync.record_state(updated_entry, :running)
-        record_gateway_apply(resolution, :ok, entry.id)
+        GatewayApply.record(resolution, :ok, entry.id)
 
         RuntimeLog.log(
           :info,
           :agent_restarted_for_config_change,
-          runtime_log_fields(
+          OrchestratorEntry.runtime_log_fields(
             updated_entry,
             LifecycleLog.completion_fields(updated_entry, started_at, %{trace_id: trace_id})
             |> Map.merge(ExecutionProfile.log_fields(profile))
           )
         )
 
-        {:reply, {:ok, serialize_entry(updated_entry, false)}, new_state}
+        {:reply, {:ok, OrchestratorEntry.serialize(updated_entry, false)}, new_state}
 
       {:error, reason} = error ->
-        record_gateway_apply(resolution, :error, entry.id, error: RuntimeConfig.format_error(reason))
+        GatewayApply.record(resolution, :error, entry.id, error: RuntimeConfig.format_error(reason))
+
         EngineInstanceSync.update_status(entry, :failed)
 
         fields =
@@ -508,7 +520,12 @@ defmodule SymphonyElixir.Launcher.Server do
             operation: :restart_for_config_change
           )
 
-        new_state = %{state | orchestrators: Map.delete(state.orchestrators, entry.id), latest_failure: fields}
+        new_state = %{
+          state
+          | orchestrators: Map.delete(state.orchestrators, entry.id),
+            latest_failure: fields
+        }
+
         StateManager.persist(new_state)
         {:reply, error, new_state}
     end
@@ -565,7 +582,7 @@ defmodule SymphonyElixir.Launcher.Server do
     started_at = System.monotonic_time(:millisecond)
     id = generate_id()
     port = next_orchestrator_port(state.next_port)
-    trace_id = trace_id_from_config(config)
+    trace_id = OrchestratorEntry.trace_id_from_config(config)
 
     RuntimeLog.log(
       :info,
@@ -583,16 +600,7 @@ defmodule SymphonyElixir.Launcher.Server do
       {:ok, pid} ->
         ref = Process.monitor(pid)
 
-        entry = %{
-          id: id,
-          pid: pid,
-          ref: ref,
-          port: port,
-          config: config,
-          started_at: DateTime.utc_now(),
-          status: :running,
-          restart_count: 0
-        }
+        entry = OrchestratorEntry.new(id, pid, ref, port, config)
 
         new_state = %{
           state
@@ -602,12 +610,12 @@ defmodule SymphonyElixir.Launcher.Server do
 
         StateManager.persist(new_state)
 
-        reply = serialize_entry(entry)
+        reply = OrchestratorEntry.serialize(entry)
 
         RuntimeLog.log(
           :info,
           :agent_started,
-          runtime_log_fields(
+          OrchestratorEntry.runtime_log_fields(
             entry,
             LifecycleLog.completion_fields(entry, started_at, %{trace_id: trace_id})
             |> Map.merge(ExecutionProfile.log_fields(profile))
@@ -667,13 +675,7 @@ defmodule SymphonyElixir.Launcher.Server do
       {:ok, new_pid} ->
         new_ref = Process.monitor(new_pid)
 
-        updated_entry = %{
-          entry
-          | pid: new_pid,
-            ref: new_ref,
-            status: :running,
-            restart_count: Map.get(entry, :restart_count, 0) + 1
-        }
+        updated_entry = OrchestratorEntry.crash_restarted(entry, new_pid, new_ref)
 
         new_orchestrators = Map.put(state.orchestrators, id, updated_entry)
         new_state = %{state | orchestrators: new_orchestrators}
@@ -685,9 +687,12 @@ defmodule SymphonyElixir.Launcher.Server do
         RuntimeLog.log(
           :info,
           :agent_started,
-          runtime_log_fields(
+          OrchestratorEntry.runtime_log_fields(
             updated_entry,
-            LifecycleLog.completion_fields(updated_entry, started_at, %{restart: true, desired_state: :running})
+            LifecycleLog.completion_fields(updated_entry, started_at, %{
+              restart: true,
+              desired_state: :running
+            })
           )
         )
 
@@ -732,26 +737,8 @@ defmodule SymphonyElixir.Launcher.Server do
     "orch_#{hex}"
   end
 
-  defp serialize_entry(entry, reused \\ false) do
-    %{
-      id: entry.id,
-      port: entry.port,
-      config: entry.config,
-      started_at: format_datetime(entry.started_at),
-      status: to_string(entry.status),
-      reused: reused
-    }
-    |> maybe_put(:agent_id, Map.get(entry, :agent_id))
-    |> maybe_put(:type, Map.get(entry, :type))
-    |> maybe_put(:agent_name, Map.get(entry, :agent_name))
-    |> maybe_put(:workspace_id, Map.get(entry, :workspace_id))
-    |> maybe_put(:project_id, Map.get(entry, :project_id))
-    |> maybe_put(:restart_count, Map.get(entry, :restart_count))
-  end
-
-  defp format_datetime(value), do: Time.to_iso8601(value) || to_string(value)
-
-  defp reconcile_engine_instance_async(state), do: EngineInstanceSync.reconcile_async(state.orchestrators)
+  defp reconcile_engine_instance_async(state),
+    do: EngineInstanceSync.reconcile_async(state.orchestrators)
 
   defp incomplete_credential_refresh?(%{credential_refresh: {:incomplete, _reason}}), do: true
   defp incomplete_credential_refresh?(_metadata), do: false
@@ -794,72 +781,4 @@ defmodule SymphonyElixir.Launcher.Server do
       Path.expand("~/.symphony/launcher")
     )
   end
-
-  defp trace_id_from_config(config) when is_map(config) do
-    RuntimeLog.ensure_trace_id(
-      Map.get(config, "trace_id") ||
-        Map.get(config, :trace_id) ||
-        get_in(config, ["runtime", "trace_id"]) ||
-        get_in(config, [:runtime, :trace_id])
-    )
-  end
-
-  defp trace_id_from_config(_config), do: RuntimeLog.ensure_trace_id(nil)
-
-  defp runtime_log_fields(entry, extra) do
-    %{
-      agent_id: Map.get(entry, :agent_id),
-      workspace_id: Map.get(entry, :workspace_id),
-      run_id: Map.get(entry, :id),
-      port: Map.get(entry, :port),
-      status: Map.get(entry, :status),
-      agent_type: Map.get(entry, :type),
-      host: EngineInstanceSync.host(),
-      desired_state: Map.get(entry, :desired_state),
-      actual_state: Map.get(entry, :status),
-      restart_count: Map.get(entry, :restart_count)
-    }
-    |> Map.merge(ExecutionProfile.log_fields(get_in(entry, [:config, "execution_profile"])))
-    |> Map.merge(extra)
-  end
-
-  defp record_gateway_apply(resolution, status, broker_instance_id, opts \\ [])
-
-  defp record_gateway_apply(nil, _status, _broker_instance_id, _opts), do: :ok
-
-  defp record_gateway_apply(%{scope_type: scope_type, scope_id: scope_id} = resolution, :ok, broker_instance_id, _opts) do
-    case GatewayConfig.record_apply_state(scope_type, scope_id, :ok,
-           last_applied_hash: Map.get(resolution, :config_hash),
-           last_applied_version: Map.get(resolution, :version),
-           broker_instance_id: broker_instance_id
-         ) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("Failed to record gateway_config_state ok for #{scope_type}/#{scope_id}: #{inspect(reason)}")
-
-        :ok
-    end
-  end
-
-  defp record_gateway_apply(%{scope_type: scope_type, scope_id: scope_id}, :error, broker_instance_id, opts) do
-    error_message = Keyword.get(opts, :error)
-
-    case GatewayConfig.record_apply_state(scope_type, scope_id, :error,
-           broker_instance_id: broker_instance_id,
-           last_apply_error: error_message
-         ) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("Failed to record gateway_config_state error for #{scope_type}/#{scope_id}: #{inspect(reason)}")
-
-        :ok
-    end
-  end
-
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end
