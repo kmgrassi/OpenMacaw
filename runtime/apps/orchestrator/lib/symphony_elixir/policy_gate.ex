@@ -9,6 +9,7 @@ defmodule SymphonyElixir.PolicyGate do
 
   require Logger
 
+  alias SymphonyElixir.Policy.Engine
   alias SymphonyElixir.PostgRESTClient
 
   @escalation_table "escalation"
@@ -36,6 +37,7 @@ defmodule SymphonyElixir.PolicyGate do
       end
     end)
     |> resolve_ask(event)
+    |> resolve_stateful_policies(event)
   end
 
   def evaluate(_event), do: :allow
@@ -145,6 +147,53 @@ defmodule SymphonyElixir.PolicyGate do
   end
 
   defp resolve_ask(verdict, _event), do: verdict
+
+  defp resolve_stateful_policies(:allow, event) do
+    case stateful_policies(event.session) do
+      [] ->
+        :allow
+
+      policies ->
+        stateful_event = put_in(event, [:session, :policies], policies)
+
+        case Engine.evaluate(stateful_event) do
+          :allow -> :allow
+          {:deny, reason} -> {:deny, stateful_deny_payload(reason, event)}
+          {:ask, reason} -> {:ask, stateful_ask_payload(reason, event)}
+        end
+    end
+  end
+
+  defp resolve_stateful_policies(verdict, _event), do: verdict
+
+  defp stateful_policies(session) do
+    session
+    |> policies()
+    |> Enum.filter(&(map_value(&1, :kind) in ["max_tool_calls_per_session", :max_tool_calls_per_session]))
+  end
+
+  defp stateful_deny_payload(reason, event) do
+    %{
+      "reason" => reason,
+      "verdict" => "deny",
+      "policy_kind" => "max_tool_calls_per_session",
+      "tool_name" => event.target,
+      "arguments" => event.data,
+      "workspace_id" => session_value(event.session, :workspace_id),
+      "agent_id" => session_value(event.session, :agent_id),
+      "session_thread_id" => session_value(event.session, :session_thread_id) || session_value(event.session, :session_id),
+      "run_id" => session_value(event.session, :run_id),
+      "work_item_id" => session_value(event.session, :work_item_id)
+    }
+    |> Enum.reject(fn {_key, value} -> value in [nil, ""] end)
+    |> Map.new()
+  end
+
+  defp stateful_ask_payload(reason, event) do
+    stateful_deny_payload(reason, event)
+    |> Map.put("verdict", "ask")
+    |> Map.put("approval_state", "requested")
+  end
 
   defp approval_response(session, request) do
     case first_present(session, [:policy_approval_callback, "policy_approval_callback"]) do

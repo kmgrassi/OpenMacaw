@@ -34,6 +34,7 @@ defmodule SymphonyElixir.Application do
         SymphonyElixir.WorkflowStore,
         SymphonyElixir.RepoCache.Registry,
         SymphonyElixir.Orchestrator.WorkerSlotReservations,
+        SymphonyElixir.Policy.Engine,
         SymphonyElixir.RuntimeLease.Registry,
         SymphonyElixir.LocalRuntime.Registry,
         SymphonyElixir.Cutover.Cooldown,
