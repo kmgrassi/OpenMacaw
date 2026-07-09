@@ -122,6 +122,10 @@ In-flight work. Each entry should map to one or more open PRs.
 - [active/local-openclaw-helper-scope.md](active/local-openclaw-helper-scope.md)
   — Add OpenClaw as a first-class local-runtime kind: wizard, install command,
   routing-rule editor; cross-repo plan (platform, runtime, helper, harper-server).
+- [active/local-observer-routing-evals-scope.md](active/local-observer-routing-evals-scope.md)
+  — Agent-observer evals where a stronger evaluator periodically reviews
+  weaker/local agent traces and judges whether their tool-use or routing
+  decisions were correct.
 - [active/manager-as-regular-agent-scope.md](active/manager-as-regular-agent-scope.md)
   — Stop treating manager agents as a separate runtime + platform surface;
   collapse SessionResolver, Runner.Manager, dual-write, and manager-only
@@ -159,6 +163,9 @@ In-flight work. Each entry should map to one or more open PRs.
 - [active/query-invalidation-large-file-refactor.md](active/query-invalidation-large-file-refactor.md)
   — Split the frontend query invalidation module into focused helpers while
   keeping the public facade stable.
+- [active/stored-agent-activation-service-scope.md](active/stored-agent-activation-service-scope.md)
+  — Extract a shared service for stored-agent credential launch and agent
+  activation so validation and launcher orchestration stay aligned.
 - [active/provider-execution-adapter-rollout-scope.md](active/provider-execution-adapter-rollout-scope.md)
   — Add execution adapters for xAI, Google (Gemini), Mistral, Groq,
   OpenRouter, Together, Perplexity, Azure OpenAI, and Bedrock so all

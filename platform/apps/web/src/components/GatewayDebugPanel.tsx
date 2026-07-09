@@ -1,4 +1,5 @@
 import { useGatewayContext } from "../context/GatewayContext";
+import { formatProviderLabel } from "../lib/provider-labels";
 import { formatStatusLabel } from "../lib/status-labels";
 import { DiagnosticsExportButton } from "./DiagnosticsExportButton";
 import { Badge } from "./ui/Badge";
@@ -12,13 +13,6 @@ function badgeVariant(
   return "default";
 }
 
-function formatProviderLabel(provider: string | null | undefined): string {
-  const normalized = provider?.trim();
-  if (!normalized) return "Unknown";
-  if (normalized.toLowerCase() === "openai") return "OpenAI";
-  return formatStatusLabel(normalized);
-}
-
 type Props = {
   realtimeError?: string | null;
 };
@@ -27,7 +21,9 @@ export function GatewayDebugPanel({ realtimeError = null }: Props) {
   const { connected, status, diagnostics, gatewayReady, hello, scope, target } =
     useGatewayContext();
   const targetModel = target?.model ?? "Unconfigured";
-  const targetProvider = formatProviderLabel(target?.provider);
+  const targetProvider = formatProviderLabel(target?.provider, {
+    fallback: "Unknown",
+  });
 
   return (
     <div className="border-b border-slate-800 bg-slate-950/70 px-4 py-3 text-xs text-slate-300">
