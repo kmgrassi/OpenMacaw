@@ -77,6 +77,9 @@ describe("local observer routing routes", () => {
     expect(body.prompt).toContain('"repository": "kmgrassi/OpenMacaw"');
     expect(body.prompt).toContain("Return only JSON matching this schema");
     expect(body.outputSchema).toHaveProperty("type", "object");
+    expect(
+      ((body.outputSchema.properties as Record<string, unknown>).recommendedTarget as Record<string, unknown>).enum,
+    ).toEqual(["none", "manager", "codex", "claude_code", "human"]);
   });
 
   it("validates a matching routing recommendation", async () => {
@@ -122,6 +125,7 @@ describe("local observer routing routes", () => {
           evidence: ["small diff"],
           riskFlags: [],
         },
+        availableTargets: ["none", "manager", "codex", "claude_code", "human"],
         expectations: {
           recommendedTargetNotIn: ["local_model_coding"],
           intentEquals: "ask_human",
@@ -136,6 +140,7 @@ describe("local observer routing routes", () => {
 
     expect(body.valid).toBe(false);
     expect(body.failures.map((failure) => failure.assertionType)).toEqual([
+      "available_targets",
       "recommended_target_not_in",
       "intent_equals",
       "confidence_max",

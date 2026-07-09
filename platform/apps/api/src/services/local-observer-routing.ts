@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type {
+  LocalObserverRecommendedTarget,
   LocalObserverRoutingExpectation,
   RenderLocalObserverPromptRequest,
   RenderLocalObserverPromptResponse,
@@ -8,6 +9,7 @@ import type {
   ValidateLocalObserverRecommendationResponse,
 } from "../../../../contracts/local-observer-routing.js";
 import {
+  LocalObserverRecommendedTargetSchema,
   LocalObserverRoutingRecommendationSchema,
   RenderLocalObserverPromptResponseSchema,
   ValidateLocalObserverRecommendationResponseSchema,
@@ -27,10 +29,20 @@ function stableJson(value: unknown) {
   return JSON.stringify(value, null, 2);
 }
 
-function outputJsonSchema() {
-  return z.toJSONSchema(LocalObserverRoutingRecommendationSchema, {
+function outputJsonSchema(availableTargets: LocalObserverRecommendedTarget[]) {
+  const schema = z.toJSONSchema(LocalObserverRoutingRecommendationSchema, {
     io: "input",
   }) as Record<string, unknown>;
+
+  const properties = schema.properties;
+  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
+    const recommendedTarget = (properties as Record<string, unknown>).recommendedTarget;
+    if (recommendedTarget && typeof recommendedTarget === "object" && !Array.isArray(recommendedTarget)) {
+      (recommendedTarget as Record<string, unknown>).enum = availableTargets;
+    }
+  }
+
+  return schema;
 }
 
 export function renderLocalObserverPrompt(
@@ -38,6 +50,7 @@ export function renderLocalObserverPrompt(
 ): RenderLocalObserverPromptResponse {
   const availableTargets = request.availableTargets;
   const targetGuide = availableTargets.map((target) => `- ${target}: ${targetDescriptions[target]}`).join("\n");
+  const schema = outputJsonSchema(availableTargets);
 
   const prompt = [
     request.casePrompt ?? "Classify this artifact snapshot and recommend the next routing target.",
@@ -61,13 +74,13 @@ export function renderLocalObserverPrompt(
     "",
     "Return only JSON matching this schema:",
     "```json",
-    stableJson(outputJsonSchema()),
+    stableJson(schema),
     "```",
   ].join("\n");
 
   return RenderLocalObserverPromptResponseSchema.parse({
     prompt,
-    outputSchema: outputJsonSchema(),
+    outputSchema: schema,
     artifactSnapshot: request.artifactSnapshot,
     availableTargets,
   });
@@ -97,6 +110,17 @@ function validateExpectations(
 ) {
   const { recommendation } = request;
   const failures: ValidateLocalObserverRecommendationResponse["failures"] = [];
+  const availableTargets = request.availableTargets ?? LocalObserverRecommendedTargetSchema.options;
+
+  if (!availableTargets.includes(recommendation.recommendedTarget)) {
+    pushFailure(
+      failures,
+      "available_targets",
+      "Recommended target is outside the available target set.",
+      availableTargets,
+      recommendation.recommendedTarget,
+    );
+  }
 
   if (
     expectations.recommendedTargetIn &&

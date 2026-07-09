@@ -93,6 +93,17 @@ export const RenderLocalObserverPromptResponseSchema = z.object({
 
 export const ValidateLocalObserverRecommendationRequestSchema = z.object({
   recommendation: LocalObserverRoutingRecommendationSchema,
+  availableTargets: z
+    .array(LocalObserverRecommendedTargetSchema)
+    .default([
+      "none",
+      "manager",
+      "codex",
+      "claude_code",
+      "local_relay",
+      "local_model_coding",
+      "human",
+    ]),
   expectations: LocalObserverRoutingExpectationSchema.default({}),
 });
 
@@ -111,6 +122,9 @@ export const ValidateLocalObserverRecommendationResponseSchema = z.object({
 
 export type LocalObserverArtifactSnapshot = z.infer<
   typeof LocalObserverArtifactSnapshotSchema
+>;
+export type LocalObserverRecommendedTarget = z.infer<
+  typeof LocalObserverRecommendedTargetSchema
 >;
 export type LocalObserverRoutingRecommendation = z.infer<
   typeof LocalObserverRoutingRecommendationSchema
