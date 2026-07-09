@@ -56,6 +56,8 @@ export function registerResourceCredentialRoutes(app: Express) {
         const credential = await saveGitHubAppInstallationCredentialForWorkspace({
           userId: userId ?? null,
           credential: body,
+        }).catch((error) => {
+          throw asGitHubAppRouteError(error);
         });
 
         return res.status(200).json(

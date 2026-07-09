@@ -2,6 +2,40 @@ import { z } from "zod";
 
 export const ResourceCredentialProviderSchema = z.enum(["github"]);
 
+const ALLOWED_GITHUB_API_BASE_URL = "https://api.github.com";
+const ALLOWED_GITHUB_WEB_BASE_URL = "https://github.com";
+
+function parseUrl(value: string): URL | null {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
+function sameOriginUrl(allowedUrl: string) {
+  const allowed = new URL(allowedUrl);
+
+  return z
+    .string()
+    .trim()
+    .url()
+    .refine((value) => {
+      const url = parseUrl(value);
+      if (!url) return false;
+
+      return (
+        url.protocol === allowed.protocol &&
+        url.host === allowed.host &&
+        (url.pathname === "/" || url.pathname === "") &&
+        !url.search &&
+        !url.hash &&
+        !url.username &&
+        !url.password
+      );
+    }, `Must be ${allowedUrl}`);
+}
+
 export const GitHubAppInstallationCredentialRequestSchema = z
   .object({
     workspaceId: z.string().trim().min(1),
@@ -11,8 +45,8 @@ export const GitHubAppInstallationCredentialRequestSchema = z
       z.number().int().positive(),
     ]),
     displayName: z.string().trim().min(1).max(120).optional(),
-    apiBaseUrl: z.string().trim().url().optional(),
-    webBaseUrl: z.string().trim().url().optional(),
+    apiBaseUrl: sameOriginUrl(ALLOWED_GITHUB_API_BASE_URL).optional(),
+    webBaseUrl: sameOriginUrl(ALLOWED_GITHUB_WEB_BASE_URL).optional(),
     privateKey: z.string().trim().min(1).optional(),
     privateKeySecretRef: z.string().trim().min(1).optional(),
   })
