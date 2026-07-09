@@ -5,14 +5,25 @@ export const ResourceCredentialProviderSchema = z.enum(["github"]);
 const ALLOWED_GITHUB_API_BASE_URL = "https://api.github.com";
 const ALLOWED_GITHUB_WEB_BASE_URL = "https://github.com";
 
+function parseUrl(value: string): URL | null {
+  try {
+    return new URL(value);
+  } catch {
+    return null;
+  }
+}
+
 function sameOriginUrl(allowedUrl: string) {
+  const allowed = new URL(allowedUrl);
+
   return z
     .string()
     .trim()
     .url()
     .refine((value) => {
-      const url = new URL(value);
-      const allowed = new URL(allowedUrl);
+      const url = parseUrl(value);
+      if (!url) return false;
+
       return (
         url.protocol === allowed.protocol &&
         url.host === allowed.host &&
