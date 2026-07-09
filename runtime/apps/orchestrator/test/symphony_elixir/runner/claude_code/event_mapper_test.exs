@@ -31,6 +31,37 @@ defmodule SymphonyElixir.Runner.ClaudeCode.EventMapperTest do
             %{
               event: :tool_call_started,
               payload: %{
+                "method" => "tool.can_use_tool",
+                "params" => %{
+                  "tool_name" => "Bash",
+                  "tool_call_id" => "toolu_1",
+                  "name" => "Bash",
+                  "callId" => "toolu_1",
+                  "input" => %{"command" => "mix test"},
+                  "status" => "requested",
+                  "phase" => "request",
+                  "decision" => "allow",
+                  "source" => "claude_code"
+                }
+              }
+            }} =
+             EventMapper.normalize(
+               %{
+                 "method" => "tool/can_use_tool",
+                 "params" => %{
+                   "toolName" => "Bash",
+                   "toolUseId" => "toolu_1",
+                   "input" => %{"command" => "mix test"},
+                   "decision" => "allow"
+                 }
+               },
+               @opts
+             )
+
+    assert {:ok,
+            %{
+              event: :tool_call_started,
+              payload: %{
                 "method" => "tool.started",
                 "params" => %{
                   "tool_name" => "Bash",
