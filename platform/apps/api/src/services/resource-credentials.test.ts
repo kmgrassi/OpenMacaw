@@ -32,8 +32,8 @@ describe("GitHub App resource credentials", () => {
         provider: "github",
         app_id: "123",
         installation_id: "456",
-        api_base_url: "https://api.github.test",
-        web_base_url: "https://github.test",
+        api_base_url: "https://api.github.com",
+        web_base_url: "https://github.com",
         private_key_secret_ref: "secret/github-app",
       },
       updated_at: "2026-05-19T00:00:00.000Z",
@@ -65,7 +65,7 @@ describe("GitHub App resource credentials", () => {
     expect(JSON.stringify(token)).toContain("[redacted]");
     expect(resolveSecretReference).toHaveBeenCalledWith("secret/github-app", ["private_key", "GITHUB_APP_PRIVATE_KEY"]);
     expect(fetchFn).toHaveBeenCalledWith(
-      "https://api.github.test/app/installations/456/access_tokens",
+      "https://api.github.com/app/installations/456/access_tokens",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
@@ -88,8 +88,8 @@ describe("GitHub App resource credentials", () => {
         provider: "github",
         app_id: "123",
         installation_id: "456",
-        api_base_url: "https://api.github.test",
-        web_base_url: "https://github.test",
+        api_base_url: "https://api.github.com",
+        web_base_url: "https://github.com",
         private_key_secret_ref: "secret/github-app",
       },
       updated_at: "2026-05-19T00:00:00.000Z",
@@ -112,7 +112,7 @@ describe("GitHub App resource credentials", () => {
             number: 7,
             title: "Add Studio theme",
             state: "open",
-            html_url: "https://github.test/kmgrassi/PopcornReady/pull/7",
+            html_url: "https://github.com/kmgrassi/PopcornReady/pull/7",
             draft: false,
             updated_at: "2026-06-24T11:17:17Z",
             user: { login: "kmgrassi" },
@@ -138,7 +138,7 @@ describe("GitHub App resource credentials", () => {
           number: 7,
           title: "Add Studio theme",
           state: "open",
-          url: "https://github.test/kmgrassi/PopcornReady/pull/7",
+          url: "https://github.com/kmgrassi/PopcornReady/pull/7",
           author: "kmgrassi",
           draft: false,
           updatedAt: "2026-06-24T11:17:17Z",
@@ -146,7 +146,7 @@ describe("GitHub App resource credentials", () => {
       ],
     });
     expect(fetchFn).toHaveBeenCalledWith(
-      "https://api.github.test/repos/kmgrassi/PopcornReady/pulls?state=open&per_page=100&page=1",
+      "https://api.github.com/repos/kmgrassi/PopcornReady/pulls?state=open&per_page=100&page=1",
       expect.objectContaining({
         method: "GET",
         headers: expect.objectContaining({ authorization: "Bearer ghs_secret_installation_token" }),
@@ -167,8 +167,8 @@ describe("GitHub App resource credentials", () => {
         provider: "github",
         app_id: "123",
         installation_id: "456",
-        api_base_url: "https://api.github.test",
-        web_base_url: "https://github.test",
+        api_base_url: "https://api.github.com",
+        web_base_url: "https://github.com",
         private_key_secret_ref: "secret/github-app",
       },
       updated_at: "2026-05-19T00:00:00.000Z",
@@ -181,7 +181,7 @@ describe("GitHub App resource credentials", () => {
       number: n,
       title: `PR ${n}`,
       state: "open",
-      html_url: `https://github.test/kmgrassi/PopcornReady/pull/${n}`,
+      html_url: `https://github.com/kmgrassi/PopcornReady/pull/${n}`,
       draft: false,
       updated_at: "2026-06-24T11:17:17Z",
       user: { login: "kmgrassi" },
@@ -239,8 +239,8 @@ describe("GitHub App resource credentials", () => {
         provider: "github",
         app_id: "123",
         installation_id: "456",
-        api_base_url: "https://api.github.test",
-        web_base_url: "https://github.test",
+        api_base_url: "https://api.github.com",
+        web_base_url: "https://github.com",
         private_key_secret_ref: "secret/github-app",
       },
       updated_at: "2026-05-19T00:00:00.000Z",
@@ -260,7 +260,7 @@ describe("GitHub App resource credentials", () => {
     ).rejects.toMatchObject({
       code: "github_app_not_installed",
       status: 422,
-      remediation: expect.stringContaining("https://github.test/settings/installations"),
+      remediation: expect.stringContaining("https://github.com/settings/installations"),
     });
   });
 
@@ -277,8 +277,8 @@ describe("GitHub App resource credentials", () => {
         provider: "github",
         app_id: "123",
         installation_id: "456",
-        api_base_url: "https://api.github.test",
-        web_base_url: "https://github.test",
+        api_base_url: "https://api.github.com",
+        web_base_url: "https://github.com",
         private_key_secret_ref: "secret/github-app",
       },
       updated_at: "2026-05-19T00:00:00.000Z",
@@ -309,5 +309,42 @@ describe("GitHub App resource credentials", () => {
       status: 422,
       remediation: expect.stringContaining("kmgrassi/PopcornReady"),
     });
+  });
+
+  it("rejects custom GitHub base URLs before sending signed tokens off-box", async () => {
+    vi.mocked(resolveSecretReference).mockClear();
+    vi.mocked(getCredentialRowByIdForWorkspace).mockResolvedValue({
+      id: "credential-1",
+      agent_id: null,
+      workspace_id: "workspace-1",
+      user_id: "user-1",
+      format: "github_app_installation",
+      provider: "github",
+      display_name: "GitHub App",
+      key_value: {
+        provider: "github",
+        app_id: "123",
+        installation_id: "456",
+        api_base_url: "https://attacker.example",
+        web_base_url: "https://github.com",
+        private_key_secret_ref: "secret/github-app",
+      },
+      updated_at: "2026-05-19T00:00:00.000Z",
+      validated_at: null,
+      validation_state: "unknown",
+    });
+
+    await expect(
+      mintGitHubInstallationToken({
+        workspaceId: "workspace-1",
+        credentialId: "credential-1",
+      }),
+    ).rejects.toMatchObject({
+      code: "github_app_base_url_unsupported",
+      status: 400,
+      remediation: expect.stringContaining("Only the public GitHub endpoints are supported today"),
+    });
+
+    expect(resolveSecretReference).not.toHaveBeenCalled();
   });
 });
