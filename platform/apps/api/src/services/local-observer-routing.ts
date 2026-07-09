@@ -91,7 +91,11 @@ function toolNamesFromTrace(request: ReviewLocalObserverEvaluationRequest) {
   return new Set(request.trace.availableTools.map((tool) => tool.name));
 }
 
-function reviewJudgmentAgainstTrace(request: ReviewLocalObserverEvaluationRequest) {
+type ParsedReviewRequest = ReviewLocalObserverEvaluationRequest & {
+  judgment: LocalObserverEvaluationJudgment;
+};
+
+function reviewJudgmentAgainstTrace(request: ParsedReviewRequest) {
   const notices: ReviewLocalObserverEvaluationResponse["notices"] = [];
   const availableToolNames = toolNamesFromTrace(request);
   const calledUnknownTools = request.trace.toolCalls
@@ -130,7 +134,23 @@ function reviewJudgmentAgainstTrace(request: ReviewLocalObserverEvaluationReques
 export function reviewLocalObserverEvaluation(
   request: ReviewLocalObserverEvaluationRequest,
 ): ReviewLocalObserverEvaluationResponse {
-  const judgment: LocalObserverEvaluationJudgment = LocalObserverEvaluationJudgmentSchema.parse(request.judgment);
+  const parsedJudgment = LocalObserverEvaluationJudgmentSchema.safeParse(request.judgment);
+
+  if (!parsedJudgment.success) {
+    return ReviewLocalObserverEvaluationResponseSchema.parse({
+      accepted: false,
+      judgment: null,
+      notices: [
+        {
+          noticeType: "invalid_evaluator_judgment",
+          message: "The evaluator tool call did not match the expected judgment schema.",
+          details: z.flattenError(parsedJudgment.error),
+        },
+      ],
+    });
+  }
+
+  const judgment: LocalObserverEvaluationJudgment = parsedJudgment.data;
   const notices = reviewJudgmentAgainstTrace({ ...request, judgment });
 
   return ReviewLocalObserverEvaluationResponseSchema.parse({

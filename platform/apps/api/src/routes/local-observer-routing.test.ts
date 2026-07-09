@@ -143,6 +143,8 @@ describe("local observer routing routes", () => {
     const body = ReviewLocalObserverEvaluationResponseSchema.parse(await response.json());
 
     expect(body.accepted).toBe(true);
+    expect(body.judgment).not.toBeNull();
+    if (!body.judgment) throw new Error("Expected accepted judgment");
     expect(body.judgment.verdict).toBe("correct");
     expect(body.notices).toEqual([]);
   });
@@ -184,5 +186,32 @@ describe("local observer routing routes", () => {
       "unknown_tool_call_observed",
       "missing_issue_detail",
     ]);
+  });
+
+  it("records malformed evaluator judgments as observability notices", async () => {
+    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/review-evaluation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        trace,
+        judgment: {
+          verdict: "incorrect",
+          confidence: 0.74,
+          reasoning: "The acting agent dispatched a runner unnecessarily.",
+          observedBehavior: "The agent called dispatch_runner.",
+          failureModes: ["unnecessary_tool_call"],
+          strengths: "",
+          issues: ["Started a run when no work remained."],
+          suggestedFollowUp: null,
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = ReviewLocalObserverEvaluationResponseSchema.parse(await response.json());
+
+    expect(body.accepted).toBe(false);
+    expect(body.judgment).toBeNull();
+    expect(body.notices.map((notice) => notice.noticeType)).toEqual(["invalid_evaluator_judgment"]);
   });
 });

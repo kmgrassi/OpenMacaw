@@ -128,7 +128,7 @@ export const RenderLocalObserverEvaluationPromptResponseSchema = z.object({
 
 export const ReviewLocalObserverEvaluationRequestSchema = z.object({
   trace: LocalObserverAgentTraceSchema,
-  judgment: LocalObserverEvaluationJudgmentSchema,
+  judgment: z.unknown(),
 });
 
 export const LocalObserverEvaluationNoticeSchema = z.object({
@@ -139,7 +139,7 @@ export const LocalObserverEvaluationNoticeSchema = z.object({
 
 export const ReviewLocalObserverEvaluationResponseSchema = z.object({
   accepted: z.boolean(),
-  judgment: LocalObserverEvaluationJudgmentSchema,
+  judgment: LocalObserverEvaluationJudgmentSchema.nullable(),
   notices: z.array(LocalObserverEvaluationNoticeSchema),
 });
 
