@@ -55,9 +55,14 @@ func (r *Runner) dispatchWithTools(ctx context.Context, input runner.ChatComplet
 		if err != nil {
 			if !usePromptFallback && shouldFallbackToPromptTools(err) {
 				usePromptFallback = true
-				continue
+				next = input
+				next.Messages = prependToolSystemMessage(messages, input.ToolDefinitions)
+				next.ProviderToolSpecs = nil
+				response, err = r.complete(ctx, next)
 			}
-			return err
+			if err != nil {
+				return err
+			}
 		}
 
 		toolCalls := response.ToolCalls
@@ -303,11 +308,34 @@ func shouldFallbackToPromptTools(err error) bool {
 	if !errors.As(err, &runnerErr) {
 		return false
 	}
-	if runnerErr.StatusCode != http.StatusBadRequest && runnerErr.StatusCode != http.StatusUnprocessableEntity {
+	if runnerErr.StatusCode == http.StatusBadRequest {
+		return true
+	}
+	if runnerErr.StatusCode != http.StatusUnprocessableEntity && runnerErr.StatusCode != http.StatusInternalServerError {
 		return false
 	}
-	text := strings.ToLower(runnerErr.Message + " " + runnerErr.Code)
-	return strings.Contains(text, "tools") || strings.Contains(text, "functions")
+	text := normalizeProviderErrorText(runnerErr.Message + " " + runnerErr.Code)
+	if runnerErr.StatusCode == http.StatusUnprocessableEntity {
+		return mentionsToolProtocol(text)
+	}
+	return mentionsToolProtocol(text) || isOllamaNativeToolTemplateError(text)
+}
+
+func normalizeProviderErrorText(value string) string {
+	text := strings.ToLower(value)
+	text = strings.ReplaceAll(text, `\u003c`, "<")
+	text = strings.ReplaceAll(text, `\u003e`, ">")
+	return text
+}
+
+func mentionsToolProtocol(value string) bool {
+	return strings.Contains(value, "tools") || strings.Contains(value, "functions") || strings.Contains(value, "tool_choice")
+}
+
+func isOllamaNativeToolTemplateError(value string) bool {
+	return strings.Contains(value, "xml syntax error") &&
+		(strings.Contains(value, "<parameter>") || strings.Contains(value, "parameter")) &&
+		(strings.Contains(value, "<function>") || strings.Contains(value, "function"))
 }
 
 func prependToolSystemMessage(messages []runner.ChatMessage, definitions []runner.ToolDefinition) []runner.ChatMessage {
