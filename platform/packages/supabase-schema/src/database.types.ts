@@ -2676,65 +2676,37 @@ export type Database = {
         };
         Relationships: [];
       };
-      policy: {
+      policy_session_state: {
         Row: {
-          agent_id: string | null;
-          created_at: string;
-          created_by_user_id: string | null;
-          enabled: boolean;
           id: string;
-          kind: string;
-          params: Json;
-          priority: number;
-          reason: string | null;
-          scope: string;
-          session_thread_id: string | null;
-          source: string;
+          key: string;
+          session_thread_id: string;
           updated_at: string;
+          value_json: Json | null;
+          value_numeric: number | null;
           workspace_id: string;
         };
         Insert: {
-          agent_id?: string | null;
-          created_at?: string;
-          created_by_user_id?: string | null;
-          enabled?: boolean;
           id?: string;
-          kind: string;
-          params?: Json;
-          priority?: number;
-          reason?: string | null;
-          scope: string;
-          session_thread_id?: string | null;
-          source?: string;
+          key: string;
+          session_thread_id: string;
           updated_at?: string;
+          value_json?: Json | null;
+          value_numeric?: number | null;
           workspace_id: string;
         };
         Update: {
-          agent_id?: string | null;
-          created_at?: string;
-          created_by_user_id?: string | null;
-          enabled?: boolean;
           id?: string;
-          kind?: string;
-          params?: Json;
-          priority?: number;
-          reason?: string | null;
-          scope?: string;
-          session_thread_id?: string | null;
-          source?: string;
+          key?: string;
+          session_thread_id?: string;
           updated_at?: string;
+          value_json?: Json | null;
+          value_numeric?: number | null;
           workspace_id?: string;
         };
         Relationships: [
           {
-            foreignKeyName: "policy_agent_id_fkey";
-            columns: ["agent_id"];
-            isOneToOne: false;
-            referencedRelation: "agent";
-            referencedColumns: ["id"];
-          },
-          {
-            foreignKeyName: "policy_workspace_id_fkey";
+            foreignKeyName: "policy_session_state_workspace_id_fkey";
             columns: ["workspace_id"];
             isOneToOne: false;
             referencedRelation: "workspaces";

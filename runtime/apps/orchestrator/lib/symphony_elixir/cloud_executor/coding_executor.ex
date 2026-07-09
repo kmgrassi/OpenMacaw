@@ -48,6 +48,7 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
   def run_loop(prepared, opts \\ []) when is_map(prepared) and is_list(opts) do
     input = Keyword.get(opts, :input, IO.stream(:stdio, :line))
     output = Keyword.get(opts, :output, &write_stdout/1)
+    ensure_policy_engine_started()
 
     output.(
       progress_frame("executor_ready", %{
@@ -256,6 +257,20 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutor do
       :allow -> :allow
       {:ask, escalation} -> {:policy_ask, escalation}
       {:deny, reason} -> {:policy_denied, reason}
+    end
+  end
+
+  defp ensure_policy_engine_started do
+    case Process.whereis(SymphonyElixir.Policy.Engine) do
+      nil ->
+        case SymphonyElixir.Policy.Engine.start_link() do
+          {:ok, _pid} -> :ok
+          {:error, {:already_started, _pid}} -> :ok
+          {:error, _reason} -> :ok
+        end
+
+      _pid ->
+        :ok
     end
   end
 

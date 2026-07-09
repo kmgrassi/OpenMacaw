@@ -94,6 +94,26 @@ the checked-in dev config:
 go run ./cmd/local-runtime-helper start --config ./dev-runtime.toml --log-level debug
 ```
 
+## Localhost Browser API Hardening
+
+The helper also exposes a localhost-only browser API on `127.0.0.1:7317` for
+native directory picking. By default it only allows browser origins from local
+development:
+
+- `http://localhost:5173`
+- `http://127.0.0.1:5173`
+
+If you intentionally want the hosted OpenMacaw app to call this localhost API,
+set an explicit allowlist before starting the helper:
+
+```sh
+export OPENMACAW_LOCAL_API_ALLOWED_ORIGINS="https://app.openmacaw.ai"
+```
+
+Use a comma-separated list if you need both hosted and local development
+origins. Keep the list narrow because any allowed origin can trigger native
+local-machine helper actions.
+
 ## Wire protocol
 
 The cloud-side spec lives in

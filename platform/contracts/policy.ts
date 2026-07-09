@@ -154,6 +154,7 @@ export const PolicySchema = z
     reason: z.string().nullable(),
     createdByUserId: z.string().uuid().nullable(),
     createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime().nullable().optional(),
   })
   .superRefine(requireMatchingPolicyParamsKind);
 
@@ -172,6 +173,7 @@ export const PolicyRowSchema = z
     reason: z.string().nullable(),
     created_by_user_id: z.string().uuid().nullable(),
     created_at: z.string().datetime(),
+    updated_at: z.string().datetime().nullable().optional(),
   })
   .superRefine(requireMatchingPolicyParamsKind);
 
@@ -203,6 +205,64 @@ export const AgentPolicySettingsResponseSchema = z.object({
   effectivePolicies: z.array(RuntimePolicySchema),
 });
 
+export const PolicySessionStateSchema = z.object({
+  workspaceId: z.string().uuid(),
+  sessionThreadId: z.string().uuid(),
+  key: z.string().trim().min(1),
+  valueNumeric: z.number().nullable(),
+  valueJson: z.unknown().nullable(),
+  updatedAt: z.string().datetime(),
+});
+
+export const PolicySessionStateRowSchema = z.object({
+  workspace_id: z.string().uuid(),
+  session_thread_id: z.string().uuid(),
+  key: z.string().trim().min(1),
+  value_numeric: z.coerce.number().nullable(),
+  value_json: z.unknown().nullable(),
+  updated_at: z.string().datetime(),
+});
+
+export const PolicyKindDefinitionSchema = z.object({
+  kind: PolicyKindSchema,
+  label: z.string(),
+  description: z.string(),
+  defaultParams: PolicyParamsSchema,
+});
+
+export const AgentPoliciesResponseSchema = z.object({
+  policies: z.array(PolicySchema),
+  effectivePolicies: z.array(PolicySchema),
+  availableKinds: z.array(PolicyKindDefinitionSchema),
+});
+
+const PolicyMutationRequestBaseSchema = z
+  .object({
+    workspaceId: z.string().trim().min(1),
+    kind: PolicyKindSchema,
+    params: PolicyParamsSchema,
+    priority: z.number().int().default(0),
+    enabled: z.boolean().default(true),
+    reason: z.string().trim().min(1).nullable().optional(),
+  })
+  .superRefine(requireMatchingPolicyParamsKind);
+
+export const UpsertAgentPolicyRequestSchema = PolicyMutationRequestBaseSchema;
+export const CreateSessionPolicyRequestSchema = PolicyMutationRequestBaseSchema;
+
+export const SessionPoliciesResponseSchema = z.object({
+  policies: z.array(PolicySchema),
+  availableKinds: z.array(PolicyKindDefinitionSchema),
+});
+
+export const SessionPolicyStateResponseSchema = z.object({
+  state: z.array(PolicySessionStateSchema),
+});
+
+export const PolicyMutationResponseSchema = z.object({
+  policy: PolicySchema,
+});
+
 export type PolicyScope = z.infer<typeof PolicyScopeSchema>;
 export type PolicyVerdict = z.infer<typeof PolicyVerdictSchema>;
 export type PolicyEventType = z.infer<typeof PolicyEventTypeSchema>;
@@ -216,3 +276,67 @@ export type PolicyKindMetadata = z.infer<typeof PolicyKindMetadataSchema>;
 export type AgentPolicySettingsResponse = z.infer<
   typeof AgentPolicySettingsResponseSchema
 >;
+export type PolicySessionState = z.infer<typeof PolicySessionStateSchema>;
+export type PolicyKindDefinition = z.infer<typeof PolicyKindDefinitionSchema>;
+export type AgentPoliciesResponse = z.infer<typeof AgentPoliciesResponseSchema>;
+export type SessionPoliciesResponse = z.infer<
+  typeof SessionPoliciesResponseSchema
+>;
+export type SessionPolicyStateResponse = z.infer<
+  typeof SessionPolicyStateResponseSchema
+>;
+export type UpsertAgentPolicyRequest = z.infer<
+  typeof UpsertAgentPolicyRequestSchema
+>;
+export type CreateSessionPolicyRequest = z.infer<
+  typeof CreateSessionPolicyRequestSchema
+>;
+
+export const POLICY_KIND_DEFINITIONS: PolicyKindDefinition[] = [
+  {
+    kind: "max_tool_calls_per_session",
+    label: "Max tool calls",
+    description: "Deny tool calls once the session reaches a fixed call count.",
+    defaultParams: { kind: "max_tool_calls_per_session", limit: 25 },
+  },
+  {
+    kind: "cost_budget",
+    label: "Cost budget",
+    description: "Ask at configured spend thresholds and deny above the max.",
+    defaultParams: {
+      kind: "cost_budget",
+      max_cost_usd: 10,
+      ask_thresholds_usd: [5],
+    },
+  },
+  {
+    kind: "ask_on_shell",
+    label: "Ask on shell",
+    description: "Require approval before shell or operating-system tools run.",
+    defaultParams: { kind: "ask_on_shell" },
+  },
+  {
+    kind: "ask_on_tool",
+    label: "Ask on tool",
+    description: "Require approval before specific tools run.",
+    defaultParams: { kind: "ask_on_tool", tools: ["shell.exec"] },
+  },
+  {
+    kind: "block_tools",
+    label: "Block tools",
+    description: "Deny specific tools even when the agent grant allows them.",
+    defaultParams: { kind: "block_tools", tools: ["shell.exec"] },
+  },
+  {
+    kind: "risk_score",
+    label: "Risk score",
+    description:
+      "Accrue risk points for guarded tools and ask above a threshold.",
+    defaultParams: {
+      kind: "risk_score",
+      guarded_tools: ["shell.exec"],
+      threshold: 10,
+      weights: {},
+    },
+  },
+];

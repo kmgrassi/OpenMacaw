@@ -86,6 +86,10 @@ In-flight work. Each entry should map to one or more open PRs.
   recent run, and emit an advisory recommendation the planning/manager
   agent consumes. Builds on learning-agent redesign + closed-loop-observability;
   advisory only, no routing-rule writes.
+- [active/failure-pattern-mining-scope.md](active/failure-pattern-mining-scope.md)
+  — Add a derived failure-pattern layer over existing run, tool-call, and eval
+  evidence: `failure_pattern`, evidence links, mining flow, review lifecycle,
+  agent tools, dashboard surface, and PR slices for self-improvement groundwork.
 - [active/frontend-supabase-api-refactor-pr-plan.md](active/frontend-supabase-api-refactor-pr-plan.md)
   — Move browser-side Supabase table/realtime access behind platform API
   routes (Auth stays in the frontend).

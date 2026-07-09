@@ -64,6 +64,19 @@ defmodule SymphonyElixir.Runner.ClaudeCode.EventMapper do
     )
   end
 
+  defp do_normalize(%{"method" => "tool/can_use_tool"} = message, opts) do
+    params = params(message)
+
+    event(:tool_call_started, message, opts,
+      payload:
+        tool_payload("tool.can_use_tool", params, %{
+          "status" => "requested",
+          "phase" => "request",
+          "decision" => string_value(params, ["decision"]) || "allow"
+        })
+    )
+  end
+
   defp do_normalize(%{"method" => "tool/completed"} = message, opts) do
     params = params(message)
 
@@ -235,9 +248,9 @@ defmodule SymphonyElixir.Runner.ClaudeCode.EventMapper do
 
   defp string_value(map, keys) do
     Enum.find_value(keys, fn key ->
-      case Map.get(map, key) || Map.get(map, String.to_atom(key)) do
+      case fetch_value(map, key) do
         value when is_binary(value) and value != "" -> value
-        value when is_atom(value) -> Atom.to_string(value)
+        value when is_atom(value) and not is_nil(value) -> Atom.to_string(value)
         _ -> nil
       end
     end)
@@ -247,12 +260,23 @@ defmodule SymphonyElixir.Runner.ClaudeCode.EventMapper do
 
   defp int_value(map, keys) do
     Enum.find_value(keys, fn key ->
-      map
-      |> Map.get(key, Map.get(map, String.to_atom(key)))
-      |> parse_int()
+      map |> fetch_value(key) |> parse_int()
     end)
   rescue
     ArgumentError -> nil
+  end
+
+  defp fetch_value(map, key) when is_map(map) do
+    case Map.fetch(map, key) do
+      {:ok, value} ->
+        value
+
+      :error when is_binary(key) ->
+        Map.get(map, String.to_atom(key))
+
+      :error ->
+        nil
+    end
   end
 
   defp parse_int(value) when is_integer(value), do: value

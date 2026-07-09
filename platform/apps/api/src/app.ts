@@ -25,6 +25,7 @@ import { registerLocalModelCodingSmokeRoutes } from "./routes/local-model-coding
 import { registerModelAgnosticSmokeRoutes } from "./routes/model-agnostic-smoke.js";
 import { registerModelCatalogRoutes } from "./routes/models.js";
 import { registerPlanRoutes } from "./routes/plans.js";
+import { registerPolicyRoutes } from "./routes/policies.js";
 import { registerPlannerLocalModelSmokeRoutes } from "./routes/planner-local-model-smoke.js";
 import { registerProviderFailureRoutes } from "./routes/provider-failures.js";
 import { registerProxyRoutes } from "./routes/proxy.js";
@@ -100,6 +101,7 @@ export function createApp(config: ApiConfig) {
   registerCredentialValidationRoutes(app);
   registerDevToolInvocationRoutes(app);
   registerAgentToolRoutes(app);
+  registerPolicyRoutes(app);
   registerDevAgentTriggerMessageRoutes(app, launcherClient);
   registerLocalRuntimeRoutes(app, launcherRequest);
   registerLearningCostRoutes(app);

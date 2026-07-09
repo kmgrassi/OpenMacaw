@@ -5,6 +5,8 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutorTest do
   alias SymphonyElixir.PathSafety
 
   setup do
+    SymphonyElixir.Policy.Engine.reset!()
+
     root = Path.join(System.tmp_dir!(), "symphony-coding-executor-test-#{System.unique_integer([:positive])}")
     workspace = Path.join(root, "repo")
     File.mkdir_p!(workspace)
@@ -171,6 +173,94 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutorTest do
     result = Enum.find(emitted, &(&1["type"] == "tool_call_result" and &1["tool_call_id"] == "call-sleep"))
     assert result["success"] == false
     assert result["output"]["cancelled"] == true
+  end
+
+  test "policy gate denies shell.exec before container execution", %{root: root} do
+    assert {:ok, prepared} = CodingExecutor.prepare(%{"existing_workspace" => "repo"}, workspace_root: root)
+
+    frames =
+      capture_frames(fn emit ->
+        CodingExecutor.execute_frame(
+          %{
+            "type" => "tool_execution_request",
+            "schema_version" => "1",
+            "correlation_id" => "corr-1",
+            "tool_call_id" => "call-shell",
+            "name" => "shell.exec",
+            "arguments" => %{"argv" => ["sh", "-c", "echo should-not-run"], "cwd" => "."},
+            "workspace_id" => "workspace-1",
+            "session_thread_id" => "thread-1",
+            "policies" => [
+              %{
+                "scope" => "session",
+                "kind" => "block_tools",
+                "params" => %{"tools" => ["shell.exec"]},
+                "priority" => 0,
+                "enabled" => true
+              }
+            ]
+          },
+          prepared,
+          emit
+        )
+      end)
+
+    result = Enum.find(frames, &(&1["type"] == "tool_call_result"))
+    assert result["success"] == false
+    assert result["output"]["error_code"] == "policy_denied"
+    assert result["output"]["error"] == "Tool is blocked by policy"
+    assert result["output"]["policy"]["tool_name"] == "shell.exec"
+  end
+
+  test "run_loop keeps policy state for cloud executor sessions without session_thread_id", %{root: root} do
+    assert {:ok, prepared} = CodingExecutor.prepare(%{"existing_workspace" => "repo"}, workspace_root: root)
+
+    policies = [
+      %{
+        "scope" => "session",
+        "kind" => "max_tool_calls_per_session",
+        "params" => %{"limit" => 1},
+        "priority" => 0,
+        "enabled" => true
+      }
+    ]
+
+    frames = [
+      Jason.encode!(%{
+        "type" => "tool_execution_request",
+        "schema_version" => "1",
+        "tool_call_id" => "call-one",
+        "name" => "shell.exec",
+        "arguments" => %{"argv" => ["sh", "-c", "echo one"], "cwd" => "."},
+        "workspace_id" => "workspace-1",
+        "session_id" => "cloud-session-1",
+        "policies" => policies
+      }),
+      Jason.encode!(%{
+        "type" => "tool_execution_request",
+        "schema_version" => "1",
+        "tool_call_id" => "call-two",
+        "name" => "shell.exec",
+        "arguments" => %{"argv" => ["sh", "-c", "echo two"], "cwd" => "."},
+        "workspace_id" => "workspace-1",
+        "session_id" => "cloud-session-1",
+        "policies" => policies
+      })
+    ]
+
+    emitted =
+      capture_frames(fn emit ->
+        CodingExecutor.run_loop(prepared, input: frames, output: emit)
+      end)
+
+    first = Enum.find(emitted, &(&1["type"] == "tool_call_result" and &1["tool_call_id"] == "call-one"))
+    second = Enum.find(emitted, &(&1["type"] == "tool_call_result" and &1["tool_call_id"] == "call-two"))
+
+    assert first["success"] == true
+    assert second["success"] == false
+    assert second["output"]["error_code"] == "policy_denied"
+    assert second["output"]["error"] =~ "limit of 1"
+    assert second["output"]["policy"]["reason"] =~ "limit of 1"
   end
 
   test "rejects existing workspaces outside the workspace root", %{root: root} do

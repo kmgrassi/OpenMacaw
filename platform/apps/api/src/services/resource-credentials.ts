@@ -125,7 +125,29 @@ function normalizeId(value: string | number): string {
 function normalizeBaseUrl(value: string | undefined, fallback: string): string {
   const trimmed = value?.trim();
   if (!trimmed) return fallback;
-  return trimmed.replace(/\/+$/, "");
+  const normalized = trimmed.replace(/\/+$/, "");
+  const parsed = new URL(normalized);
+  const allowed = new URL(fallback);
+  const isAllowed =
+    parsed.protocol === allowed.protocol &&
+    parsed.host === allowed.host &&
+    (parsed.pathname === "/" || parsed.pathname === "") &&
+    !parsed.search &&
+    !parsed.hash &&
+    !parsed.username &&
+    !parsed.password;
+  if (!isAllowed) {
+    throw new GitHubAppCredentialError(
+      "github_app_base_url_unsupported",
+      `GitHub App credentials must use ${fallback}`,
+      {
+        status: 400,
+        remediation:
+          "Only the public GitHub endpoints are supported today. GitHub Enterprise support needs a broader trusted-host design before we can enable custom domains safely.",
+      },
+    );
+  }
+  return normalized;
 }
 
 function readString(raw: JsonObject, key: string): string | null {
@@ -141,8 +163,8 @@ function mapGitHubAppCredentialRow(row: CredentialRow | CredentialProjection): G
 
   const appId = readString(raw, "app_id");
   const installationId = readString(raw, "installation_id");
-  const apiBaseUrl = readString(raw, "api_base_url") ?? GITHUB_API_BASE_URL;
-  const webBaseUrl = readString(raw, "web_base_url") ?? GITHUB_WEB_BASE_URL;
+  const apiBaseUrl = normalizeBaseUrl(readString(raw, "api_base_url") ?? undefined, GITHUB_API_BASE_URL);
+  const webBaseUrl = normalizeBaseUrl(readString(raw, "web_base_url") ?? undefined, GITHUB_WEB_BASE_URL);
   if (!appId || !installationId) {
     throw new GitHubAppCredentialError("github_app_credential_invalid", "GitHub App credential is missing IDs");
   }

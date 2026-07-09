@@ -143,4 +143,54 @@ describe("resource credential routes", () => {
     });
     expect(saveGitHubAppInstallationCredentialForWorkspace).not.toHaveBeenCalled();
   });
+
+  it("rejects unsupported custom GitHub base URLs", async () => {
+    const response = await fetch(`${baseUrl}/api/resource-credentials/github-app-installations`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        appId: "123",
+        installationId: "456",
+        apiBaseUrl: "https://attacker.example",
+        privateKey: "mock-github-app-private-key",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "invalid_request",
+      },
+    });
+    expect(saveGitHubAppInstallationCredentialForWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed GitHub base URLs without throwing", async () => {
+    const response = await fetch(`${baseUrl}/api/resource-credentials/github-app-installations`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer test-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        appId: "123",
+        installationId: "456",
+        apiBaseUrl: "not-a-url",
+        privateKey: "mock-github-app-private-key",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: {
+        code: "invalid_request",
+      },
+    });
+    expect(saveGitHubAppInstallationCredentialForWorkspace).not.toHaveBeenCalled();
+  });
 });

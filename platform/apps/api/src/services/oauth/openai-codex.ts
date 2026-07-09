@@ -8,6 +8,8 @@
  * this server.
  */
 
+import { z } from "zod";
+
 const OPENAI_AUTH_BASE_URL = "https://auth.openai.com";
 const OPENAI_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
 const OPENAI_CODEX_TOKEN_URL = `${OPENAI_AUTH_BASE_URL}/oauth/token`;
@@ -63,10 +65,11 @@ function trimNonEmptyString(value: unknown): string | undefined {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
+const JsonObjectSchema = z.record(z.string(), z.unknown());
+
 function parseJsonObject(text: string): Record<string, unknown> | null {
   try {
-    const parsed = JSON.parse(text);
-    return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    return JsonObjectSchema.safeParse(JSON.parse(text)).data ?? null;
   } catch {
     return null;
   }
@@ -102,35 +105,31 @@ function formatErrorBody(status: number, bodyText: string): string {
   return bodyText ? `HTTP ${status} ${bodyText.slice(0, 256)}` : `HTTP ${status}`;
 }
 
-type CodexJwtPayload = {
-  exp?: unknown;
-  iss?: unknown;
-  sub?: unknown;
-  "https://api.openai.com/profile"?: { email?: unknown };
-  "https://api.openai.com/auth"?: {
-    chatgpt_account_id?: unknown;
-    chatgpt_plan_type?: unknown;
-  };
-};
+type CodexJwtPayload = Record<string, unknown>;
 
 function decodeJwtPayload(accessToken: string): CodexJwtPayload | null {
   const parts = accessToken.split(".");
   if (parts.length !== 3) return null;
   try {
     const decoded = Buffer.from(parts[1] ?? "", "base64url").toString("utf8");
-    const parsed = JSON.parse(decoded);
-    return parsed && typeof parsed === "object" ? (parsed as CodexJwtPayload) : null;
+    return JsonObjectSchema.safeParse(JSON.parse(decoded)).data ?? null;
   } catch {
     return null;
   }
 }
 
+function objectClaim(payload: CodexJwtPayload | null, key: string): Record<string, unknown> {
+  const value = payload?.[key];
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
 export function resolveCodexAuthIdentity(accessToken: string): OpenAICodexAuthIdentity {
   const payload = decodeJwtPayload(accessToken);
-  const auth = payload?.["https://api.openai.com/auth"];
+  const auth = objectClaim(payload, "https://api.openai.com/auth");
+  const profile = objectClaim(payload, "https://api.openai.com/profile");
   const accountId = trimNonEmptyString(auth?.chatgpt_account_id);
   const chatgptPlanType = trimNonEmptyString(auth?.chatgpt_plan_type);
-  const email = trimNonEmptyString(payload?.["https://api.openai.com/profile"]?.email);
+  const email = trimNonEmptyString(profile.email);
   return {
     ...(accountId ? { accountId } : {}),
     ...(chatgptPlanType ? { chatgptPlanType } : {}),

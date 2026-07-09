@@ -22,6 +22,12 @@ export const queryKeys = {
         ...queryKeys.agents.runtimeProfiles(),
         { agentId, workspaceId },
       ] as const,
+    policyLists: () => [...queryKeys.agents.all, "policies"] as const,
+    policies: (agentId: string, workspaceId?: string | null) =>
+      [
+        ...queryKeys.agents.policyLists(),
+        { agentId, workspaceId: workspaceId ?? null },
+      ] as const,
   },
   setup: {
     all: ["setup"] as const,
@@ -99,6 +105,18 @@ export const queryKeys = {
       [...queryKeys.sessions.all, "orchestrator"] as const,
     orchestrator: (scopeKey: string) =>
       [...queryKeys.sessions.orchestratorLists(), { scopeKey }] as const,
+    policyLists: () => [...queryKeys.sessions.all, "policies"] as const,
+    policies: (sessionThreadId: string, workspaceId?: string | null) =>
+      [
+        ...queryKeys.sessions.policyLists(),
+        { sessionThreadId, workspaceId: workspaceId ?? null },
+      ] as const,
+    policyStates: () => [...queryKeys.sessions.all, "policyState"] as const,
+    policyState: (sessionThreadId: string, workspaceId?: string | null) =>
+      [
+        ...queryKeys.sessions.policyStates(),
+        { sessionThreadId, workspaceId: workspaceId ?? null },
+      ] as const,
     worker: () => [...queryKeys.sessions.all, "worker"] as const,
   },
   tools: {
