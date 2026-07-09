@@ -20,6 +20,7 @@ import { AgentDetailHeader } from "./AgentDetail/AgentDetailHeader";
 import { AgentIdentityEditor } from "./AgentDetail/AgentIdentityEditor";
 import { AgentRuntimeEditor } from "./AgentDetail/AgentRuntimeEditor";
 import { AgentWorkspacePathPanel } from "./AgentDetail/AgentWorkspacePathPanel";
+import { AgentPoliciesPanel } from "./AgentPoliciesPanel";
 import { AGENT_DETAIL_TABS } from "./AgentDetail/constants";
 import { useAgentRuntimeProfile } from "./AgentDetail/useAgentRuntimeProfile";
 
@@ -47,7 +48,9 @@ export function AgentDetail({ agent }: { agent: Agent }) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"general" | "tools">("general");
+  const [activeTab, setActiveTab] = useState<"general" | "tools" | "policies">(
+    "general",
+  );
   const [credentialRefreshKey, setCredentialRefreshKey] = useState(0);
 
   const handleError = useCallback((message: string) => {
@@ -195,6 +198,8 @@ export function AgentDetail({ agent }: { agent: Agent }) {
           agentId={agent.id}
           workspaceId={toolWorkspaceId}
         />
+      ) : activeTab === "policies" ? (
+        <AgentPoliciesPanel agentId={agent.id} workspaceId={toolWorkspaceId} />
       ) : (
         <>
           <AgentIdentityEditor

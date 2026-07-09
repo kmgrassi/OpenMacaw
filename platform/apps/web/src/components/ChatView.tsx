@@ -13,6 +13,7 @@ import {
 } from "./ApprovalRequiredNotice";
 import { RuntimeEventTimeline } from "./RuntimeEventTimeline";
 import { AgentHealthBanner } from "./dashboard/AgentHealthBanner";
+import { SessionPolicyPanel } from "./policies/SessionPolicyPanel";
 import { Button } from "./ui/Button";
 import { LoadingState } from "./ui/LoadingState";
 import { StatusBanner } from "./ui/StatusBanner";
@@ -107,6 +108,7 @@ export function ChatView({
   } = useChat(agentId, sessionKey, { historyOnly: readOnly });
   const [composerText, setComposerText] = useState("");
   const [composerFocusToken, setComposerFocusToken] = useState(0);
+  const [showPolicies, setShowPolicies] = useState(false);
   const [bottomOverlayEl, setBottomOverlayEl] = useState<HTMLDivElement | null>(
     null,
   );
@@ -224,6 +226,26 @@ export function ChatView({
         className="chat-scrollbar min-h-0 flex-1 overflow-y-auto px-3 pt-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 sm:px-4 sm:pt-2"
         style={{ paddingBottom: bottomOverlayHeight + 12 }}
       >
+        {!readOnly && sessionKey && (
+          <div className="mx-auto mb-3 flex max-w-4xl justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowPolicies((value) => !value)}
+            >
+              {showPolicies ? "Hide policies" : "Session policies"}
+            </Button>
+          </div>
+        )}
+
+        {!readOnly && showPolicies && (
+          <SessionPolicyPanel
+            sessionThreadId={sessionKey}
+            workspaceId={workspaceId}
+          />
+        )}
+
         {(loading || waitingForHistory) && messages.length === 0 && (
           <LoadingState
             label="Loading history..."

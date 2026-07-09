@@ -20,6 +20,7 @@ function appendQuery(
 
 const STORED_AGENTS_PREFIX = "/api/stored-agents";
 const AGENTS_PREFIX = "/api/agents";
+const SESSIONS_PREFIX = "/api/sessions";
 const LOCAL_RUNTIME_PREFIX = "/api/local-runtime/runtimes";
 
 export const StoredAgentRouteTemplates = {
@@ -37,9 +38,17 @@ export const StoredAgentRouteTemplates = {
 export const AgentRouteTemplates = {
   runtimeProfile: `${AGENTS_PREFIX}/:agentId/runtime-profile`,
   assignLocalModel: `${AGENTS_PREFIX}/:agentId/assign-local-model`,
+  policies: `${AGENTS_PREFIX}/:agentId/policies`,
+  policy: `${AGENTS_PREFIX}/:agentId/policies/:policyId`,
   liveInput: `${AGENTS_PREFIX}/:agentId/input`,
   liveInterrupt: `${AGENTS_PREFIX}/:agentId/interrupt`,
   liveStream: `${AGENTS_PREFIX}/:agentId/stream`,
+} as const;
+
+export const SessionRouteTemplates = {
+  policies: `${SESSIONS_PREFIX}/:sessionThreadId/policies`,
+  policy: `${SESSIONS_PREFIX}/:sessionThreadId/policies/:policyId`,
+  policyState: `${SESSIONS_PREFIX}/:sessionThreadId/policy-state`,
 } as const;
 
 export const LocalRuntimeRouteTemplates = {
@@ -112,6 +121,58 @@ export function agentAssignLocalModelRoute(
 ) {
   return appendWorkspaceQuery(
     `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/assign-local-model`,
+    workspaceId,
+  );
+}
+
+export function agentPoliciesRoute(
+  agentId: string,
+  workspaceId?: string | null,
+) {
+  return appendWorkspaceQuery(
+    `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/policies`,
+    workspaceId,
+  );
+}
+
+export function agentPolicyRoute(
+  agentId: string,
+  policyId: string,
+  workspaceId?: string | null,
+) {
+  return appendWorkspaceQuery(
+    `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/policies/${encodeURIComponent(policyId)}`,
+    workspaceId,
+  );
+}
+
+export function sessionPoliciesRoute(
+  sessionThreadId: string,
+  workspaceId?: string | null,
+) {
+  return appendWorkspaceQuery(
+    `${SESSIONS_PREFIX}/${encodeURIComponent(sessionThreadId)}/policies`,
+    workspaceId,
+  );
+}
+
+export function sessionPolicyRoute(
+  sessionThreadId: string,
+  policyId: string,
+  workspaceId?: string | null,
+) {
+  return appendWorkspaceQuery(
+    `${SESSIONS_PREFIX}/${encodeURIComponent(sessionThreadId)}/policies/${encodeURIComponent(policyId)}`,
+    workspaceId,
+  );
+}
+
+export function sessionPolicyStateRoute(
+  sessionThreadId: string,
+  workspaceId?: string | null,
+) {
+  return appendWorkspaceQuery(
+    `${SESSIONS_PREFIX}/${encodeURIComponent(sessionThreadId)}/policy-state`,
     workspaceId,
   );
 }

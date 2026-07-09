@@ -1,5 +1,10 @@
 import {
+  agentPoliciesRoute,
+  agentPolicyRoute,
   agentRuntimeProfileRoute,
+  sessionPoliciesRoute,
+  sessionPolicyRoute,
+  sessionPolicyStateRoute,
   storedAgentActivateRoute,
   storedAgentCredentialLaunchRoute,
   storedAgentCredentialReferenceRoute,
@@ -53,6 +58,11 @@ export const ROUTES = {
   /** Single agent by ID (GET / PATCH / DELETE) */
   agent: (id: string) => `${AGENTS_PREFIX}/${encodeURIComponent(id)}`,
   agentRuntimeProfile: agentRuntimeProfileRoute,
+  agentPolicies: agentPoliciesRoute,
+  agentPolicy: agentPolicyRoute,
+  sessionPolicies: sessionPoliciesRoute,
+  sessionPolicy: sessionPolicyRoute,
+  sessionPolicyState: sessionPolicyStateRoute,
   agentHealth: (id: string) =>
     `${AGENTS_PREFIX}/${encodeURIComponent(id)}/health`,
   agentDashboardVersion: (agentId: string, workspaceId?: string | null) => {

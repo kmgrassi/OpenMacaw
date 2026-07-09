@@ -13,11 +13,12 @@ export const AGENT_KIND_OPTIONS: Array<{ value: AgentType; label: string }> = [
 ];
 
 export const AGENT_DETAIL_TABS: Array<{
-  id: "general" | "tools";
+  id: "general" | "tools" | "policies";
   label: string;
 }> = [
   { id: "general", label: "General" },
   { id: "tools", label: "Tools" },
+  { id: "policies", label: "Policies" },
 ];
 
 export const PLANNING_DESTINATION_OPTIONS: Array<{
