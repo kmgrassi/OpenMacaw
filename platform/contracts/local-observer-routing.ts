@@ -10,27 +10,6 @@ export const LocalObserverArtifactKindSchema = z.enum([
   "scheduled_task_run",
 ]);
 
-export const LocalObserverRecommendedTargetSchema = z.enum([
-  "none",
-  "manager",
-  "codex",
-  "claude_code",
-  "local_relay",
-  "local_model_coding",
-  "human",
-]);
-
-export const LocalObserverRoutingIntentSchema = z.enum([
-  "no_action",
-  "triage",
-  "review",
-  "fix",
-  "summarize",
-  "route_to_manager",
-  "ask_human",
-  "run_eval",
-]);
-
 export const LocalObserverArtifactSnapshotSchema = z.object({
   kind: LocalObserverArtifactKindSchema,
   provider: z.string().trim().min(1),
@@ -45,102 +24,143 @@ export const LocalObserverArtifactSnapshotSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).default({}),
 });
 
-export const LocalObserverRoutingRecommendationSchema = z.object({
-  recommendedTarget: LocalObserverRecommendedTargetSchema,
-  intent: LocalObserverRoutingIntentSchema,
-  confidence: z.number().min(0).max(1),
-  reason: z.string().trim().min(1),
-  evidence: z.array(z.string().trim().min(1)).default([]),
-  riskFlags: z.array(z.string().trim().min(1)).default([]),
-  followUp: z.string().trim().min(1).nullable().default(null),
+export const LocalObserverAgentRoleSchema = z.enum([
+  "routing",
+  "manager",
+  "coding",
+  "review",
+  "local_model",
+  "observer",
+  "other",
+]);
+
+export const LocalObserverAgentRefSchema = z.object({
+  role: LocalObserverAgentRoleSchema,
+  agentId: z.string().trim().min(1).optional(),
+  provider: z.string().trim().min(1).optional(),
+  model: z.string().trim().min(1).optional(),
+  label: z.string().trim().min(1).optional(),
 });
 
-export const LocalObserverRoutingExpectationSchema = z.object({
-  recommendedTargetIn: z.array(LocalObserverRecommendedTargetSchema).optional(),
-  recommendedTargetNotIn: z
-    .array(LocalObserverRecommendedTargetSchema)
-    .optional(),
-  intentEquals: LocalObserverRoutingIntentSchema.optional(),
-  confidenceMin: z.number().min(0).max(1).optional(),
-  confidenceMax: z.number().min(0).max(1).optional(),
-  evidenceContains: z.array(z.string().trim().min(1)).optional(),
-  requireRiskFlags: z.array(z.string().trim().min(1)).optional(),
+export const LocalObserverToolSpecSchema = z.object({
+  name: z.string().trim().min(1),
+  description: z.string().default(""),
+  parameters: z.record(z.string(), z.unknown()).default({}),
 });
 
-export const RenderLocalObserverPromptRequestSchema = z.object({
-  artifactSnapshot: LocalObserverArtifactSnapshotSchema,
+export const LocalObserverToolCallSchema = z.object({
+  id: z.string().trim().min(1).optional(),
+  name: z.string().trim().min(1),
+  arguments: z.record(z.string(), z.unknown()).default({}),
+  status: z
+    .enum([
+      "requested",
+      "completed",
+      "failed",
+      "cancelled",
+      "approval_required",
+      "malformed",
+    ])
+    .default("requested"),
+  result: z.record(z.string(), z.unknown()).optional(),
+  error: z.string().trim().min(1).optional(),
+});
+
+export const LocalObserverAgentTraceSchema = z.object({
+  traceId: z.string().trim().min(1).optional(),
+  actingAgent: LocalObserverAgentRefSchema,
+  task: z.string().trim().min(1),
+  artifactSnapshot: LocalObserverArtifactSnapshotSchema.optional(),
   workspacePolicy: z.record(z.string(), z.unknown()).default({}),
-  availableTargets: z
-    .array(LocalObserverRecommendedTargetSchema)
-    .default([
-      "none",
-      "manager",
-      "codex",
-      "claude_code",
-      "local_relay",
-      "local_model_coding",
-      "human",
-    ]),
+  availableTools: z.array(LocalObserverToolSpecSchema).default([]),
+  promptSummary: z.string().trim().min(1).optional(),
+  modelResponse: z.string().optional(),
+  toolCalls: z.array(LocalObserverToolCallSchema).default([]),
+  finalOutput: z.string().optional(),
+  outcome: z.record(z.string(), z.unknown()).default({}),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const LocalObserverEvaluationVerdictSchema = z.enum([
+  "correct",
+  "incorrect",
+  "partially_correct",
+  "inconclusive",
+]);
+
+export const LocalObserverFailureModeSchema = z.enum([
+  "wrong_tool",
+  "missing_tool_call",
+  "unnecessary_tool_call",
+  "bad_arguments",
+  "missed_escalation",
+  "premature_escalation",
+  "missed_context",
+  "unsafe_action",
+  "wasted_tokens",
+  "other",
+]);
+
+export const LocalObserverEvaluationJudgmentSchema = z.object({
+  verdict: LocalObserverEvaluationVerdictSchema,
+  confidence: z.number().min(0).max(1),
+  reasoning: z.string().trim().min(1),
+  observedBehavior: z.string().trim().min(1),
+  expectedBehavior: z.string().trim().min(1).optional(),
+  failureModes: z.array(LocalObserverFailureModeSchema).default([]),
+  strengths: z.array(z.string().trim().min(1)).default([]),
+  issues: z.array(z.string().trim().min(1)).default([]),
+  suggestedFollowUp: z.string().trim().min(1).nullable().default(null),
+});
+
+export const RenderLocalObserverEvaluationPromptRequestSchema = z.object({
+  trace: LocalObserverAgentTraceSchema,
+  evaluator: LocalObserverAgentRefSchema.default({ role: "observer" }),
+  rubric: z.array(z.string().trim().min(1)).default([]),
   casePrompt: z.string().trim().min(1).optional(),
 });
 
-export const RenderLocalObserverPromptResponseSchema = z.object({
+export const RenderLocalObserverEvaluationPromptResponseSchema = z.object({
   prompt: z.string(),
-  outputSchema: z.record(z.string(), z.unknown()),
-  artifactSnapshot: LocalObserverArtifactSnapshotSchema,
-  availableTargets: z.array(LocalObserverRecommendedTargetSchema),
+  evaluationTool: LocalObserverToolSpecSchema,
+  trace: LocalObserverAgentTraceSchema,
 });
 
-export const ValidateLocalObserverRecommendationRequestSchema = z.object({
-  recommendation: LocalObserverRoutingRecommendationSchema,
-  availableTargets: z
-    .array(LocalObserverRecommendedTargetSchema)
-    .default([
-      "none",
-      "manager",
-      "codex",
-      "claude_code",
-      "local_relay",
-      "local_model_coding",
-      "human",
-    ]),
-  expectations: LocalObserverRoutingExpectationSchema.default({}),
+export const ReviewLocalObserverEvaluationRequestSchema = z.object({
+  trace: LocalObserverAgentTraceSchema,
+  judgment: LocalObserverEvaluationJudgmentSchema,
 });
 
-export const LocalObserverValidationFailureSchema = z.object({
-  assertionType: z.string(),
-  message: z.string(),
-  expected: z.unknown().optional(),
-  actual: z.unknown().optional(),
+export const LocalObserverEvaluationNoticeSchema = z.object({
+  noticeType: z.string().trim().min(1),
+  message: z.string().trim().min(1),
+  details: z.unknown().optional(),
 });
 
-export const ValidateLocalObserverRecommendationResponseSchema = z.object({
-  valid: z.boolean(),
-  recommendation: LocalObserverRoutingRecommendationSchema,
-  failures: z.array(LocalObserverValidationFailureSchema),
+export const ReviewLocalObserverEvaluationResponseSchema = z.object({
+  accepted: z.boolean(),
+  judgment: LocalObserverEvaluationJudgmentSchema,
+  notices: z.array(LocalObserverEvaluationNoticeSchema),
 });
 
 export type LocalObserverArtifactSnapshot = z.infer<
   typeof LocalObserverArtifactSnapshotSchema
 >;
-export type LocalObserverRecommendedTarget = z.infer<
-  typeof LocalObserverRecommendedTargetSchema
+export type LocalObserverAgentTrace = z.infer<
+  typeof LocalObserverAgentTraceSchema
 >;
-export type LocalObserverRoutingRecommendation = z.infer<
-  typeof LocalObserverRoutingRecommendationSchema
+export type LocalObserverEvaluationJudgment = z.infer<
+  typeof LocalObserverEvaluationJudgmentSchema
 >;
-export type LocalObserverRoutingExpectation = z.infer<
-  typeof LocalObserverRoutingExpectationSchema
+export type RenderLocalObserverEvaluationPromptRequest = z.infer<
+  typeof RenderLocalObserverEvaluationPromptRequestSchema
 >;
-export type RenderLocalObserverPromptRequest = z.infer<
-  typeof RenderLocalObserverPromptRequestSchema
+export type RenderLocalObserverEvaluationPromptResponse = z.infer<
+  typeof RenderLocalObserverEvaluationPromptResponseSchema
 >;
-export type RenderLocalObserverPromptResponse = z.infer<
-  typeof RenderLocalObserverPromptResponseSchema
+export type ReviewLocalObserverEvaluationRequest = z.infer<
+  typeof ReviewLocalObserverEvaluationRequestSchema
 >;
-export type ValidateLocalObserverRecommendationRequest = z.infer<
-  typeof ValidateLocalObserverRecommendationRequestSchema
->;
-export type ValidateLocalObserverRecommendationResponse = z.infer<
-  typeof ValidateLocalObserverRecommendationResponseSchema
+export type ReviewLocalObserverEvaluationResponse = z.infer<
+  typeof ReviewLocalObserverEvaluationResponseSchema
 >;

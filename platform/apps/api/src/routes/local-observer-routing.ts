@@ -1,31 +1,34 @@
 import type { Express } from "express";
 
 import {
-  RenderLocalObserverPromptRequestSchema,
-  ValidateLocalObserverRecommendationRequestSchema,
+  RenderLocalObserverEvaluationPromptRequestSchema,
+  ReviewLocalObserverEvaluationRequestSchema,
 } from "../../../../contracts/local-observer-routing.js";
 import { apiRoute } from "../http.js";
-import { renderLocalObserverPrompt, validateLocalObserverRecommendation } from "../services/local-observer-routing.js";
+import {
+  renderLocalObserverEvaluationPrompt,
+  reviewLocalObserverEvaluation,
+} from "../services/local-observer-routing.js";
 
 export function registerLocalObserverRoutingRoutes(app: Express) {
   app.post(
-    "/api/evals/local-observer-routing/render-prompt",
+    "/api/evals/local-observer-routing/render-evaluation-prompt",
     apiRoute({
-      bodySchema: RenderLocalObserverPromptRequestSchema,
-      invalidBodyMessage: "Invalid local observer routing prompt request",
+      bodySchema: RenderLocalObserverEvaluationPromptRequestSchema,
+      invalidBodyMessage: "Invalid local observer evaluation prompt request",
       async handler({ res, body }) {
-        return res.status(200).json(renderLocalObserverPrompt(body));
+        return res.status(200).json(renderLocalObserverEvaluationPrompt(body));
       },
     }),
   );
 
   app.post(
-    "/api/evals/local-observer-routing/validate-recommendation",
+    "/api/evals/local-observer-routing/review-evaluation",
     apiRoute({
-      bodySchema: ValidateLocalObserverRecommendationRequestSchema,
-      invalidBodyMessage: "Invalid local observer routing recommendation request",
+      bodySchema: ReviewLocalObserverEvaluationRequestSchema,
+      invalidBodyMessage: "Invalid local observer evaluation review request",
       async handler({ res, body }) {
-        return res.status(200).json(validateLocalObserverRecommendation(body));
+        return res.status(200).json(reviewLocalObserverEvaluation(body));
       },
     }),
   );

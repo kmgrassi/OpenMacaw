@@ -1,221 +1,141 @@
 import { z } from "zod";
 
 import type {
-  LocalObserverRecommendedTarget,
-  LocalObserverRoutingExpectation,
-  RenderLocalObserverPromptRequest,
-  RenderLocalObserverPromptResponse,
-  ValidateLocalObserverRecommendationRequest,
-  ValidateLocalObserverRecommendationResponse,
+  LocalObserverEvaluationJudgment,
+  RenderLocalObserverEvaluationPromptRequest,
+  RenderLocalObserverEvaluationPromptResponse,
+  ReviewLocalObserverEvaluationRequest,
+  ReviewLocalObserverEvaluationResponse,
 } from "../../../../contracts/local-observer-routing.js";
 import {
-  LocalObserverRecommendedTargetSchema,
-  LocalObserverRoutingRecommendationSchema,
-  RenderLocalObserverPromptResponseSchema,
-  ValidateLocalObserverRecommendationResponseSchema,
+  LocalObserverEvaluationJudgmentSchema,
+  RenderLocalObserverEvaluationPromptResponseSchema,
+  ReviewLocalObserverEvaluationResponseSchema,
 } from "../../../../contracts/local-observer-routing.js";
 
-const targetDescriptions: Record<string, string> = {
-  none: "No agent run should start.",
-  manager: "The manager should reconcile state, create/update work items, or coordinate handoff.",
-  codex: "Use for coding or implementation work that should run on Codex.",
-  claude_code: "Use for code review, critique, or cross-model second-pass work.",
-  local_relay: "Use for read-only local observation or summarization.",
-  local_model_coding: "Use for local coding only when capability gates allow it.",
-  human: "Use when policy, ambiguity, or missing context requires a person.",
-};
+const evaluationToolName = "observer_record_evaluation";
 
 function stableJson(value: unknown) {
   return JSON.stringify(value, null, 2);
 }
 
-function outputJsonSchema(availableTargets: LocalObserverRecommendedTarget[]) {
-  const schema = z.toJSONSchema(LocalObserverRoutingRecommendationSchema, {
+function evaluationParametersSchema() {
+  return z.toJSONSchema(LocalObserverEvaluationJudgmentSchema, {
     io: "input",
   }) as Record<string, unknown>;
-
-  const properties = schema.properties;
-  if (properties && typeof properties === "object" && !Array.isArray(properties)) {
-    const recommendedTarget = (properties as Record<string, unknown>).recommendedTarget;
-    if (recommendedTarget && typeof recommendedTarget === "object" && !Array.isArray(recommendedTarget)) {
-      (recommendedTarget as Record<string, unknown>).enum = availableTargets;
-    }
-  }
-
-  return schema;
 }
 
-export function renderLocalObserverPrompt(
-  request: RenderLocalObserverPromptRequest,
-): RenderLocalObserverPromptResponse {
-  const availableTargets = request.availableTargets;
-  const targetGuide = availableTargets.map((target) => `- ${target}: ${targetDescriptions[target]}`).join("\n");
-  const schema = outputJsonSchema(availableTargets);
+function evaluationToolSpec() {
+  return {
+    name: evaluationToolName,
+    description:
+      "Record a stronger evaluator agent's judgment of whether the observed agent made a good tool-use or routing decision.",
+    parameters: evaluationParametersSchema(),
+  };
+}
 
+function defaultRubric() {
+  return [
+    "Judge whether the acting agent made a reasonable decision for the situation, including edge cases.",
+    "Prefer reasoning from the trace over rigid target matching.",
+    "Evaluate tool selection, tool arguments, unnecessary work, missed escalation, and use of available context.",
+    "Mark the result inconclusive when the trace lacks enough evidence.",
+    "Do not mutate state or propose a new live action; only record an evaluation judgment.",
+  ];
+}
+
+export function renderLocalObserverEvaluationPrompt(
+  request: RenderLocalObserverEvaluationPromptRequest,
+): RenderLocalObserverEvaluationPromptResponse {
+  const rubric = request.rubric.length > 0 ? request.rubric : defaultRubric();
   const prompt = [
-    request.casePrompt ?? "Classify this artifact snapshot and recommend the next routing target.",
+    request.casePrompt ?? "Evaluate whether the acting agent made the right tool-use or routing decision.",
     "",
-    "You are a local observer. You only inspect the bounded snapshot below.",
-    "Do not request tools. Do not mutate state. Do not invent unavailable facts.",
-    "Prefer none when no work is needed. Prefer manager or human when evidence is insufficient.",
+    "You are a stronger observer agent evaluating another agent after the fact.",
+    "The observed agent was allowed to reason normally and use its normal tool surface.",
+    "Your job is observability: decide whether the trace shows good judgment.",
     "",
-    "Available targets:",
-    targetGuide,
+    "Rubric:",
+    ...rubric.map((item) => `- ${item}`),
     "",
-    "Workspace policy:",
+    "Evaluator:",
     "```json",
-    stableJson(request.workspacePolicy),
+    stableJson(request.evaluator),
     "```",
     "",
-    "Artifact snapshot:",
+    "Observed agent trace:",
     "```json",
-    stableJson(request.artifactSnapshot),
+    stableJson(request.trace),
     "```",
     "",
-    "Return only JSON matching this schema:",
-    "```json",
-    stableJson(schema),
-    "```",
+    `Call ${evaluationToolName} with your judgment. Do not call tools from the observed trace.`,
   ].join("\n");
 
-  return RenderLocalObserverPromptResponseSchema.parse({
+  return RenderLocalObserverEvaluationPromptResponseSchema.parse({
     prompt,
-    outputSchema: schema,
-    artifactSnapshot: request.artifactSnapshot,
-    availableTargets,
+    evaluationTool: evaluationToolSpec(),
+    trace: request.trace,
   });
 }
 
-function includesText(haystack: string, needle: string) {
-  return haystack.toLowerCase().includes(needle.toLowerCase());
-}
-
-function evidenceText(evidence: string[]) {
-  return evidence.join("\n");
-}
-
-function pushFailure(
-  failures: ValidateLocalObserverRecommendationResponse["failures"],
-  assertionType: string,
+function addNotice(
+  notices: ReviewLocalObserverEvaluationResponse["notices"],
+  noticeType: string,
   message: string,
-  expected?: unknown,
-  actual?: unknown,
+  details?: unknown,
 ) {
-  failures.push({ assertionType, message, expected, actual });
+  notices.push({ noticeType, message, details });
 }
 
-function validateExpectations(
-  request: ValidateLocalObserverRecommendationRequest,
-  expectations: LocalObserverRoutingExpectation,
-) {
-  const { recommendation } = request;
-  const failures: ValidateLocalObserverRecommendationResponse["failures"] = [];
-  const availableTargets = request.availableTargets ?? LocalObserverRecommendedTargetSchema.options;
-
-  if (!availableTargets.includes(recommendation.recommendedTarget)) {
-    pushFailure(
-      failures,
-      "available_targets",
-      "Recommended target is outside the available target set.",
-      availableTargets,
-      recommendation.recommendedTarget,
-    );
-  }
-
-  if (
-    expectations.recommendedTargetIn &&
-    !expectations.recommendedTargetIn.includes(recommendation.recommendedTarget)
-  ) {
-    pushFailure(
-      failures,
-      "recommended_target_in",
-      "Recommended target is not in the allowed set.",
-      expectations.recommendedTargetIn,
-      recommendation.recommendedTarget,
-    );
-  }
-
-  if (
-    expectations.recommendedTargetNotIn &&
-    expectations.recommendedTargetNotIn.includes(recommendation.recommendedTarget)
-  ) {
-    pushFailure(
-      failures,
-      "recommended_target_not_in",
-      "Recommended target is explicitly disallowed.",
-      expectations.recommendedTargetNotIn,
-      recommendation.recommendedTarget,
-    );
-  }
-
-  if (expectations.intentEquals && recommendation.intent !== expectations.intentEquals) {
-    pushFailure(
-      failures,
-      "intent_equals",
-      "Intent did not match the expected value.",
-      expectations.intentEquals,
-      recommendation.intent,
-    );
-  }
-
-  if (expectations.confidenceMin !== undefined && recommendation.confidence < expectations.confidenceMin) {
-    pushFailure(
-      failures,
-      "confidence_min",
-      "Confidence is below the expected minimum.",
-      expectations.confidenceMin,
-      recommendation.confidence,
-    );
-  }
-
-  if (expectations.confidenceMax !== undefined && recommendation.confidence > expectations.confidenceMax) {
-    pushFailure(
-      failures,
-      "confidence_max",
-      "Confidence is above the expected maximum.",
-      expectations.confidenceMax,
-      recommendation.confidence,
-    );
-  }
-
-  const evidence = evidenceText(recommendation.evidence);
-  for (const expectedEvidence of expectations.evidenceContains ?? []) {
-    if (!includesText(evidence, expectedEvidence)) {
-      pushFailure(
-        failures,
-        "evidence_contains",
-        "Evidence did not mention an expected signal.",
-        expectedEvidence,
-        recommendation.evidence,
-      );
-    }
-  }
-
-  const riskFlags = evidenceText(recommendation.riskFlags);
-  for (const expectedRiskFlag of expectations.requireRiskFlags ?? []) {
-    if (!includesText(riskFlags, expectedRiskFlag)) {
-      pushFailure(
-        failures,
-        "require_risk_flags",
-        "Risk flags did not mention an expected signal.",
-        expectedRiskFlag,
-        recommendation.riskFlags,
-      );
-    }
-  }
-
-  return failures;
+function toolNamesFromTrace(request: ReviewLocalObserverEvaluationRequest) {
+  return new Set(request.trace.availableTools.map((tool) => tool.name));
 }
 
-export function validateLocalObserverRecommendation(
-  request: ValidateLocalObserverRecommendationRequest,
-): ValidateLocalObserverRecommendationResponse {
-  const expectations = request.expectations ?? {};
-  const failures = validateExpectations(request, expectations);
+function reviewJudgmentAgainstTrace(request: ReviewLocalObserverEvaluationRequest) {
+  const notices: ReviewLocalObserverEvaluationResponse["notices"] = [];
+  const availableToolNames = toolNamesFromTrace(request);
+  const calledUnknownTools = request.trace.toolCalls
+    .map((toolCall) => toolCall.name)
+    .filter((name) => availableToolNames.size > 0 && !availableToolNames.has(name));
 
-  return ValidateLocalObserverRecommendationResponseSchema.parse({
-    valid: failures.length === 0,
-    recommendation: request.recommendation,
-    failures,
+  if (calledUnknownTools.length > 0) {
+    addNotice(
+      notices,
+      "unknown_tool_call_observed",
+      "The trace includes tool calls that were not listed in availableTools.",
+      calledUnknownTools,
+    );
+  }
+
+  if (request.judgment.verdict === "incorrect" && request.judgment.issues.length === 0) {
+    addNotice(
+      notices,
+      "missing_issue_detail",
+      "Incorrect judgments should include at least one issue for downstream observability.",
+    );
+  }
+
+  if (request.judgment.failureModes.length > 0 && request.judgment.verdict === "correct") {
+    addNotice(
+      notices,
+      "failure_modes_on_correct_verdict",
+      "A correct judgment included failure modes; verify that this is intentional.",
+      request.judgment.failureModes,
+    );
+  }
+
+  return notices;
+}
+
+export function reviewLocalObserverEvaluation(
+  request: ReviewLocalObserverEvaluationRequest,
+): ReviewLocalObserverEvaluationResponse {
+  const judgment: LocalObserverEvaluationJudgment = LocalObserverEvaluationJudgmentSchema.parse(request.judgment);
+  const notices = reviewJudgmentAgainstTrace({ ...request, judgment });
+
+  return ReviewLocalObserverEvaluationResponseSchema.parse({
+    accepted: true,
+    judgment,
+    notices,
   });
 }

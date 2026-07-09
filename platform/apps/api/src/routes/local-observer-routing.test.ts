@@ -5,8 +5,8 @@ import express from "express";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
-  RenderLocalObserverPromptResponseSchema,
-  ValidateLocalObserverRecommendationResponseSchema,
+  RenderLocalObserverEvaluationPromptResponseSchema,
+  ReviewLocalObserverEvaluationResponseSchema,
 } from "../../../../contracts/local-observer-routing.js";
 import { registerLocalObserverRoutingRoutes } from "./local-observer-routing.js";
 
@@ -20,23 +20,60 @@ function closeServer(server: Server | undefined) {
 const artifactSnapshot = {
   kind: "pull_request",
   provider: "github",
-  locator: { repository: "kmgrassi/OpenMacaw", number: 352 },
+  locator: { repository: "kmgrassi/OpenMacaw", number: 355 },
   version: "abc123",
-  title: "Add failure pattern mining scope",
-  summary: "Adds a docs-only scoping document.",
+  title: "Add local observer routing API",
+  summary: "Adds local observer evaluation scaffolding.",
   state: {
     status: "open",
-    checks: [{ name: "docs", status: "passed" }],
-    reviews: [{ author_kind: "ai", state: "approved" }],
+    checks: [{ name: "api", status: "passed" }],
+    reviews: [{ author_kind: "ai", state: "commented" }],
   },
-  signals: ["docs only", "checks passed", "approved"],
-  diffSummary: {
-    files_changed: 2,
-    paths: ["platform/docs/active/failure-pattern-mining-scope.md"],
+  signals: ["review comment present", "api-only change", "tests present"],
+};
+
+const trace = {
+  traceId: "trace-1",
+  actingAgent: {
+    role: "routing",
+    provider: "local",
+    model: "small-local-model",
   },
-  constraints: {
-    local_model_allowed_actions: ["observe", "recommend"],
-  },
+  task: "Decide whether a PR with an actionable review comment needs another run.",
+  artifactSnapshot,
+  workspacePolicy: { preferCheapObservation: true },
+  availableTools: [
+    {
+      name: "dispatch_runner",
+      description: "Dispatch a runner for follow-up work.",
+      parameters: {
+        type: "object",
+        properties: {
+          runner: { type: "string" },
+          reason: { type: "string" },
+        },
+      },
+    },
+    {
+      name: "mark_done",
+      description: "Mark the item complete when no more action is needed.",
+      parameters: { type: "object", properties: {} },
+    },
+  ],
+  promptSummary: "The agent saw a PR with one unresolved review comment.",
+  toolCalls: [
+    {
+      id: "call-1",
+      name: "dispatch_runner",
+      arguments: {
+        runner: "codex",
+        reason: "Address the review comment.",
+      },
+      status: "completed",
+      result: { runId: "run-1" },
+    },
+  ],
+  outcome: { followUpRunStarted: true },
 };
 
 describe("local observer routing routes", () => {
@@ -57,94 +94,95 @@ describe("local observer routing routes", () => {
     await closeServer(server);
   });
 
-  it("renders a bounded observer prompt from an artifact snapshot", async () => {
-    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/render-prompt`, {
+  it("renders a stronger-agent evaluation prompt from an agent trace", async () => {
+    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/render-evaluation-prompt`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        artifactSnapshot,
-        workspacePolicy: { preferCheapObservation: true },
-        availableTargets: ["none", "manager", "codex", "claude_code", "human"],
+        trace,
+        evaluator: {
+          role: "observer",
+          provider: "openai",
+          model: "strong-evaluator-model",
+        },
       }),
     });
 
     expect(response.status).toBe(200);
-    const body = RenderLocalObserverPromptResponseSchema.parse(await response.json());
+    const body = RenderLocalObserverEvaluationPromptResponseSchema.parse(await response.json());
 
-    expect(body.availableTargets).toEqual(["none", "manager", "codex", "claude_code", "human"]);
-    expect(body.prompt).toContain("You are a local observer.");
-    expect(body.prompt).toContain('"kind": "pull_request"');
-    expect(body.prompt).toContain('"repository": "kmgrassi/OpenMacaw"');
-    expect(body.prompt).toContain("Return only JSON matching this schema");
-    expect(body.outputSchema).toHaveProperty("type", "object");
-    expect(
-      ((body.outputSchema.properties as Record<string, unknown>).recommendedTarget as Record<string, unknown>).enum,
-    ).toEqual(["none", "manager", "codex", "claude_code", "human"]);
+    expect(body.prompt).toContain("stronger observer agent");
+    expect(body.prompt).toContain("dispatch_runner");
+    expect(body.prompt).toContain('"number": 355');
+    expect(body.evaluationTool.name).toBe("observer_record_evaluation");
+    expect(body.evaluationTool.parameters).toHaveProperty("type", "object");
+    expect(body.trace.toolCalls[0]?.name).toBe("dispatch_runner");
   });
 
-  it("validates a matching routing recommendation", async () => {
-    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/validate-recommendation`, {
+  it("accepts an evaluator judgment without constraining the acting agent", async () => {
+    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/review-evaluation`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        recommendation: {
-          recommendedTarget: "none",
-          intent: "no_action",
-          confidence: 0.91,
-          reason: "The snapshot is already approved and checks passed.",
-          evidence: ["checks passed", "approved review"],
-          riskFlags: [],
-          followUp: null,
-        },
-        expectations: {
-          recommendedTargetIn: ["none"],
-          intentEquals: "no_action",
-          confidenceMin: 0.8,
-          evidenceContains: ["approved"],
+        trace,
+        judgment: {
+          verdict: "correct",
+          confidence: 0.86,
+          reasoning: "The acting agent saw an unresolved review comment and dispatched Codex with a relevant reason.",
+          observedBehavior: "The agent called dispatch_runner with runner=codex.",
+          expectedBehavior: "A follow-up coding run should be started to address the comment.",
+          failureModes: [],
+          strengths: ["used available review context", "called a relevant tool"],
+          issues: [],
+          suggestedFollowUp: null,
         },
       }),
     });
 
     expect(response.status).toBe(200);
-    const body = ValidateLocalObserverRecommendationResponseSchema.parse(await response.json());
+    const body = ReviewLocalObserverEvaluationResponseSchema.parse(await response.json());
 
-    expect(body.valid).toBe(true);
-    expect(body.failures).toEqual([]);
+    expect(body.accepted).toBe(true);
+    expect(body.judgment.verdict).toBe("correct");
+    expect(body.notices).toEqual([]);
   });
 
-  it("returns deterministic assertion failures for a bad recommendation", async () => {
-    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/validate-recommendation`, {
+  it("surfaces trace quality notices instead of blocking edge-case judgment", async () => {
+    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/review-evaluation`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        recommendation: {
-          recommendedTarget: "local_model_coding",
-          intent: "fix",
-          confidence: 0.99,
-          reason: "Use local coding.",
-          evidence: ["small diff"],
-          riskFlags: [],
+        trace: {
+          ...trace,
+          toolCalls: [
+            {
+              name: "experimental_handoff",
+              arguments: { reason: "Edge-case handoff" },
+              status: "completed",
+            },
+          ],
         },
-        availableTargets: ["none", "manager", "codex", "claude_code", "human"],
-        expectations: {
-          recommendedTargetNotIn: ["local_model_coding"],
-          intentEquals: "ask_human",
-          confidenceMax: 0.8,
-          evidenceContains: ["policy"],
+        judgment: {
+          verdict: "incorrect",
+          confidence: 0.74,
+          reasoning:
+            "The handoff did not use the documented tool surface and did not explain why the normal dispatch tool was insufficient.",
+          observedBehavior: "The agent called an unlisted handoff tool.",
+          failureModes: ["wrong_tool"],
+          strengths: [],
+          issues: [],
+          suggestedFollowUp: "Record why this edge case needs a new handoff tool if the behavior is intentional.",
         },
       }),
     });
 
     expect(response.status).toBe(200);
-    const body = ValidateLocalObserverRecommendationResponseSchema.parse(await response.json());
+    const body = ReviewLocalObserverEvaluationResponseSchema.parse(await response.json());
 
-    expect(body.valid).toBe(false);
-    expect(body.failures.map((failure) => failure.assertionType)).toEqual([
-      "available_targets",
-      "recommended_target_not_in",
-      "intent_equals",
-      "confidence_max",
-      "evidence_contains",
+    expect(body.accepted).toBe(true);
+    expect(body.notices.map((notice) => notice.noticeType)).toEqual([
+      "unknown_tool_call_observed",
+      "missing_issue_detail",
     ]);
   });
 });

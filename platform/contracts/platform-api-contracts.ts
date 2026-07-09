@@ -21,10 +21,10 @@ import {
 } from "./agent-live-io.js";
 import { SessionPolicyStateResponseSchema } from "./session-policy.js";
 import {
-  RenderLocalObserverPromptRequestSchema,
-  RenderLocalObserverPromptResponseSchema,
-  ValidateLocalObserverRecommendationRequestSchema,
-  ValidateLocalObserverRecommendationResponseSchema,
+  RenderLocalObserverEvaluationPromptRequestSchema,
+  RenderLocalObserverEvaluationPromptResponseSchema,
+  ReviewLocalObserverEvaluationRequestSchema,
+  ReviewLocalObserverEvaluationResponseSchema,
 } from "./local-observer-routing.js";
 
 const WorkspaceQuerySchema = z.object({
@@ -106,17 +106,17 @@ export const PlatformApiContracts = {
     query: WorkspaceQuerySchema,
     response: SessionPolicyStateResponseSchema,
   },
-  renderLocalObserverRoutingPrompt: {
+  renderLocalObserverEvaluationPrompt: {
     method: "POST",
-    path: "/api/evals/local-observer-routing/render-prompt",
-    body: RenderLocalObserverPromptRequestSchema,
-    response: RenderLocalObserverPromptResponseSchema,
+    path: "/api/evals/local-observer-routing/render-evaluation-prompt",
+    body: RenderLocalObserverEvaluationPromptRequestSchema,
+    response: RenderLocalObserverEvaluationPromptResponseSchema,
   },
-  validateLocalObserverRoutingRecommendation: {
+  reviewLocalObserverEvaluation: {
     method: "POST",
-    path: "/api/evals/local-observer-routing/validate-recommendation",
-    body: ValidateLocalObserverRecommendationRequestSchema,
-    response: ValidateLocalObserverRecommendationResponseSchema,
+    path: "/api/evals/local-observer-routing/review-evaluation",
+    body: ReviewLocalObserverEvaluationRequestSchema,
+    response: ReviewLocalObserverEvaluationResponseSchema,
   },
   listTools: {
     method: "GET",
