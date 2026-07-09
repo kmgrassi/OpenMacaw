@@ -105,42 +105,31 @@ function formatErrorBody(status: number, bodyText: string): string {
   return bodyText ? `HTTP ${status} ${bodyText.slice(0, 256)}` : `HTTP ${status}`;
 }
 
-const CodexJwtPayloadSchema = z.object({
-  exp: z.union([z.number(), z.string()]).optional(),
-  iss: z.unknown().optional(),
-  sub: z.unknown().optional(),
-  "https://api.openai.com/profile": z
-    .object({
-      email: z.unknown().optional(),
-    })
-    .optional(),
-  "https://api.openai.com/auth": z
-    .object({
-      chatgpt_account_id: z.unknown().optional(),
-      chatgpt_plan_type: z.unknown().optional(),
-    })
-    .optional(),
-});
-
-type CodexJwtPayload = z.infer<typeof CodexJwtPayloadSchema>;
+type CodexJwtPayload = Record<string, unknown>;
 
 function decodeJwtPayload(accessToken: string): CodexJwtPayload | null {
   const parts = accessToken.split(".");
   if (parts.length !== 3) return null;
   try {
     const decoded = Buffer.from(parts[1] ?? "", "base64url").toString("utf8");
-    return CodexJwtPayloadSchema.safeParse(JSON.parse(decoded)).data ?? null;
+    return JsonObjectSchema.safeParse(JSON.parse(decoded)).data ?? null;
   } catch {
     return null;
   }
 }
 
+function objectClaim(payload: CodexJwtPayload | null, key: string): Record<string, unknown> {
+  const value = payload?.[key];
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
 export function resolveCodexAuthIdentity(accessToken: string): OpenAICodexAuthIdentity {
   const payload = decodeJwtPayload(accessToken);
-  const auth = payload?.["https://api.openai.com/auth"];
+  const auth = objectClaim(payload, "https://api.openai.com/auth");
+  const profile = objectClaim(payload, "https://api.openai.com/profile");
   const accountId = trimNonEmptyString(auth?.chatgpt_account_id);
   const chatgptPlanType = trimNonEmptyString(auth?.chatgpt_plan_type);
-  const email = trimNonEmptyString(payload?.["https://api.openai.com/profile"]?.email);
+  const email = trimNonEmptyString(profile.email);
   return {
     ...(accountId ? { accountId } : {}),
     ...(chatgptPlanType ? { chatgptPlanType } : {}),

@@ -34,6 +34,23 @@ describe("openai codex oauth typing boundaries", () => {
     expect(resolveCodexAuthIdentity(token)).toEqual({});
   });
 
+  it("preserves valid claims when another optional nested claim is malformed", () => {
+    const token = jwtWithPayload({
+      exp: 1_725_000_000,
+      "https://api.openai.com/profile": "not-an-object",
+      "https://api.openai.com/auth": {
+        chatgpt_account_id: "acct_123",
+        chatgpt_plan_type: "pro",
+      },
+    });
+
+    expect(resolveCodexAuthIdentity(token)).toEqual({
+      accountId: "acct_123",
+      chatgptPlanType: "pro",
+    });
+    expect(resolveCodexAccessTokenExpiry(token)).toBe(1_725_000_000_000);
+  });
+
   it("parses expiry from number and numeric-string jwt claims", () => {
     const numericToken = jwtWithPayload({ exp: 1_725_000_000 });
     const stringToken = jwtWithPayload({ exp: "1725000001" });
