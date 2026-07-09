@@ -120,7 +120,7 @@ function decodeJwtPayload(accessToken: string): CodexJwtPayload | null {
 
 function objectClaim(payload: CodexJwtPayload | null, key: string): Record<string, unknown> {
   const value = payload?.[key];
-  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 export function resolveCodexAuthIdentity(accessToken: string): OpenAICodexAuthIdentity {
