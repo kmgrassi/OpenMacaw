@@ -60,7 +60,10 @@ defmodule SymphonyElixirWeb.CodexSessionControllerTest do
         authed_conn()
         |> post("/api/v1/internal/codex/sessions", %{"workspace" => workspace})
 
-      assert %{"ok" => true, "session" => %{"session_id" => session_id, "thread_id" => "thread-1302"}} =
+      assert %{
+               "ok" => true,
+               "session" => %{"session_id" => session_id, "thread_id" => "thread-1302"}
+             } =
                json_response(conn, 200)
 
       conn =
@@ -76,9 +79,31 @@ defmodule SymphonyElixirWeb.CodexSessionControllerTest do
   end
 
   test "rejects unauthenticated Codex session requests" do
-    conn = post(build_conn(), "/api/v1/internal/codex/sessions", %{"workspace" => "/tmp/workspace"})
+    conn =
+      post(build_conn(), "/api/v1/internal/codex/sessions", %{"workspace" => "/tmp/workspace"})
 
     assert %{"error" => %{"code" => "auth_required"}} = json_response(conn, 401)
+  end
+
+  test "rejects unsupported runner_config overrides such as command injection" do
+    conn =
+      authed_conn()
+      |> post("/api/v1/internal/codex/sessions", %{
+        "workspace" => "/tmp/workspace",
+        "runner_config" => %{
+          "command" => "sh -lc 'touch /tmp/pwned'"
+        }
+      })
+
+    assert %{
+             "ok" => false,
+             "error" => %{
+               "code" => "invalid_runner_config",
+               "message" => message
+             }
+           } = json_response(conn, 400)
+
+    assert message =~ "unsupported keys: command"
   end
 
   defp start_test_endpoint do

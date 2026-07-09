@@ -265,26 +265,23 @@ describe("agent control routes", () => {
     expect(createAgentControlMessage).toHaveBeenCalledWith(expect.objectContaining({ targetAgentId, observerAgentId }));
   });
 
+  it("requires auth before fetching agent details", async () => {
+    launcherClient.getAgent = vi.fn();
+
+    const response = await fetch(`${baseUrl}/api/agents/${targetAgentId}`);
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "auth_required" },
+    });
+    expect(assertAgentAccess).not.toHaveBeenCalled();
+    expect(launcherClient.getAgent).not.toHaveBeenCalled();
+  });
+
   it("requires agent access before returning launcher agent state", async () => {
     launcherClient.getAgent = vi.fn().mockResolvedValue({
-      data: {
-        id: targetAgentId,
-        name: "Coding Agent",
-        workspace_id: workspaceId,
-        project_id: null,
-        description: null,
-        slug: null,
-        status: "running",
-        type: "coding",
-        session_id: "session-1",
-        context: null,
-        is_active: true,
-        model_settings: {},
-        tool_policy: {},
-        has_credentials: true,
-        created_at: null,
-        updated_at: null,
-      },
+      status: 200,
+      data: { data: { id: targetAgentId, workspace_id: workspaceId } },
     });
 
     const response = await fetch(`${baseUrl}/api/agents/${targetAgentId}`, {
@@ -297,10 +294,13 @@ describe("agent control routes", () => {
       userId,
       agentId: targetAgentId,
     });
+    expect(launcherClient.getAgent).toHaveBeenCalledWith(targetAgentId);
     await expect(response.json()).resolves.toMatchObject({
       data: {
-        id: targetAgentId,
-        workspace_id: workspaceId,
+        data: {
+          id: targetAgentId,
+          workspace_id: workspaceId,
+        },
       },
     });
   });

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ModelSettingsSchema, ToolPolicySchema } from "./agents.js";
 
 export const LauncherDatabaseHealthSchema = z.object({
   configured: z.boolean(),
@@ -29,8 +30,8 @@ export const LauncherAgentSchema = z.object({
   session_id: z.string().nullable(),
   context: z.string().nullable(),
   is_active: z.boolean().nullable(),
-  model_settings: z.record(z.string(), z.unknown()),
-  tool_policy: z.record(z.string(), z.unknown()),
+  model_settings: ModelSettingsSchema,
+  tool_policy: ToolPolicySchema,
   has_credentials: z.boolean(),
   created_at: z.string().nullable(),
   updated_at: z.string().nullable(),
