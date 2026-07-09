@@ -38,6 +38,7 @@ import { registerSkillRoutes } from "./routes/skills.js";
 import { registerWorkspaceSettingsRoutes } from "./routes/workspace-settings.js";
 import { registerLocalDirectoryRoutes } from "./routes/local-directory.js";
 import { registerLocalModelsRoutes } from "./routes/local-models.js";
+import { registerLocalObserverRoutingRoutes } from "./routes/local-observer-routing.js";
 import { registerLocalModelProxyRoutes } from "./routes/local-model-proxy.js";
 import { registerLocalRuntimeRoutes } from "./routes/local-runtime.js";
 import { registerLearningCostRoutes } from "./routes/learning-cost.js";
@@ -106,6 +107,7 @@ export function createApp(config: ApiConfig) {
   registerLearningCostRoutes(app);
   registerLearningMemoryRoutes(app);
   registerLocalModelProxyRoutes(app);
+  registerLocalObserverRoutingRoutes(app);
   registerLocalDirectoryRoutes(app);
   registerLocalModelsRoutes(app);
   registerAgentDashboardRoutes(app);

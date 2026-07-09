@@ -6,6 +6,7 @@ import type {
   CredentialReference,
   SavedCredential,
 } from "../../../api/credentials";
+import { formatProviderLabel } from "../../../lib/provider-labels";
 
 export function credentialRowId(credential: SavedCredential): string {
   return (
@@ -18,14 +19,7 @@ export function credentialRowId(credential: SavedCredential): string {
 export function credentialProviderLabel(
   credential: SavedCredential | null | undefined,
 ) {
-  const provider = CREDENTIAL_PROVIDERS.find(
-    (candidate) => candidate.provider === credential?.provider,
-  );
-  return (
-    provider?.label.replace(" API key", "") ??
-    credential?.provider ??
-    "Unknown provider"
-  );
+  return formatProviderLabel(credential?.provider);
 }
 
 export function credentialValidationLabel(credential: SavedCredential) {
@@ -62,9 +56,5 @@ export function asCredentialProvider(value: string | null | undefined) {
 
 export function providerFilterLabel(providerFilter?: string | null) {
   if (!providerFilter) return null;
-  return (
-    CREDENTIAL_PROVIDERS.find(
-      (candidate) => candidate.provider === providerFilter,
-    )?.label.replace(" API key", "") ?? providerFilter
-  );
+  return formatProviderLabel(providerFilter);
 }
