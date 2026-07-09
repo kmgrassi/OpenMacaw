@@ -422,11 +422,9 @@ describe("launcher runtime proxy integration", () => {
       expect(healthResponse.status).toBe(200);
       await expect(healthResponse.json()).resolves.toMatchObject({
         ok: true,
-        runtimeTarget: null,
-        orchestratorHealth: {
-          error: {
-            code: "runtime_unscoped",
-          },
+        service: "symphony-express-server",
+        launcher: {
+          ok: true,
         },
       });
 

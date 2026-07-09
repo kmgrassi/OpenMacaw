@@ -32,10 +32,12 @@ import { registerProviderCutoverRoutes } from "./routes/provider-cutovers.js";
 import { registerResourceCredentialRoutes } from "./routes/resource-credentials.js";
 import { registerSetupRoutes } from "./routes/setup.js";
 import { registerScheduledTaskRoutes } from "./routes/scheduled-tasks.js";
+import { registerSessionPolicyRoutes } from "./routes/session-policy.js";
 import { registerSkillRoutes } from "./routes/skills.js";
 import { registerWorkspaceSettingsRoutes } from "./routes/workspace-settings.js";
 import { registerLocalDirectoryRoutes } from "./routes/local-directory.js";
 import { registerLocalModelsRoutes } from "./routes/local-models.js";
+import { registerLocalObserverRoutingRoutes } from "./routes/local-observer-routing.js";
 import { registerLocalModelProxyRoutes } from "./routes/local-model-proxy.js";
 import { registerLocalRuntimeRoutes } from "./routes/local-runtime.js";
 import { registerLearningCostRoutes } from "./routes/learning-cost.js";
@@ -103,6 +105,7 @@ export function createApp(config: ApiConfig) {
   registerLearningCostRoutes(app);
   registerLearningMemoryRoutes(app);
   registerLocalModelProxyRoutes(app);
+  registerLocalObserverRoutingRoutes(app);
   registerLocalDirectoryRoutes(app);
   registerLocalModelsRoutes(app);
   registerAgentDashboardRoutes(app);
@@ -110,6 +113,7 @@ export function createApp(config: ApiConfig) {
   registerProviderFailureRoutes(app);
   registerPlanRoutes(app, config, launcherRequest);
   registerScheduledTaskRoutes(app);
+  registerSessionPolicyRoutes(app);
   registerSkillRoutes(app);
   registerMemoryItemRoutes(app);
   registerAgentObservationRoutes(app, launcherClient);

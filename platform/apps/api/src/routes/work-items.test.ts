@@ -139,6 +139,10 @@ function githubSignature(secret: string, body: string) {
   return `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
 }
 
+function linearSignature(secret: string, body: string) {
+  return createHmac("sha256", secret).update(body).digest("hex");
+}
+
 let baseUrl = "";
 
 describe("work item routes", () => {
@@ -462,6 +466,122 @@ describe("work item routes", () => {
     expect(tables.webhook_delivery).toHaveLength(1);
   });
 
+  it("skips GitHub webhook replays even when the attacker changes the unsigned delivery header", async () => {
+    config.githubWebhookSecret = "github-secret";
+    config.githubRepoWorkspaceMap = { "openmacaw/repo": workspaceId };
+    tables.work_items.push(
+      workItemRow({
+        id: "66666666-6666-4666-8666-666666666666",
+        source: "github",
+        title: "Old replay-safe title",
+        metadata: { external_id: "openmacaw/repo:issue:23" },
+        "metadata->>external_id": "openmacaw/repo:issue:23",
+      }),
+    );
+
+    const payload = JSON.stringify({
+      action: "opened",
+      repository: {
+        full_name: "openmacaw/repo",
+        html_url: "https://github.com/openmacaw/repo",
+      },
+      issue: {
+        number: 23,
+        title: "Replay-safe webhook ingest",
+        body: "Reject forged redeliveries that reuse a captured signed body.",
+        state: "open",
+        html_url: "https://github.com/openmacaw/repo/issues/23",
+        labels: [],
+      },
+    });
+
+    const first = await fetch(`${baseUrl}/api/webhooks/github`, {
+      method: "POST",
+      headers: {
+        connection: "close",
+        "content-type": "application/json",
+        "x-github-event": "issues",
+        "x-github-delivery": "delivery-original",
+        "x-hub-signature-256": githubSignature("github-secret", payload),
+      },
+      body: payload,
+    });
+    expect(first.status).toBe(202);
+    expect(tables.work_items).toHaveLength(3);
+    expect(tables.webhook_delivery).toHaveLength(1);
+
+    const replay = await fetch(`${baseUrl}/api/webhooks/github`, {
+      method: "POST",
+      headers: {
+        connection: "close",
+        "content-type": "application/json",
+        "x-github-event": "issues",
+        "x-github-delivery": "delivery-forged-replay",
+        "x-hub-signature-256": githubSignature("github-secret", payload),
+      },
+      body: payload,
+    });
+
+    expect(replay.status).toBe(202);
+    await expect(replay.json()).resolves.toMatchObject({
+      accepted: true,
+      skipped: true,
+      reason: "duplicate_delivery",
+    });
+    expect(tables.work_items).toHaveLength(3);
+    expect(tables.webhook_delivery).toHaveLength(1);
+  });
+
+  it("skips GitHub webhook replays claimed with legacy delivery IDs", async () => {
+    config.githubWebhookSecret = "github-secret";
+    config.githubRepoWorkspaceMap = { "openmacaw/repo": workspaceId };
+    tables.webhook_delivery.push({
+      id: "legacy-delivery-claim",
+      source: "github",
+      delivery_id: "delivery-legacy",
+      event_name: "issues",
+      workspace_id: workspaceId,
+      external_id: "openmacaw/repo:issue:29",
+    });
+
+    const payload = JSON.stringify({
+      action: "opened",
+      repository: {
+        full_name: "openmacaw/repo",
+        html_url: "https://github.com/openmacaw/repo",
+      },
+      issue: {
+        number: 29,
+        title: "Legacy delivery replay",
+        body: "A request processed before fingerprint rollout must stay blocked.",
+        state: "open",
+        html_url: "https://github.com/openmacaw/repo/issues/29",
+        labels: [],
+      },
+    });
+
+    const replay = await fetch(`${baseUrl}/api/webhooks/github`, {
+      method: "POST",
+      headers: {
+        connection: "close",
+        "content-type": "application/json",
+        "x-github-event": "issues",
+        "x-github-delivery": "delivery-legacy",
+        "x-hub-signature-256": githubSignature("github-secret", payload),
+      },
+      body: payload,
+    });
+
+    expect(replay.status).toBe(202);
+    await expect(replay.json()).resolves.toMatchObject({
+      accepted: true,
+      skipped: true,
+      reason: "duplicate_delivery",
+    });
+    expect(tables.work_items).toHaveLength(2);
+    expect(tables.webhook_delivery).toHaveLength(1);
+  });
+
   it("releases the GitHub delivery claim when downstream processing fails", async () => {
     config.githubWebhookSecret = "github-secret";
     config.githubRepoWorkspaceMap = { "openmacaw/repo": workspaceId };
@@ -503,5 +623,66 @@ describe("work item routes", () => {
 
     expect(response.status).toBe(502);
     expect(tables.webhook_delivery).toHaveLength(0);
+  });
+
+  it("skips replayed Linear webhook deliveries after the first successful claim", async () => {
+    config.linearWebhookSecret = "linear-secret";
+    config.linearTeamWorkspaceMap = { "team-1": workspaceId };
+    tables.work_items.push(
+      workItemRow({
+        id: "77777777-7777-4777-8777-777777777777",
+        source: "linear",
+        title: "Old linear title",
+        metadata: { external_id: "issue:linear-17" },
+        "metadata->>external_id": "issue:linear-17",
+      }),
+    );
+
+    const payload = JSON.stringify({
+      action: "create",
+      type: "Issue",
+      url: "https://linear.app/openmacaw/issue/ENG-17",
+      webhookTimestamp: Date.now(),
+      data: {
+        id: "linear-17",
+        identifier: "ENG-17",
+        title: "Fix Linear replay handling",
+        description: "Ensure duplicate deliveries are skipped.",
+        url: "https://linear.app/openmacaw/issue/ENG-17",
+        team: { id: "team-1", key: "ENG", name: "Engineering" },
+        state: { type: "unstarted", name: "Todo" },
+      },
+    });
+    const headers = {
+      connection: "close",
+      "content-type": "application/json",
+      "linear-event": "Issue",
+      "linear-delivery": "linear-delivery-1",
+      "linear-signature": linearSignature("linear-secret", payload),
+    };
+
+    const first = await fetch(`${baseUrl}/api/webhooks/linear`, {
+      method: "POST",
+      headers,
+      body: payload,
+    });
+    expect(first.status).toBe(202);
+    expect(tables.work_items).toHaveLength(3);
+    expect(tables.webhook_delivery).toHaveLength(1);
+
+    const replay = await fetch(`${baseUrl}/api/webhooks/linear`, {
+      method: "POST",
+      headers,
+      body: payload,
+    });
+
+    expect(replay.status).toBe(202);
+    await expect(replay.json()).resolves.toMatchObject({
+      accepted: true,
+      skipped: true,
+      reason: "duplicate_delivery",
+    });
+    expect(tables.work_items).toHaveLength(3);
+    expect(tables.webhook_delivery).toHaveLength(1);
   });
 });

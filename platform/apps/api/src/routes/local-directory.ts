@@ -13,9 +13,13 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import type { Express, Request, Response } from "express";
+import { z } from "zod";
 
+import { ToolPolicySchema, type ToolPolicy } from "../../../../contracts/agents.js";
+import { parseNullableSupabaseRow } from "../lib/supabase-row-parsers.js";
 import { getServiceRoleSupabase } from "../supabase-client.js";
 import { assertSupabaseNoError, assertSupabaseSuccess } from "../lib/supabase-errors.js";
+import { narrowSupabase } from "../lib/narrow-supabase.js";
 import {
   ApiRouteError,
   errorPayload,
@@ -30,6 +34,13 @@ import { requireStoredAgent } from "./stored-agent-credentials/authz.js";
 type ValidateResult =
   | { ok: true; path: string }
   | { ok: false; reason: "not_absolute" | "not_found" | "not_a_directory" | "not_readable"; path: string };
+
+const AgentWorkspacePathRowSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string().optional(),
+  tool_policy: ToolPolicySchema,
+});
+type AgentWorkspacePathRow = z.infer<typeof AgentWorkspacePathRowSchema>;
 
 async function validateDirectory(rawPath: unknown): Promise<ValidateResult> {
   if (typeof rawPath !== "string" || rawPath.trim() === "") {
@@ -165,17 +176,18 @@ export function registerLocalDirectoryRoutes(app: Express) {
         throw new ApiRouteError(409, "agent_workspace_missing", "Agent is missing a workspace binding");
       }
       const service = getServiceRoleSupabase();
-      const fetched = await service
-        .from("agent")
+      const fetched = await narrowSupabase(service)
+        .from<AgentWorkspacePathRow>("agent")
         .select("id,tool_policy")
         .eq("id", agentId)
         .eq("workspace_id", workspaceId)
         .maybeSingle();
       assertSupabaseNoError("agent fetch", fetched.error);
-      if (!fetched.data) {
+      const storedAgent = parseNullableSupabaseRow("agent fetch", AgentWorkspacePathRowSchema, fetched.data);
+      if (!storedAgent) {
         throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
       }
-      const stored = extractWorkspaceRoot(fetched.data.tool_policy);
+      const stored = extractWorkspaceRoot(storedAgent.tool_policy);
       if (stored === null) {
         return res.status(200).json({ path: null, validation: null });
       }
@@ -204,14 +216,14 @@ export function registerLocalDirectoryRoutes(app: Express) {
       }
 
       const service = getServiceRoleSupabase();
-      const fetched = await service
-        .from("agent")
+      const fetched = await narrowSupabase(service)
+        .from<AgentWorkspacePathRow>("agent")
         .select("id,workspace_id,tool_policy")
         .eq("id", agentId)
         .eq("workspace_id", workspaceId)
         .maybeSingle();
       assertSupabaseNoError("agent fetch", fetched.error);
-      const existing = fetched.data;
+      const existing = parseNullableSupabaseRow("agent fetch", AgentWorkspacePathRowSchema, fetched.data);
       if (!existing) {
         throw new ApiRouteError(404, "agent_not_found", "Agent was not found");
       }
@@ -235,10 +247,10 @@ export function registerLocalDirectoryRoutes(app: Express) {
 
       const nextToolPolicy = mergeWorkspaceRoot(existing.tool_policy, resolvedPath);
 
-      const updated = await service
-        .from("agent")
+      const updated = await narrowSupabase(service)
+        .from<AgentWorkspacePathRow>("agent")
         .update({
-          tool_policy: nextToolPolicy as never,
+          tool_policy: nextToolPolicy,
           updated_at: new Date().toISOString(),
         })
         .eq("id", agentId)
@@ -246,11 +258,12 @@ export function registerLocalDirectoryRoutes(app: Express) {
         .select("id,tool_policy")
         .maybeSingle();
       assertSupabaseSuccess("agent update", updated.data, updated.error);
+      const updatedAgent = parseNullableSupabaseRow("agent update", AgentWorkspacePathRowSchema, updated.data);
 
       return res.status(200).json({
         agentId,
         workspacePath: resolvedPath,
-        toolPolicy: updated.data?.tool_policy ?? nextToolPolicy,
+        toolPolicy: updatedAgent?.tool_policy ?? nextToolPolicy,
         actor: userId,
       });
     } catch (error) {
@@ -263,23 +276,18 @@ export function registerLocalDirectoryRoutes(app: Express) {
   });
 }
 
-function extractWorkspaceRoot(toolPolicy: unknown): string | null {
-  if (!toolPolicy || typeof toolPolicy !== "object" || Array.isArray(toolPolicy)) return null;
-  const target = (toolPolicy as Record<string, unknown>).executionTarget;
+function extractWorkspaceRoot(toolPolicy: ToolPolicy): string | null {
+  const target = toolPolicy.executionTarget;
   if (!target || typeof target !== "object" || Array.isArray(target)) return null;
-  const raw = (target as Record<string, unknown>).workspace_root;
+  const raw = target.workspace_root;
   return typeof raw === "string" && raw.trim() !== "" ? raw : null;
 }
 
-function mergeWorkspaceRoot(existingPolicy: unknown, workspacePath: string | null): Record<string, unknown> {
-  const policy: Record<string, unknown> =
-    existingPolicy && typeof existingPolicy === "object" && !Array.isArray(existingPolicy)
-      ? { ...(existingPolicy as Record<string, unknown>) }
-      : {};
-
+function mergeWorkspaceRoot(existingPolicy: ToolPolicy, workspacePath: string | null): ToolPolicy {
+  const policy = structuredClone(existingPolicy);
   const existingTarget =
     policy.executionTarget && typeof policy.executionTarget === "object" && !Array.isArray(policy.executionTarget)
-      ? { ...(policy.executionTarget as Record<string, unknown>) }
+      ? { ...policy.executionTarget }
       : {};
 
   if (workspacePath === null) {
@@ -297,5 +305,5 @@ function mergeWorkspaceRoot(existingPolicy: unknown, workspacePath: string | nul
     policy.executionTarget = existingTarget;
   }
 
-  return policy;
+  return ToolPolicySchema.parse(policy);
 }

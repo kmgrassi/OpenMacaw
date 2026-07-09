@@ -9,9 +9,7 @@ import {
   formatDisplayLabel,
   normalizeDisplayLabel,
 } from "../../../lib/display-labels";
-import {
-  managerRuntimeProviderLabel,
-} from "../runtime-provider-utils";
+import { formatProviderLabel } from "../../../lib/provider-labels";
 
 export type SchedulerRuntimeProvider = AgentRuntimeProfile["provider"];
 
@@ -57,7 +55,7 @@ export type ManagerState = (typeof MANAGER_STATES)[number];
 export const providerOptions = MANAGER_PROVIDERS.map((provider) => {
   return {
     value: provider,
-    label: managerRuntimeProviderLabel(provider),
+    label: formatProviderLabel(provider, { localOpenAICompatible: true }),
   };
 });
 
@@ -70,7 +68,7 @@ export function credentialRowId(credential: SavedCredential): string {
 }
 
 export function providerLabel(provider: string | null | undefined) {
-  return managerRuntimeProviderLabel(provider);
+  return formatProviderLabel(provider, { localOpenAICompatible: true });
 }
 
 export function statusBadgeVariant(

@@ -810,6 +810,7 @@ create table if not exists public.escalation (
     'ambiguous_intent',
     'missing_context',
     'policy_uncertain',
+    'policy_ask',
     'destructive_action_unverified',
     'out_of_scope',
     'stuck_after_retries',

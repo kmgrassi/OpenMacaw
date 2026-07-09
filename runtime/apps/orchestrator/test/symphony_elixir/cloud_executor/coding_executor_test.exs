@@ -44,6 +44,40 @@ defmodule SymphonyElixir.CloudExecutor.CodingExecutorTest do
     assert String.trim(result["output"]["stderr"]) == "err"
   end
 
+  test "policy ask gates shell.exec before execution", %{root: root, workspace: workspace} do
+    assert {:ok, prepared} = CodingExecutor.prepare(%{"existing_workspace" => "repo"}, workspace_root: root)
+
+    frames =
+      capture_frames(fn emit ->
+        CodingExecutor.execute_frame(
+          %{
+            "type" => "tool_execution_request",
+            "schema_version" => "1",
+            "correlation_id" => "corr-policy",
+            "tool_call_id" => "call-shell-policy",
+            "name" => "shell.exec",
+            "arguments" => %{"argv" => ["sh", "-c", "touch should-not-exist"], "cwd" => "."},
+            "policies" => [
+              %{
+                "scope" => "session",
+                "kind" => "ask_on_shell",
+                "params" => %{},
+                "enabled" => true
+              }
+            ]
+          },
+          prepared,
+          emit
+        )
+      end)
+
+    result = Enum.find(frames, &(&1["type"] == "tool_call_result"))
+    assert result["success"] == false
+    assert result["output"]["error_code"] == "policy_ask"
+    assert result["output"]["approval_state"] == "requested"
+    refute File.exists?(Path.join(workspace, "should-not-exist"))
+  end
+
   test "applies patches inside the prepared workspace", %{root: root, workspace: workspace} do
     File.write!(Path.join(workspace, "message.txt"), "before\n")
     assert {:ok, prepared} = CodingExecutor.prepare(%{"existing_workspace" => "repo"}, workspace_root: root)

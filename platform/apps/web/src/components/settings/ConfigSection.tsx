@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import type { ConfigSnapshot } from "../../api/ws-types";
 import { useGatewayContext } from "../../context/GatewayContext";
 import { Alert } from "../ui/Alert";
 import { Button } from "../ui/Button";
@@ -7,19 +8,6 @@ import { EmptyState } from "../ui/EmptyState";
 import { LoadingState } from "../ui/LoadingState";
 import { PageHeader } from "../ui/PageHeader";
 import { Textarea } from "../ui/Textarea";
-
-type ConfigSnapshot = {
-  /** @deprecated Legacy filesystem path — will be removed when engine drops OPENCLAW_STATE_DIR. */
-  path?: string | null;
-  exists?: boolean | null;
-  raw?: string | null;
-  hash?: string | null;
-  config?: Record<string, unknown> | null;
-  valid?: boolean | null;
-  issues?: Array<{ path: string; message: string }> | null;
-  /** API-reported source identifier (replaces local path as the authoritative origin). */
-  source?: string | null;
-};
 
 export function ConfigSection() {
   const { request, connected } = useGatewayContext();
@@ -35,7 +23,7 @@ export function ConfigSection() {
     setLoading(true);
     setError(null);
     try {
-      const res = await request<ConfigSnapshot | undefined>("config.get", {});
+      const res = await request("config.get", {});
       if (res) {
         setSnapshot(res);
         setRawEdit(res.raw ?? JSON.stringify(res.config ?? {}, null, 2));

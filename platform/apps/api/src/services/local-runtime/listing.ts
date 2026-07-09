@@ -1,4 +1,5 @@
 import { LocalRuntimeListResponseSchema } from "../../../../../contracts/local-runtime.js";
+import { narrowSupabase } from "../../lib/narrow-supabase.js";
 import { parseSupabaseRows } from "../../lib/supabase-row-parsers.js";
 import { assertSupabaseSuccess } from "../../lib/supabase-errors.js";
 import { getServiceRoleSupabase } from "../../supabase-client.js";
@@ -25,6 +26,7 @@ import {
 
 export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: string) {
   const supabase = getServiceRoleSupabase();
+  const narrowedSupabase = narrowSupabase(supabase);
 
   const { data: rules, error: rulesError } = await supabase
     .from("routing_rule")
@@ -96,8 +98,8 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
 
   const { data: liveModels, error: liveModelsError } =
     activeMachineIds.length > 0
-      ? await supabase
-          .from("local_runtime_model" as never)
+      ? await narrowedSupabase
+          .from("local_runtime_model")
           .select("id, machine_id, runner_kind, model, provider, capabilities, last_advertised_at")
           .in("machine_id", activeMachineIds)
       : { data: [], error: null };
@@ -105,7 +107,11 @@ export async function listRegisteredLocalRuntimesForWorkspace(workspaceId: strin
   if (liveModelsError) {
     assertSupabaseSuccess("list local runtime live models", liveModels, liveModelsError);
   }
-  const parsedLiveModels = parseSupabaseRows("list local runtime live models", LocalRuntimeModelRowSchema, liveModels);
+  const parsedLiveModels = parseSupabaseRows(
+    "list local runtime live models",
+    LocalRuntimeModelRowSchema,
+    Array.isArray(liveModels) ? liveModels : liveModels ? [liveModels] : null,
+  );
 
   const agentIds = Array.from(
     new Set(

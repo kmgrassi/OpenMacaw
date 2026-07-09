@@ -18,7 +18,7 @@ import {
   credentialValidationLabel,
   matchesProviderFilter,
 } from "../credential-picker/credential-picker-utils";
-import { runtimeProviderLabel } from "../runtime-provider-utils";
+import { formatProviderLabel } from "../../../lib/provider-labels";
 
 export type LocalRuntimeRunnerOption = {
   id: string;
@@ -44,7 +44,7 @@ export const FALLBACK_PROVIDER_OPTIONS = Array.from(
   ),
 ).map((provider) => ({
   value: provider,
-  label: providerLabel(provider),
+  label: formatProviderLabel(provider),
 }));
 
 export function buildRoutingWarnings(input: {
@@ -64,7 +64,7 @@ export function buildRoutingWarnings(input: {
     const entry = modelRegistryEntry(fallback.provider, fallback.model);
     if (entry && !entry.executable) {
       warnings.push(
-        `Fallback ${index + 1} uses ${providerLabel(fallback.provider)}, whose execution adapter is not available yet. See the provider adapter rollout scope.`,
+        `Fallback ${index + 1} uses ${formatProviderLabel(fallback.provider)}, whose execution adapter is not available yet. See the provider adapter rollout scope.`,
       );
     }
   });
@@ -118,10 +118,6 @@ export function credentialRefFromValue(
     return { type, value: refValue };
   }
   return null;
-}
-
-export function providerLabel(provider: string) {
-  return runtimeProviderLabel(provider);
 }
 
 export function localRunnerLabel(option: LocalRuntimeRunnerOption) {

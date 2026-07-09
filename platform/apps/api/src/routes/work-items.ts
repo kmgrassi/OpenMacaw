@@ -6,8 +6,10 @@ import type { ApiConfig } from "../config.js";
 import { ApiRouteError, apiRoute, errorPayload } from "../http.js";
 import { snoozeWorkItemForWorkspace, wakeWorkItemForWorkspace } from "../services/work-item-snooze.js";
 import {
+  type NormalizedWorkItemInput,
   assertWorkspaceMembership,
   claimWebhookDelivery,
+  fingerprintSignedWebhookPayload,
   isRecentLinearWebhookTimestamp,
   mapWorkItemIngestResponse,
   normalizeGitHubWebhook,
@@ -21,6 +23,12 @@ import {
 import { deleteWorkItemForWorkspace, listWorkItemsForWorkspace } from "../services/workspace-plans.js";
 
 type RawBodyRequest = Request & { rawBody?: Buffer };
+type WebhookSource = "github" | "linear";
+type WebhookSkipReason = "unsupported_event" | "duplicate_delivery";
+
+function skippedWebhookResponse(reason: WebhookSkipReason) {
+  return { accepted: true, skipped: true, reason } as const;
+}
 
 function workspaceRoutingFromConfig(config: ApiConfig) {
   return {
@@ -42,6 +50,34 @@ async function requireWorkspaceAccess(userId: string, workspaceId: string) {
         "Authenticated user is not authorized for the requested workspace",
       );
     }
+    throw error;
+  }
+}
+
+async function persistWebhookWorkItem(input: {
+  source: WebhookSource;
+  deliveryId: string;
+  duplicateDeliveryIds?: string[];
+  eventName: string;
+  normalized: NormalizedWorkItemInput;
+}) {
+  const claimed = await claimWebhookDelivery({
+    source: input.source,
+    deliveryId: input.deliveryId,
+    duplicateDeliveryIds: input.duplicateDeliveryIds,
+    eventName: input.eventName,
+    workspaceId: input.normalized.workspaceId,
+    externalId: input.normalized.externalId,
+  });
+  if (!claimed) {
+    return null;
+  }
+
+  try {
+    const saved = await upsertWorkItemFromNormalizedInput(input.normalized);
+    return mapWorkItemIngestResponse(saved);
+  } catch (error) {
+    await releaseWebhookDeliveryClaim({ source: input.source, deliveryId: input.deliveryId }).catch(() => undefined);
     throw error;
   }
 }
@@ -175,6 +211,7 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
     if (!req.rawBody || !verifyGithubSignature(req.rawBody, config.githubWebhookSecret, signature)) {
       return res.status(401).json(errorPayload("invalid_signature", "GitHub webhook signature verification failed"));
     }
+    const signedPayloadFingerprint = fingerprintSignedWebhookPayload(req.rawBody);
 
     const eventName = req.header("x-github-event")?.trim() || "";
     if (!eventName) {
@@ -197,27 +234,20 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
       );
 
       if (!normalized) {
-        return res.status(202).json({ accepted: true, skipped: true, reason: "unsupported_event" });
+        return res.status(202).json(skippedWebhookResponse("unsupported_event"));
       }
 
-      const claimed = await claimWebhookDelivery({
+      const saved = await persistWebhookWorkItem({
         source: "github",
-        deliveryId,
+        deliveryId: signedPayloadFingerprint,
+        duplicateDeliveryIds: [deliveryId],
         eventName,
-        workspaceId: normalized.workspaceId,
-        externalId: normalized.externalId,
+        normalized,
       });
-      if (!claimed) {
-        return res.status(202).json({ accepted: true, skipped: true, reason: "duplicate_delivery" });
+      if (!saved) {
+        return res.status(202).json(skippedWebhookResponse("duplicate_delivery"));
       }
-
-      try {
-        const saved = await upsertWorkItemFromNormalizedInput(normalized);
-        return res.status(202).json(mapWorkItemIngestResponse(saved));
-      } catch (error) {
-        await releaseWebhookDeliveryClaim({ source: "github", deliveryId }).catch(() => undefined);
-        throw error;
-      }
+      return res.status(202).json(saved);
     } catch (error) {
       return res
         .status(502)
@@ -258,27 +288,19 @@ export function registerWorkItemRoutes(app: Express, config: ApiConfig) {
       );
 
       if (!normalized) {
-        return res.status(202).json({ accepted: true, skipped: true, reason: "unsupported_event" });
+        return res.status(202).json(skippedWebhookResponse("unsupported_event"));
       }
 
-      const claimed = await claimWebhookDelivery({
+      const saved = await persistWebhookWorkItem({
         source: "linear",
         deliveryId,
         eventName: req.header("linear-event")?.trim() || "",
-        workspaceId: normalized.workspaceId,
-        externalId: normalized.externalId,
+        normalized,
       });
-      if (!claimed) {
-        return res.status(202).json({ accepted: true, skipped: true, reason: "duplicate_delivery" });
+      if (!saved) {
+        return res.status(202).json(skippedWebhookResponse("duplicate_delivery"));
       }
-
-      try {
-        const saved = await upsertWorkItemFromNormalizedInput(normalized);
-        return res.status(202).json(mapWorkItemIngestResponse(saved));
-      } catch (error) {
-        await releaseWebhookDeliveryClaim({ source: "linear", deliveryId }).catch(() => undefined);
-        throw error;
-      }
+      return res.status(202).json(saved);
     } catch (error) {
       return res
         .status(502)
