@@ -5,6 +5,7 @@ import express from "express";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  ProposeLocalObserverRemediationResponseSchema,
   RenderLocalObserverEvaluationPromptResponseSchema,
   ReviewLocalObserverEvaluationResponseSchema,
 } from "../../../../contracts/local-observer-routing.js";
@@ -213,5 +214,133 @@ describe("local observer routing routes", () => {
     expect(body.accepted).toBe(false);
     expect(body.judgment).toBeNull();
     expect(body.notices.map((notice) => notice.noticeType)).toEqual(["invalid_evaluator_judgment"]);
+  });
+
+  it("proposes a remediation work-item draft for incorrect judgments", async () => {
+    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/propose-remediation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        trace: {
+          ...trace,
+          toolCalls: [
+            {
+              name: "dispatch_runner",
+              arguments: { runner_kind: "codex", intent: "address_review" },
+              status: "completed",
+            },
+          ],
+        },
+        judgment: {
+          verdict: "incorrect",
+          confidence: 0.91,
+          reasoning: "The PR had no unresolved comments, so dispatching a runner was wasteful.",
+          observedBehavior: "The local routing agent called dispatch_runner.",
+          expectedBehavior: "The agent should have called mark_done.",
+          failureModes: ["wrong_tool", "wasted_tokens"],
+          strengths: [],
+          issues: ["Started a coding runner when no work remained."],
+          suggestedFollowUp: "Improve manager tool guidance for no-op PR states.",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = ProposeLocalObserverRemediationResponseSchema.parse(await response.json());
+
+    expect(body.proposal.shouldCreateWorkItem).toBe(true);
+    expect(body.proposal.remediationKind).toBe("tool_schema");
+    expect(body.proposal.dedupeKey).toContain("wrong-tool-wasted-tokens");
+    expect(body.workItemDraft?.workspaceId).toBe("workspace-1");
+    expect(body.workItemDraft?.title).toContain("Fix routing agent evaluation failure");
+    expect(body.workItemDraft?.description).toContain("Observed behavior:");
+    expect(body.workItemDraft?.metadata.failureModes).toEqual(["wrong_tool", "wasted_tokens"]);
+  });
+
+  it("routes unsafe actions to human review before other remediation kinds", async () => {
+    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/propose-remediation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        trace,
+        judgment: {
+          verdict: "incorrect",
+          confidence: 0.94,
+          reasoning: "The agent used the wrong tool and attempted an unsafe destructive action.",
+          observedBehavior: "The local routing agent called dispatch_runner with unsafe arguments.",
+          expectedBehavior: "The agent should have escalated for human review.",
+          failureModes: ["wrong_tool", "unsafe_action"],
+          strengths: [],
+          issues: ["Unsafe action should not be folded into schema remediation."],
+          suggestedFollowUp: "Ask a human reviewer to inspect the trace before automation changes.",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = ProposeLocalObserverRemediationResponseSchema.parse(await response.json());
+
+    expect(body.proposal.remediationKind).toBe("human_review");
+    expect(body.workItemDraft?.labels).toContain("remediation:human_review");
+    expect(body.workItemDraft?.labels).toContain("severity:high");
+  });
+
+  it("classifies unnecessary tool calls as prompt guidance", async () => {
+    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/propose-remediation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        trace,
+        judgment: {
+          verdict: "incorrect",
+          confidence: 0.86,
+          reasoning: "The PR needed no action, but the agent still dispatched a runner.",
+          observedBehavior: "The local routing agent called dispatch_runner unnecessarily.",
+          expectedBehavior: "The agent should have stopped without another tool call.",
+          failureModes: ["unnecessary_tool_call"],
+          strengths: [],
+          issues: ["Started a runner when no work remained."],
+          suggestedFollowUp: "Clarify no-op guidance for clean PR states.",
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = ProposeLocalObserverRemediationResponseSchema.parse(await response.json());
+
+    expect(body.proposal.remediationKind).toBe("prompt_guidance");
+    expect(body.proposal.dedupeKey).toContain("unnecessary-tool-call");
+  });
+
+  it("does not create a work-item draft for correct judgments", async () => {
+    const response = await fetch(`${baseUrl}/api/evals/local-observer-routing/propose-remediation`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: "workspace-1",
+        trace,
+        judgment: {
+          verdict: "correct",
+          confidence: 0.88,
+          reasoning: "The agent used the expected tool.",
+          observedBehavior: "The local routing agent called dispatch_runner.",
+          expectedBehavior: "Dispatch a runner for actionable review feedback.",
+          failureModes: [],
+          strengths: ["Used the available context."],
+          issues: [],
+          suggestedFollowUp: null,
+        },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = ProposeLocalObserverRemediationResponseSchema.parse(await response.json());
+
+    expect(body.proposal.shouldCreateWorkItem).toBe(false);
+    expect(body.proposal.remediationKind).toBe("none");
+    expect(body.workItemDraft).toBeNull();
   });
 });

@@ -143,6 +143,56 @@ export const ReviewLocalObserverEvaluationResponseSchema = z.object({
   notices: z.array(LocalObserverEvaluationNoticeSchema),
 });
 
+export const LocalObserverRemediationKindSchema = z.enum([
+  "none",
+  "prompt_guidance",
+  "tool_schema",
+  "code_change",
+  "configuration",
+  "eval_fixture",
+  "model_selection",
+  "human_review",
+]);
+
+export const LocalObserverRemediationSeveritySchema = z.enum([
+  "low",
+  "medium",
+  "high",
+]);
+
+export const LocalObserverRemediationProposalSchema = z.object({
+  shouldCreateWorkItem: z.boolean(),
+  remediationKind: LocalObserverRemediationKindSchema,
+  severity: LocalObserverRemediationSeveritySchema,
+  dedupeKey: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  description: z.string().trim().min(1),
+  evidence: z.array(z.string().trim().min(1)).default([]),
+  labels: z.array(z.string().trim().min(1)).default([]),
+  metadata: z.record(z.string(), z.unknown()).default({}),
+});
+
+export const ProposeLocalObserverRemediationRequestSchema = z.object({
+  trace: LocalObserverAgentTraceSchema,
+  judgment: LocalObserverEvaluationJudgmentSchema,
+  workspaceId: z.string().trim().min(1).optional(),
+  source: z.string().trim().min(1).default("local_observer_evaluation"),
+});
+
+export const LocalObserverRemediationWorkItemDraftSchema = z.object({
+  workspaceId: z.string().trim().min(1),
+  title: z.string().trim().min(1),
+  description: z.string().trim().min(1),
+  priority: z.string().trim().min(1),
+  labels: z.array(z.string().trim().min(1)),
+  metadata: z.record(z.string(), z.unknown()),
+});
+
+export const ProposeLocalObserverRemediationResponseSchema = z.object({
+  proposal: LocalObserverRemediationProposalSchema,
+  workItemDraft: LocalObserverRemediationWorkItemDraftSchema.nullable(),
+});
+
 export type LocalObserverArtifactSnapshot = z.infer<
   typeof LocalObserverArtifactSnapshotSchema
 >;
@@ -163,4 +213,13 @@ export type ReviewLocalObserverEvaluationRequest = z.infer<
 >;
 export type ReviewLocalObserverEvaluationResponse = z.infer<
   typeof ReviewLocalObserverEvaluationResponseSchema
+>;
+export type LocalObserverRemediationProposal = z.infer<
+  typeof LocalObserverRemediationProposalSchema
+>;
+export type ProposeLocalObserverRemediationRequest = z.infer<
+  typeof ProposeLocalObserverRemediationRequestSchema
+>;
+export type ProposeLocalObserverRemediationResponse = z.infer<
+  typeof ProposeLocalObserverRemediationResponseSchema
 >;

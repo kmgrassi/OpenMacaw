@@ -201,6 +201,20 @@ only adds observability notices, such as "the trace contains a tool call that
 was not listed in availableTools" or "an incorrect judgment has no issue
 detail." The evaluator agent owns the semantic judgment.
 
+Follow-up remediation starts with:
+
+- `POST /api/evals/local-observer-routing/propose-remediation`
+  - Input: trace, accepted evaluator judgment, optional workspace id.
+  - Output: a remediation proposal and, when a workspace id is supplied, a
+    work-item draft that can be handed to the planner/manager path.
+
+The remediation proposal is deliberately not an auto-fix. It classifies the
+failure (`tool_schema`, `prompt_guidance`, `code_change`, `configuration`,
+`eval_fixture`, `model_selection`, or `human_review`), creates a stable dedupe
+key, preserves evaluator evidence, and formats a planner-ready work item. A
+later bridge can persist that draft and dispatch planner/Codex work after
+dedupe and policy checks.
+
 ## Eval Suite Shape
 
 Seed a system-managed suite:
@@ -233,12 +247,15 @@ Useful fixture families:
 ## Rollout
 
 1. Land the trace/evaluator API contracts.
-2. Add a harness that can load recent agent traces from existing run and
+2. Add the remediation proposal bridge from incorrect judgments to planner
+   work-item drafts.
+3. Add a harness that can load recent agent traces from existing run and
    tool-call tables.
-3. Seed a small `local-observer-routing` eval suite from representative traces.
-4. Run a stronger evaluator periodically against weak/local model traces.
-5. Store judgments in the existing eval observation/result tables.
-6. Aggregate failure modes by model, agent role, tool, and fixture family.
+4. Seed a small `local-observer-routing` eval suite from representative traces.
+5. Run a stronger evaluator periodically against weak/local model traces.
+6. Store judgments in the existing eval observation/result tables.
+7. Persist remediation work-item drafts after dedupe and policy checks.
+8. Aggregate failure modes by model, agent role, tool, and fixture family.
 
 ## Non-Goals
 

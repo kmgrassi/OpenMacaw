@@ -1,11 +1,13 @@
 import type { Express } from "express";
 
 import {
+  ProposeLocalObserverRemediationRequestSchema,
   RenderLocalObserverEvaluationPromptRequestSchema,
   ReviewLocalObserverEvaluationRequestSchema,
 } from "../../../../contracts/local-observer-routing.js";
 import { apiRoute } from "../http.js";
 import {
+  proposeLocalObserverRemediation,
   renderLocalObserverEvaluationPrompt,
   reviewLocalObserverEvaluation,
 } from "../services/local-observer-routing.js";
@@ -29,6 +31,17 @@ export function registerLocalObserverRoutingRoutes(app: Express) {
       invalidBodyMessage: "Invalid local observer evaluation review request",
       async handler({ res, body }) {
         return res.status(200).json(reviewLocalObserverEvaluation(body));
+      },
+    }),
+  );
+
+  app.post(
+    "/api/evals/local-observer-routing/propose-remediation",
+    apiRoute({
+      bodySchema: ProposeLocalObserverRemediationRequestSchema,
+      invalidBodyMessage: "Invalid local observer remediation request",
+      async handler({ res, body }) {
+        return res.status(200).json(proposeLocalObserverRemediation(body));
       },
     }),
   );
