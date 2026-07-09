@@ -27,6 +27,7 @@
     "agent:test-reset": "pnpm -C apps/api exec tsx scripts/agent-test-state.ts reset",
     "smoke:agent-tool-call": "node scripts/smoke-agent-tool-call.mjs",
     "smoke:manager-tool-battery": "node scripts/manager-tool-call-battery.mjs",
+    "smoke:local-observer-remediation": "pnpm -C apps/api exec tsx scripts/local-observer-remediation-smoke.ts",
     "eval:local-tool-calling": "node scripts/manager-tool-call-battery.mjs --suite-slug local-tool-calling",
     "db:schema:check": "node scripts/check-supabase-schema.mjs",
     "db:schema:sync": "node scripts/sync-supabase-schema.mjs",
