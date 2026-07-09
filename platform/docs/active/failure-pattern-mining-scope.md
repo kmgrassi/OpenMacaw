@@ -122,6 +122,24 @@ can come from product runs, eval runs, message transcripts, tool events, or
 assertion results. Application code should require at least one concrete
 evidence pointer.
 
+Constraints:
+
+- `workspace_id` is required and covered by RLS.
+- `failure_pattern_id` must reference a `failure_pattern` row in the same
+  workspace.
+- Every populated evidence pointer must be constrained to the same workspace as
+  the evidence row. Use composite workspace-scoped foreign keys where the target
+  table carries `workspace_id` directly, for example `(workspace_id, run_id)` to
+  `broker_run(workspace_id, run_id)`, `(workspace_id, message_id)` to
+  `message(workspace_id, id)`, `(workspace_id, work_item_id)` to
+  `work_items(workspace_id, id)`, and the equivalent eval-table keys.
+- For evidence that only derives workspace through another row, such as
+  `broker_task` through `run_id`, add a trigger check or introduce a generated
+  workspace-scoped key before allowing the reference. A plain ID-only foreign
+  key is not sufficient because it can link evidence across workspaces and make
+  RLS expose or summarize the wrong data.
+- Add a check constraint that at least one concrete evidence pointer is present.
+
 ### Optional Later Table: `failure_pattern_mitigation`
 
 Do not add this until OpenMacaw has a concrete harness-edit flow. The likely
