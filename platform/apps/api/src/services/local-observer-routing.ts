@@ -2,6 +2,9 @@ import { z } from "zod";
 
 import type {
   LocalObserverEvaluationJudgment,
+  LocalObserverRemediationProposal,
+  ProposeLocalObserverRemediationRequest,
+  ProposeLocalObserverRemediationResponse,
   RenderLocalObserverEvaluationPromptRequest,
   RenderLocalObserverEvaluationPromptResponse,
   ReviewLocalObserverEvaluationRequest,
@@ -9,6 +12,7 @@ import type {
 } from "../../../../contracts/local-observer-routing.js";
 import {
   LocalObserverEvaluationJudgmentSchema,
+  ProposeLocalObserverRemediationResponseSchema,
   RenderLocalObserverEvaluationPromptResponseSchema,
   ReviewLocalObserverEvaluationResponseSchema,
 } from "../../../../contracts/local-observer-routing.js";
@@ -157,5 +161,166 @@ export function reviewLocalObserverEvaluation(
     accepted: true,
     judgment,
     notices,
+  });
+}
+
+function normalizeSlug(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function remediationKindFor(judgment: LocalObserverEvaluationJudgment) {
+  if (judgment.verdict === "correct" || judgment.verdict === "inconclusive") {
+    return "none" as const;
+  }
+
+  if (
+    judgment.failureModes.includes("bad_arguments") ||
+    judgment.failureModes.includes("wrong_tool") ||
+    judgment.failureModes.includes("missing_tool_call")
+  ) {
+    return "tool_schema" as const;
+  }
+
+  if (
+    judgment.failureModes.includes("wasted_tokens") ||
+    judgment.failureModes.includes("missed_escalation") ||
+    judgment.failureModes.includes("premature_escalation")
+  ) {
+    return "prompt_guidance" as const;
+  }
+
+  if (judgment.failureModes.includes("missed_context")) {
+    return "code_change" as const;
+  }
+
+  if (judgment.failureModes.includes("unsafe_action")) {
+    return "human_review" as const;
+  }
+
+  return "eval_fixture" as const;
+}
+
+function severityFor(judgment: LocalObserverEvaluationJudgment) {
+  if (judgment.failureModes.includes("unsafe_action")) return "high" as const;
+  if (judgment.verdict === "incorrect") return "medium" as const;
+  return "low" as const;
+}
+
+function titleFor(request: ProposeLocalObserverRemediationRequest) {
+  const agent = request.trace.actingAgent.label ?? request.trace.actingAgent.role;
+  const primaryIssue = request.judgment.issues[0] ?? request.judgment.observedBehavior;
+  return `Fix ${agent} agent evaluation failure: ${primaryIssue}`.slice(0, 180);
+}
+
+function buildDescription(request: ProposeLocalObserverRemediationRequest) {
+  const toolCalls = request.trace.toolCalls
+    .map((toolCall) => `- ${toolCall.name}: ${stableJson(toolCall.arguments)}`)
+    .join("\n");
+  const failureModes =
+    request.judgment.failureModes.length > 0
+      ? request.judgment.failureModes.map((mode) => `- ${mode}`).join("\n")
+      : "- none";
+  const issues =
+    request.judgment.issues.length > 0
+      ? request.judgment.issues.map((issue) => `- ${issue}`).join("\n")
+      : "- none recorded";
+
+  return [
+    "A stronger observer agent found a remediation-worthy agent behavior.",
+    "",
+    `Verdict: ${request.judgment.verdict}`,
+    `Confidence: ${request.judgment.confidence}`,
+    "",
+    "Observed behavior:",
+    request.judgment.observedBehavior,
+    "",
+    "Expected behavior:",
+    request.judgment.expectedBehavior ?? "Not specified by evaluator.",
+    "",
+    "Reasoning:",
+    request.judgment.reasoning,
+    "",
+    "Failure modes:",
+    failureModes,
+    "",
+    "Issues:",
+    issues,
+    "",
+    "Observed tool calls:",
+    toolCalls || "- none",
+    "",
+    "Suggested follow-up:",
+    request.judgment.suggestedFollowUp ?? "Ask the planner to inspect the trace and propose a fix.",
+  ].join("\n");
+}
+
+function proposalFor(request: ProposeLocalObserverRemediationRequest): LocalObserverRemediationProposal {
+  const remediationKind = remediationKindFor(request.judgment);
+  const shouldCreateWorkItem =
+    request.judgment.verdict === "incorrect" || request.judgment.verdict === "partially_correct";
+  const toolSignature = request.trace.toolCalls.map((toolCall) => toolCall.name).join(",") || "no_tool_call";
+  const failureSignature = request.judgment.failureModes.join(",") || request.judgment.verdict;
+  const agentSignature = [
+    request.trace.actingAgent.role,
+    request.trace.actingAgent.provider,
+    request.trace.actingAgent.model,
+  ]
+    .filter(Boolean)
+    .join(":");
+  const dedupeKey = [
+    "local-observer",
+    normalizeSlug(agentSignature || "agent"),
+    normalizeSlug(failureSignature),
+    normalizeSlug(toolSignature),
+  ].join(":");
+
+  return {
+    shouldCreateWorkItem,
+    remediationKind,
+    severity: severityFor(request.judgment),
+    dedupeKey,
+    title: titleFor(request),
+    description: buildDescription(request),
+    evidence: [
+      `traceId=${request.trace.traceId ?? "unknown"}`,
+      `task=${request.trace.task}`,
+      `verdict=${request.judgment.verdict}`,
+      ...request.judgment.issues,
+    ],
+    labels: ["agent-observer", `remediation:${remediationKind}`, `severity:${severityFor(request.judgment)}`],
+    metadata: {
+      source: request.source,
+      dedupeKey,
+      traceId: request.trace.traceId ?? null,
+      actingAgent: request.trace.actingAgent,
+      failureModes: request.judgment.failureModes,
+      observedToolCalls: request.trace.toolCalls.map((toolCall) => toolCall.name),
+    },
+  };
+}
+
+export function proposeLocalObserverRemediation(
+  request: ProposeLocalObserverRemediationRequest,
+): ProposeLocalObserverRemediationResponse {
+  const proposal = proposalFor(request);
+  const workItemDraft =
+    proposal.shouldCreateWorkItem && request.workspaceId
+      ? {
+          workspaceId: request.workspaceId,
+          title: proposal.title,
+          description: proposal.description,
+          priority: proposal.severity === "high" ? "high" : "normal",
+          labels: proposal.labels,
+          metadata: proposal.metadata,
+        }
+      : null;
+
+  return ProposeLocalObserverRemediationResponseSchema.parse({
+    proposal,
+    workItemDraft,
   });
 }

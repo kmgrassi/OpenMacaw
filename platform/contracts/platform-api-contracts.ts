@@ -21,6 +21,8 @@ import {
 } from "./agent-live-io.js";
 import { SessionPolicyStateResponseSchema } from "./session-policy.js";
 import {
+  ProposeLocalObserverRemediationRequestSchema,
+  ProposeLocalObserverRemediationResponseSchema,
   RenderLocalObserverEvaluationPromptRequestSchema,
   RenderLocalObserverEvaluationPromptResponseSchema,
   ReviewLocalObserverEvaluationRequestSchema,
@@ -117,6 +119,12 @@ export const PlatformApiContracts = {
     path: "/api/evals/local-observer-routing/review-evaluation",
     body: ReviewLocalObserverEvaluationRequestSchema,
     response: ReviewLocalObserverEvaluationResponseSchema,
+  },
+  proposeLocalObserverRemediation: {
+    method: "POST",
+    path: "/api/evals/local-observer-routing/propose-remediation",
+    body: ProposeLocalObserverRemediationRequestSchema,
+    response: ProposeLocalObserverRemediationResponseSchema,
   },
   listTools: {
     method: "GET",
