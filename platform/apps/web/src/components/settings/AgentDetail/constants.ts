@@ -3,6 +3,7 @@ import type {
   AgentType,
   PlanningDestination,
 } from "../../../../../../contracts/agents";
+import { formatProviderLabel } from "../../../lib/provider-labels";
 
 export const AGENT_KIND_OPTIONS: Array<{ value: AgentType; label: string }> = [
   { value: "coding", label: "Coding" },
@@ -31,10 +32,13 @@ export const RUNTIME_PROVIDER_OPTIONS: Array<{
   value: AgentRuntimeProfile["provider"];
   label: string;
 }> = [
-  { value: "local", label: "Local runtime" },
-  { value: "openai", label: "OpenAI" },
-  { value: "openai_compatible", label: "OpenAI-compatible" },
-  { value: "anthropic", label: "Anthropic" },
+  { value: "local", label: formatProviderLabel("local", { fallback: "Local runtime" }) },
+  { value: "openai", label: formatProviderLabel("openai") },
+  {
+    value: "openai_compatible",
+    label: formatProviderLabel("openai_compatible"),
+  },
+  { value: "anthropic", label: formatProviderLabel("anthropic") },
 ];
 
 export const HOSTED_RUNTIME_PROVIDERS = new Set<
