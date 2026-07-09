@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentControlMessageRow } from "../../../../contracts/agent-control.js";
 import type { LauncherOrchestrator } from "../../../../contracts/launcher.js";
 import type { WorkerBridgeSessionRow } from "../../../../contracts/worker-bridge.js";
+import { ApiRouteError } from "../http.js";
 import type { LauncherClient } from "../services/launcher.js";
 import { registerProxyRoutes } from "./proxy.js";
 
@@ -277,7 +278,7 @@ describe("agent control routes", () => {
     expect(launcherClient.getAgent).not.toHaveBeenCalled();
   });
 
-  it("checks workspace-scoped agent access before fetching agent details", async () => {
+  it("requires agent access before returning launcher agent state", async () => {
     launcherClient.getAgent = vi.fn().mockResolvedValue({
       status: 200,
       data: { data: { id: targetAgentId, workspace_id: workspaceId } },
@@ -294,6 +295,31 @@ describe("agent control routes", () => {
       agentId: targetAgentId,
     });
     expect(launcherClient.getAgent).toHaveBeenCalledWith(targetAgentId);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        data: {
+          id: targetAgentId,
+          workspace_id: workspaceId,
+        },
+      },
+    });
+  });
+
+  it("blocks unauthorized launcher agent fetches", async () => {
+    launcherClient.getAgent = vi.fn();
+    assertAgentAccess.mockRejectedValueOnce(
+      new ApiRouteError(403, "workspace_forbidden", "User is not authorized for the target workspace"),
+    );
+
+    const response = await fetch(`${baseUrl}/api/agents/${targetAgentId}`, {
+      headers: { authorization: "Bearer test-token" },
+    });
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "workspace_forbidden" },
+    });
+    expect(launcherClient.getAgent).not.toHaveBeenCalled();
   });
 
   it("starts launcher-managed agents with approved skills snapshot", async () => {
