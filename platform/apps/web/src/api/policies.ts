@@ -1,9 +1,9 @@
 import {
-  AgentPoliciesResponseSchema,
+  AgentPolicySettingsResponseSchema,
   PolicyMutationResponseSchema,
   SessionPoliciesResponseSchema,
   SessionPolicyStateResponseSchema,
-  type AgentPoliciesResponse,
+  type AgentPolicySettingsResponse,
   type CreateSessionPolicyRequest,
   type Policy,
   type SessionPoliciesResponse,
@@ -16,9 +16,9 @@ import { ROUTES } from "./routes";
 export async function fetchAgentPolicies(
   agentId: string,
   workspaceId?: string | null,
-): Promise<AgentPoliciesResponse> {
+): Promise<AgentPolicySettingsResponse> {
   return apiFetch(ROUTES.agentPolicies(agentId, workspaceId), {
-    schema: AgentPoliciesResponseSchema,
+    schema: AgentPolicySettingsResponseSchema,
     defaultErrorMessage: "Could not load agent policies",
   });
 }
