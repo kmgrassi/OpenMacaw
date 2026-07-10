@@ -7,7 +7,7 @@ vi.mock("../supabase-client.js", () => ({
 }));
 
 const { getServiceRoleSupabase } = vi.mocked(await import("../supabase-client.js"));
-const { resolveApprovedSkillsSnapshot } = await import("./skills.js");
+const { resolveApprovedSkillsSnapshot, updateSkillForWorkspace } = await import("./skills.js");
 
 const agentId = "33333333-3333-4333-8333-333333333333";
 const workspaceId = "22222222-2222-4222-8222-222222222222";
@@ -105,6 +105,70 @@ describe("skills repository", () => {
           updatedAt: "2026-06-19T00:00:00.000Z",
         },
       ],
+    });
+  });
+
+  it("updates only the targeted workspace skill and returns the typed API shape", async () => {
+    getServiceRoleSupabase.mockReturnValue(
+      createMockSupabaseClient({
+        skill: [
+          {
+            id: "77777777-7777-4777-8777-000000000001",
+            workspace_id: workspaceId,
+            agent_id: agentId,
+            name: "draft-skill",
+            description: "Before",
+            body: "Before body.",
+            status: "draft",
+            copied_from_skill_id: null,
+            created_by_agent_id: null,
+            created_by_user_id: null,
+            source_run_id: null,
+            created_at: "2026-06-20T00:00:00.000Z",
+            updated_at: "2026-06-20T00:00:00.000Z",
+          },
+          {
+            id: "77777777-7777-4777-8777-000000000002",
+            workspace_id: "99999999-9999-4999-8999-999999999999",
+            agent_id: agentId,
+            name: "other-workspace",
+            description: "Other",
+            body: "Other body.",
+            status: "draft",
+            copied_from_skill_id: null,
+            created_by_agent_id: null,
+            created_by_user_id: null,
+            source_run_id: null,
+            created_at: "2026-06-20T00:00:00.000Z",
+            updated_at: "2026-06-20T00:00:00.000Z",
+          },
+        ],
+      }) as never,
+    );
+
+    await expect(
+      updateSkillForWorkspace({
+        skillId: "77777777-7777-4777-8777-000000000001",
+        workspaceId,
+        patch: {
+          description: "After",
+          status: "approved",
+        },
+      }),
+    ).resolves.toEqual({
+      id: "77777777-7777-4777-8777-000000000001",
+      workspaceId,
+      agentId,
+      name: "draft-skill",
+      description: "After",
+      body: "Before body.",
+      status: "approved",
+      copiedFromSkillId: null,
+      createdByAgentId: null,
+      createdByUserId: null,
+      sourceRunId: null,
+      createdAt: "2026-06-20T00:00:00.000Z",
+      updatedAt: "2026-06-20T00:00:00.000Z",
     });
   });
 });
