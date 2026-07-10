@@ -6,6 +6,7 @@ import {
   useCreateSessionPolicyMutation,
   useDeleteSessionPolicyMutation,
   useSaveSessionPolicyMutation,
+  isSessionNotFoundError,
   useSessionPoliciesQuery,
   useSessionPolicyStateQuery,
 } from "../../hooks/usePolicies";
@@ -31,6 +32,9 @@ export function SessionPolicyPanel({ sessionThreadId, workspaceId }: Props) {
   );
   const saving =
     createPolicy.isPending || savePolicy.isPending || deletePolicy.isPending;
+  const sessionNotFound =
+    isSessionNotFoundError(policies.error) ||
+    isSessionNotFoundError(state.error);
   const error =
     (policies.error as Error | null)?.message ??
     (state.error as Error | null)?.message ??
@@ -40,6 +44,17 @@ export function SessionPolicyPanel({ sessionThreadId, workspaceId }: Props) {
     null;
 
   if (!sessionThreadId || !workspaceId) return null;
+
+  if (sessionNotFound) {
+    return (
+      <div className="mx-auto max-w-4xl pb-3">
+        <Alert tone="info">
+          Session policy controls are available after this agent has an active
+          chat session.
+        </Alert>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-4xl pb-3">

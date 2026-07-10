@@ -13,7 +13,16 @@ import {
   saveAgentPolicy,
   saveSessionPolicy,
 } from "../api/policies";
+import { ApiClientError } from "../api/client";
 import { queryKeys } from "../api/query-keys";
+
+export function isSessionNotFoundError(error: unknown): boolean {
+  return error instanceof ApiClientError && error.code === "session_not_found";
+}
+
+export function sessionPoliciesRefetchInterval(error: unknown): number | false {
+  return isSessionNotFoundError(error) ? 5000 : false;
+}
 
 export function useAgentPoliciesQuery(
   agentId: string,
@@ -68,6 +77,8 @@ export function useSessionPoliciesQuery(
     queryKey: queryKeys.sessions.policies(sessionThreadId ?? "", workspaceId),
     queryFn: () => fetchSessionPolicies(sessionThreadId ?? "", workspaceId),
     enabled: Boolean(sessionThreadId && workspaceId),
+    refetchInterval: (query) =>
+      sessionPoliciesRefetchInterval(query.state.error),
   });
 }
 
