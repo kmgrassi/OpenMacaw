@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ApiClientError } from "../../api/client";
-import { isSessionNotFoundError } from "../../hooks/usePolicies";
+import {
+  isSessionNotFoundError,
+  sessionPoliciesRefetchInterval,
+} from "../../hooks/usePolicies";
 
 describe("isSessionNotFoundError", () => {
   it("recognizes the inactive-session API response", () => {
@@ -23,5 +26,16 @@ describe("isSessionNotFoundError", () => {
     });
 
     expect(isSessionNotFoundError(error)).toBe(false);
+  });
+
+  it("keeps retrying while a session is being created", () => {
+    const error = new ApiClientError({
+      status: 404,
+      code: "session_not_found",
+      message: "Session was not found",
+      body: {},
+    });
+
+    expect(sessionPoliciesRefetchInterval(error)).toBe(5000);
   });
 });

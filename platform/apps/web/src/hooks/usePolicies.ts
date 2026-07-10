@@ -20,6 +20,10 @@ export function isSessionNotFoundError(error: unknown): boolean {
   return error instanceof ApiClientError && error.code === "session_not_found";
 }
 
+export function sessionPoliciesRefetchInterval(error: unknown): number | false {
+  return isSessionNotFoundError(error) ? 5000 : false;
+}
+
 export function useAgentPoliciesQuery(
   agentId: string,
   workspaceId?: string | null,
@@ -73,6 +77,8 @@ export function useSessionPoliciesQuery(
     queryKey: queryKeys.sessions.policies(sessionThreadId ?? "", workspaceId),
     queryFn: () => fetchSessionPolicies(sessionThreadId ?? "", workspaceId),
     enabled: Boolean(sessionThreadId && workspaceId),
+    refetchInterval: (query) =>
+      sessionPoliciesRefetchInterval(query.state.error),
   });
 }
 
@@ -163,7 +169,6 @@ export function useSessionPolicyStateQuery(
     ),
     queryFn: () => fetchSessionPolicyState(sessionThreadId ?? "", workspaceId),
     enabled: Boolean(sessionThreadId && workspaceId),
-    refetchInterval: (query) =>
-      isSessionNotFoundError(query.state.error) ? false : 5000,
+    refetchInterval: 5000,
   });
 }
