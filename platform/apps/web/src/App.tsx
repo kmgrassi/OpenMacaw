@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useLayoutEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { LoadingState } from "./components/ui/LoadingState";
 import { installBrowserConsoleErrorCapture } from "./lib/browser-console-errors";
@@ -227,11 +227,8 @@ function UnauthenticatedOnly({ children }: { children: React.ReactNode }) {
 }
 
 function LoginRoute() {
-  const { signIn, error, setError, status } = useAuthStore();
+  const { signIn, error, status } = useAuthStore();
   const isLoading = status === "loading" || status === "preparing";
-  useLayoutEffect(() => {
-    setError(null);
-  }, [setError]);
   return (
     <UnauthenticatedOnly>
       <Login onSignIn={signIn} error={error} loading={isLoading} />
@@ -240,11 +237,8 @@ function LoginRoute() {
 }
 
 function SignUpRoute() {
-  const { signUp, error, setError, status } = useAuthStore();
+  const { signUp, error, status } = useAuthStore();
   const isLoading = status === "loading" || status === "preparing";
-  useLayoutEffect(() => {
-    setError(null);
-  }, [setError]);
   return (
     <UnauthenticatedOnly>
       <SignUp onSignUp={signUp} error={error} loading={isLoading} />
