@@ -18,13 +18,11 @@ defmodule SymphonyElixir.Manager.Scheduler do
   alias SymphonyElixir.AgentInventory.Agent
   alias SymphonyElixir.ChatGateway
   alias SymphonyElixir.Manager.SchedulerStatus
-  alias SymphonyElixir.Gateway.AgentExecutionProfile
   alias SymphonyElixir.Manager.SchedulerConfig
+  alias SymphonyElixir.Manager.Scheduler.Session
   alias SymphonyElixir.Manager.WorkItems.Database, as: DueWorkItems
-  alias SymphonyElixir.Runner
   alias SymphonyElixir.RuntimeLog
   alias SymphonyElixir.StructuredContext
-  alias SymphonyElixir.ToolRegistry
 
   @registry SymphonyElixir.Manager.Scheduler.Registry
   @default_due_task_query SchedulerConfig.default_due_task_query()
@@ -135,15 +133,15 @@ defmodule SymphonyElixir.Manager.Scheduler do
     jitter_ms = Keyword.get(opts, :jitter_ms, @default_jitter_ms)
 
     {session, session_mode, session_details, idle_reason, session_error} =
-      initial_session(workspace_id, agent_id, opts)
+      Session.initial(workspace_id, agent_id, opts)
 
     state = %{
       workspace_id: workspace_id,
       agent_id: agent_id,
       session: session,
       session_mode: session_mode,
-      session_resolver: Keyword.get(opts, :session_resolver, default_session_resolver()),
-      session_resolver_opts: session_resolver_opts(opts),
+      session_resolver: Session.resolver(opts),
+      session_resolver_opts: Session.resolver_opts(opts),
       session_details: session_details,
       idle_reason: idle_reason,
       session_error: session_error,
@@ -195,7 +193,7 @@ defmodule SymphonyElixir.Manager.Scheduler do
     now = state.clock.()
 
     set_tick_phase(:refresh_session)
-    state = refresh_session(state)
+    state = Session.refresh(state)
 
     RuntimeLog.log(:info, :manager_scheduler_tick_started, status_log_fields(state, trace_id))
 
@@ -251,7 +249,7 @@ defmodule SymphonyElixir.Manager.Scheduler do
   end
 
   defp run_due_batch(state, now, trace_id) do
-    if runnable?(state) do
+    if Session.runnable?(state) do
       set_tick_phase(:due_query)
 
       with {:ok, due_work_items, poll_metrics} <- poll_due_work_items(state, now, trace_id) do
@@ -495,302 +493,6 @@ defmodule SymphonyElixir.Manager.Scheduler do
   defp configured_min_cadence_ms(workspace_id, agent_id) do
     SchedulerConfig.min_cadence_ms(workspace_id, agent_id)
   end
-
-  defp initial_session(workspace_id, agent_id, opts) do
-    case Keyword.fetch(opts, :session) do
-      {:ok, session} when is_map(session) ->
-        {session, :explicit, %{}, nil, nil}
-
-      :error ->
-        case resolve_session_for_agent(
-               Keyword.get(opts, :session_resolver, default_session_resolver()),
-               workspace_id,
-               agent_id,
-               session_resolver_opts(opts)
-             ) do
-          {:ok, session, details} ->
-            {session, :resolved, details, nil, nil}
-
-          {:idle, reason, details} ->
-            {%{workspace_id: workspace_id}, :resolved, details, reason, nil}
-
-          {:error, reason, details} ->
-            {%{workspace_id: workspace_id}, :resolved, Map.put(details, :reason, inspect(reason)), :manager_session_error, SchedulerStatus.normalize_error(reason)}
-        end
-    end
-  end
-
-  defp refresh_session(%{session_mode: :explicit} = state), do: state
-
-  defp refresh_session(%{session_mode: :resolved} = state) do
-    if runnable?(state) do
-      refresh_running_session(state)
-    else
-      resolve_session(state)
-    end
-  end
-
-  defp refresh_running_session(state) do
-    case session_identity(state) do
-      {:ok, details} ->
-        if same_session_details?(state.session_details, details) and runnable?(state) do
-          %{state | session_details: details, idle_reason: nil, session_error: nil}
-        else
-          resolve_session(state)
-        end
-
-      {:idle, reason, details} ->
-        maybe_stop_session(state.session)
-
-        %{
-          state
-          | session: %{workspace_id: state.workspace_id},
-            session_details: details,
-            idle_reason: reason,
-            session_error: nil
-        }
-
-      {:error, reason, details} ->
-        session_error_state(state, reason, details)
-    end
-  end
-
-  defp session_identity(state) do
-    case resolve_profile(state.session_resolver, state.agent_id, state.workspace_id, state.session_resolver_opts) do
-      {:ok, profile} ->
-        {:ok, session_details(profile)}
-
-      other ->
-        normalize_profile_resolution_error(other)
-    end
-  end
-
-  defp resolve_session(state) do
-    case resolve_session_for_agent(state.session_resolver, state.workspace_id, state.agent_id, state.session_resolver_opts) do
-      {:ok, session, details} ->
-        maybe_stop_session(state.session)
-        %{state | session: session, session_details: details, idle_reason: nil, session_error: nil}
-
-      {:idle, reason, details} ->
-        maybe_stop_session(state.session)
-
-        %{
-          state
-          | session: %{workspace_id: state.workspace_id},
-            session_details: details,
-            idle_reason: reason,
-            session_error: nil
-        }
-
-      {:error, reason, details} ->
-        session_error_state(state, reason, details)
-    end
-  end
-
-  defp session_error_state(state, reason, details) do
-    maybe_stop_session(state.session)
-
-    %{
-      state
-      | session: %{workspace_id: state.workspace_id},
-        session_details: Map.put(details, :reason, inspect(reason)),
-        idle_reason: :manager_session_error,
-        session_error: SchedulerStatus.normalize_error(reason)
-    }
-  end
-
-  defp runnable?(%{idle_reason: nil, session: session}) when is_map(session),
-    do: Map.has_key?(session, :runner)
-
-  defp runnable?(_state), do: false
-
-  defp same_session_details?(current, next) when is_map(current) and is_map(next) do
-    session_identity_details(current) == session_identity_details(next)
-  end
-
-  defp session_identity_details(details) do
-    Map.take(details, [
-      :agent_id,
-      :credential_id,
-      :provider,
-      :model,
-      :agent_context,
-      :tool_definitions_hash,
-      :config_hash,
-      :config_version
-    ])
-  end
-
-  defp maybe_stop_session(%{runner: runner} = session) when is_atom(runner) do
-    if function_exported?(runner, :stop_session, 1), do: runner.stop_session(session)
-  catch
-    :exit, _reason -> :ok
-  end
-
-  defp maybe_stop_session(_session), do: :ok
-
-  defp session_resolver_opts(opts) do
-    opts
-    |> Keyword.take([:agent_inventory, :secret_resolver, :runner])
-  end
-
-  defp default_session_resolver do
-    Application.get_env(:symphony_elixir, :manager_scheduler_session_resolver, AgentExecutionProfile)
-  end
-
-  defp resolve_session_for_agent(resolver, workspace_id, agent_id, opts) do
-    runner = Keyword.get(opts, :runner, Runner.LlmToolRunner)
-
-    with {:ok, profile} <- resolve_profile(resolver, agent_id, workspace_id, opts),
-         config <- llm_tool_runner_config(profile),
-         {:ok, session} <- runner.start_session(config, nil) do
-      session =
-        session
-        |> Map.put(:runner, runner)
-        |> Map.put(:workspace_id, workspace_id)
-        |> Map.put(:session_key, "agent:#{agent_id}:main")
-
-      {:ok, session, session_details(profile)}
-    else
-      other -> normalize_profile_resolution_error(other)
-    end
-  end
-
-  defp resolve_profile(resolver, agent_id, workspace_id, opts) do
-    profile_opts = Keyword.take(opts, [:agent_inventory, :secret_resolver])
-
-    # `function_exported?/3` returns false for an UNLOADED module. In escript
-    # mode (production launcher path) modules are bundled but lazily loaded;
-    # without an explicit `Code.ensure_loaded/1` the resolver may not be
-    # loaded yet at scheduler init, and both `function_exported?` checks
-    # below silently return false → we hit the `:invalid_profile_resolver`
-    # fallback even when the resolver does export `resolve/2` or `/3`. This
-    # was the observed production bug: AgentExecutionProfile.resolve/2 + /3
-    # both exist but the scheduler reported `invalid_profile_resolver`.
-    case Code.ensure_loaded(resolver) do
-      {:module, _} ->
-        cond do
-          function_exported?(resolver, :resolve, 3) ->
-            resolver.resolve(agent_id, workspace_id, profile_opts)
-
-          function_exported?(resolver, :resolve, 2) ->
-            resolver.resolve(agent_id, workspace_id)
-
-          true ->
-            {:error, {:invalid_profile_resolver, resolver}}
-        end
-
-      {:error, reason} ->
-        {:error, {:resolver_not_loadable, resolver, reason}}
-    end
-  end
-
-  defp normalize_profile_resolution_error({:error, :not_found}) do
-    {:idle, :config_missing, %{status: :idle_awaiting_config}}
-  end
-
-  defp normalize_profile_resolution_error({:error, :credential_missing}) do
-    {:idle, :credential_missing, %{status: :idle_awaiting_credential}}
-  end
-
-  defp normalize_profile_resolution_error({:error, {:credential_unresolved, reason}}) do
-    {:idle, :credential_unresolved, %{status: :idle_awaiting_credential, reason: inspect(reason)}}
-  end
-
-  defp normalize_profile_resolution_error({:error, {:provider_unsupported, provider}}) do
-    {:idle, :provider_unsupported, %{status: :idle_awaiting_config, provider: provider}}
-  end
-
-  defp normalize_profile_resolution_error({:error, reason}) do
-    {:error, reason, %{status: :error}}
-  end
-
-  defp normalize_profile_resolution_error(other), do: other
-
-  defp llm_tool_runner_config(profile) do
-    %{
-      "agent_id" => profile.agent_id,
-      "workspace_id" => profile.workspace_id,
-      "provider" => profile.provider,
-      "model" => profile.model,
-      "credential_id" => Map.get(profile, :credential_id),
-      "credential_alias" => Map.get(profile, :credential_alias),
-      "api_key" => Map.get(profile, :api_key),
-      "user_id" => Map.get(profile, :user_id),
-      "agent_type" => "manager",
-      "tool_bundle" => "manager",
-      "agent_context" => Map.get(profile, :context),
-      "base_url" => default_base_url(profile),
-      "trace_id" => Process.get(:symphony_trace_id)
-    }
-    |> maybe_put_tool_definitions(profile)
-    |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-    |> Map.new()
-  end
-
-  defp maybe_put_tool_definitions(config, profile) do
-    case manager_tool_definitions(profile) do
-      definitions when is_list(definitions) and definitions != [] ->
-        Map.put(config, "tool_definitions", definitions)
-
-      _ ->
-        config
-    end
-  end
-
-  defp manager_tool_definitions(profile) do
-    case Map.get(profile, :tool_definitions) || Map.get(profile, "tool_definitions") do
-      definitions when is_list(definitions) and definitions != [] ->
-        definitions
-
-      _ ->
-        resolve_manager_tool_definitions(profile.agent_id)
-    end
-  end
-
-  defp resolve_manager_tool_definitions(agent_id) when is_binary(agent_id) and agent_id != "" do
-    resolver = Application.get_env(:symphony_elixir, :manager_tool_definition_resolver, ToolRegistry)
-
-    case resolver.resolve_for_agent(agent_id) do
-      {:ok, %{tool_definitions: definitions}} when is_list(definitions) -> definitions
-      _ -> []
-    end
-  rescue
-    _ -> []
-  end
-
-  defp resolve_manager_tool_definitions(_agent_id), do: []
-
-  defp default_base_url(%{provider: "openai_compatible"}) do
-    System.get_env("MANAGER_OPENAI_COMPATIBLE_BASE_URL") ||
-      System.get_env("LOCAL_MODEL_BASE_URL") ||
-      "http://127.0.0.1:11434/v1"
-  end
-
-  defp default_base_url(_profile), do: nil
-
-  defp session_details(profile) do
-    %{
-      status: :running,
-      agent_id: profile.agent_id,
-      credential_id: Map.get(profile, :credential_id),
-      credential_alias: Map.get(profile, :credential_alias),
-      provider: profile.provider,
-      model: profile.model,
-      agent_context: Map.get(profile, :context),
-      tool_definitions_hash: tool_definitions_hash(manager_tool_definitions(profile)),
-      routing_rule_id: get_in(profile, [:source_metadata, "routing_rule_id"])
-    }
-  end
-
-  defp tool_definitions_hash(definitions) when is_list(definitions) do
-    definitions
-    |> :erlang.term_to_binary()
-    |> then(&:crypto.hash(:sha256, &1))
-    |> Base.encode16(case: :lower)
-  end
-
-  defp tool_definitions_hash(_definitions), do: nil
 
   defp status_payload(state) do
     state
