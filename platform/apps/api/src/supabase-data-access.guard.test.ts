@@ -20,9 +20,9 @@ function productionSourceFiles(dir: string): string[] {
 // we call (request bodies or query strings), not for Supabase REST queries.
 // New entries here need to be justified in the PR description.
 //   - services/oauth/openai-codex.ts: OAuth token endpoint request body.
-//   - services/local-runtime-machines.ts: query string for the orchestrator's
+//   - services/local-runtime/dispatch.ts: query string for the orchestrator's
 //     /api/v1/local-runtime/health diagnostics probe.
-const URLSEARCHPARAMS_ALLOWLIST = new Set(["services/oauth/openai-codex.ts", "services/local-runtime-machines.ts"]);
+const URLSEARCHPARAMS_ALLOWLIST = new Set(["services/oauth/openai-codex.ts", "services/local-runtime/dispatch.ts"]);
 const POSTGREST_OPERATOR_FILTER_ALLOWLIST = new Set([
   // repositories/provider-cutovers.ts: keyset pagination uses Supabase's
   // `.or(...)` API, whose public typed-client contract accepts a PostgREST
