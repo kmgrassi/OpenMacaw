@@ -27,7 +27,7 @@ const agentPolicy = {
 };
 
 describe("editableAgentPolicies", () => {
-  it("combines the workspace and agent policy tiers", () => {
+  it("returns only agent-tier policies", () => {
     const settings = {
       availableKinds: [],
       workspacePolicies: [workspacePolicy],
@@ -36,9 +36,6 @@ describe("editableAgentPolicies", () => {
       effectivePolicies: [],
     } satisfies AgentPolicySettingsResponse;
 
-    expect(editableAgentPolicies(settings)).toEqual([
-      workspacePolicy,
-      agentPolicy,
-    ]);
+    expect(editableAgentPolicies(settings)).toEqual([agentPolicy]);
   });
 });

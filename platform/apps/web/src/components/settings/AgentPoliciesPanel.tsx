@@ -19,8 +19,7 @@ type Props = {
 export function editableAgentPolicies(
   settings?: AgentPolicySettingsResponse,
 ): Policy[] {
-  if (!settings) return [];
-  return [...settings.workspacePolicies, ...settings.agentPolicies];
+  return settings?.agentPolicies ?? [];
 }
 
 export function AgentPoliciesPanel({ agentId, workspaceId }: Props) {
@@ -38,7 +37,7 @@ export function AgentPoliciesPanel({ agentId, workspaceId }: Props) {
   return (
     <PolicyPanel
       title="Policies"
-      description="Configure workspace and agent-tier policy rules that apply when this agent runs."
+      description="Configure policy rules that apply when this agent runs."
       policies={editablePolicies}
       loading={policies.isLoading}
       saving={saving}
