@@ -1,5 +1,11 @@
 import { Suspense, lazy, useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+} from "react-router-dom";
 import { LoadingState } from "./components/ui/LoadingState";
 import { installBrowserConsoleErrorCapture } from "./lib/browser-console-errors";
 import { useAuthStore } from "./stores/auth";
@@ -227,8 +233,12 @@ function UnauthenticatedOnly({ children }: { children: React.ReactNode }) {
 }
 
 function LoginRoute() {
-  const { signIn, error, status } = useAuthStore();
+  const { signIn, error, setError, status } = useAuthStore();
+  const { pathname } = useLocation();
   const isLoading = status === "loading" || status === "preparing";
+  useEffect(() => {
+    setError(null);
+  }, [pathname, setError]);
   return (
     <UnauthenticatedOnly>
       <Login onSignIn={signIn} error={error} loading={isLoading} />
@@ -237,8 +247,12 @@ function LoginRoute() {
 }
 
 function SignUpRoute() {
-  const { signUp, error, status } = useAuthStore();
+  const { signUp, error, setError, status } = useAuthStore();
+  const { pathname } = useLocation();
   const isLoading = status === "loading" || status === "preparing";
+  useEffect(() => {
+    setError(null);
+  }, [pathname, setError]);
   return (
     <UnauthenticatedOnly>
       <SignUp onSignUp={signUp} error={error} loading={isLoading} />
