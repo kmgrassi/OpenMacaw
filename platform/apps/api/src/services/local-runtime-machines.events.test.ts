@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  createMockSupabaseClient,
-  localRuntimeMachinesModule,
-  supabaseClientModule,
-} from "./local-runtime-machines.test-support.js";
+import { createMockSupabaseClient } from "../test-utils/supabase-client-mock.js";
+import { getServiceRoleSupabase } from "../supabase-client.js";
 
-const { listLocalRuntimeEventsForWorkspace } = localRuntimeMachinesModule;
-const { getServiceRoleSupabase } = supabaseClientModule;
+vi.mock("../supabase-client.js", () => ({
+  getServiceRoleSupabase: vi.fn(),
+}));
+
+const { listLocalRuntimeEventsForWorkspace } = await import("./local-runtime-machines.js");
 
 describe("listLocalRuntimeEventsForWorkspace", () => {
   beforeEach(() => {
