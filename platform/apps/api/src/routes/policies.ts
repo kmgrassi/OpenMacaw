@@ -1,7 +1,6 @@
 import type { Express } from "express";
 
 import {
-  AgentPoliciesResponseSchema,
   CreateSessionPolicyRequestSchema,
   PolicyMutationResponseSchema,
   SessionPoliciesResponseSchema,
@@ -13,7 +12,6 @@ import {
   createSessionPolicy,
   deleteAgentPolicy,
   deleteSessionPolicy,
-  getAgentPolicies,
   getSessionPolicies,
   getSessionPolicyState,
   updateSessionPolicy,
@@ -29,23 +27,6 @@ function handlePolicyError(res: Parameters<typeof handleApiRouteError>[0], error
 }
 
 export function registerPolicyRoutes(app: Express) {
-  app.get(
-    "/api/agents/:agentId/policies",
-    apiRoute({
-      requireAuth: true,
-      onError: handlePolicyError,
-      async handler({ req, res, accessToken, userId }) {
-        const result = await getAgentPolicies({
-          accessToken,
-          userId,
-          agentId: requireRouteParam(req, "agentId"),
-          workspaceId: requestWorkspaceId(req),
-        });
-        return res.status(200).json(AgentPoliciesResponseSchema.parse(result));
-      },
-    }),
-  );
-
   app.put(
     "/api/agents/:agentId/policies/:policyId",
     apiRoute({

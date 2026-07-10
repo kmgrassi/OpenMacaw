@@ -145,35 +145,56 @@ async function listPolicyRows(input: {
   agentId: string;
   sessionThreadId?: string | null;
   supabase: ApiSupabaseClient;
+  enabledOnly: boolean;
 }) {
   const supabase = narrowSupabase(input.supabase);
   const workspacePolicies = supabase
     .from<PolicyRow>("policy")
     .select(POLICY_SELECT)
     .eq("workspace_id", input.workspaceId)
-    .eq("enabled", true)
     .eq("scope", "workspace");
+  if (input.enabledOnly) workspacePolicies.eq("enabled", true);
   const agentPolicies = supabase
     .from<PolicyRow>("policy")
     .select(POLICY_SELECT)
     .eq("workspace_id", input.workspaceId)
-    .eq("enabled", true)
     .eq("scope", "agent")
     .eq("agent_id", input.agentId);
+  if (input.enabledOnly) agentPolicies.eq("enabled", true);
   const sessionPolicies = input.sessionThreadId
-    ? supabase
-        .from<PolicyRow>("policy")
-        .select(POLICY_SELECT)
-        .eq("workspace_id", input.workspaceId)
-        .eq("enabled", true)
-        .eq("scope", "session")
-        .eq("session_thread_id", input.sessionThreadId)
+    ? (() => {
+        const query = supabase
+          .from<PolicyRow>("policy")
+          .select(POLICY_SELECT)
+          .eq("workspace_id", input.workspaceId)
+          .eq("scope", "session")
+          .eq("session_thread_id", input.sessionThreadId);
+        if (input.enabledOnly) query.eq("enabled", true);
+        return query;
+      })()
     : Promise.resolve({ data: [], error: null });
 
   const results = await Promise.all([workspacePolicies, agentPolicies, sessionPolicies]);
   const errorResult = results.find((result) => result.error);
   if (errorResult?.error) throw normalizeSupabaseError("policy query", errorResult.error);
   return results.flatMap((result) => rowsFromResult(result.data)).map((row) => PolicyRowSchema.parse(row));
+}
+
+function resolvePolicyRows(rows: PolicyRow[]) {
+  const policies = rows.map(toPolicy);
+  const workspacePolicies = sortPolicies(policies.filter((policy) => policy.scope === "workspace"));
+  const agentPolicies = sortPolicies(policies.filter((policy) => policy.scope === "agent"));
+  const sessionPolicies = sortPolicies(policies.filter((policy) => policy.scope === "session"));
+  const effectivePolicies = sortPolicies(
+    [...sessionPolicies, ...agentPolicies, ...workspacePolicies].filter((policy) => policy.enabled),
+  ).map(toRuntimePolicy);
+
+  return {
+    workspacePolicies,
+    agentPolicies,
+    sessionPolicies,
+    effectivePolicies,
+  };
 }
 
 export async function resolveSessionPolicies(input: {
@@ -187,21 +208,8 @@ export async function resolveSessionPolicies(input: {
   sessionPolicies: Policy[];
   effectivePolicies: RuntimePolicy[];
 }> {
-  const rows = await listPolicyRows(input);
-  const policies = rows.map(toPolicy);
-  const workspacePolicies = sortPolicies(policies.filter((policy) => policy.scope === "workspace"));
-  const agentPolicies = sortPolicies(policies.filter((policy) => policy.scope === "agent"));
-  const sessionPolicies = sortPolicies(policies.filter((policy) => policy.scope === "session"));
-  const effectivePolicies = sortPolicies([...sessionPolicies, ...agentPolicies, ...workspacePolicies]).map(
-    toRuntimePolicy,
-  );
-
-  return {
-    workspacePolicies,
-    agentPolicies,
-    sessionPolicies,
-    effectivePolicies,
-  };
+  const rows = await listPolicyRows({ ...input, enabledOnly: true });
+  return resolvePolicyRows(rows);
 }
 
 export async function getAgentPolicySettings(input: {
@@ -210,7 +218,8 @@ export async function getAgentPolicySettings(input: {
   sessionThreadId?: string | null;
   supabase: ApiSupabaseClient;
 }): Promise<AgentPolicySettingsResponse> {
-  const resolution = await resolveSessionPolicies(input);
+  const rows = await listPolicyRows({ ...input, enabledOnly: false });
+  const resolution = resolvePolicyRows(rows);
   return {
     availableKinds: listPolicyKindMetadata(),
     ...resolution,

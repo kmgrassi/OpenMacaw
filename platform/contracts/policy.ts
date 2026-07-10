@@ -230,12 +230,6 @@ export const PolicyKindDefinitionSchema = z.object({
   defaultParams: PolicyParamsSchema,
 });
 
-export const AgentPoliciesResponseSchema = z.object({
-  policies: z.array(PolicySchema),
-  effectivePolicies: z.array(PolicySchema),
-  availableKinds: z.array(PolicyKindDefinitionSchema),
-});
-
 const PolicyMutationRequestBaseSchema = z
   .object({
     workspaceId: z.string().trim().min(1),
@@ -278,7 +272,6 @@ export type AgentPolicySettingsResponse = z.infer<
 >;
 export type PolicySessionState = z.infer<typeof PolicySessionStateSchema>;
 export type PolicyKindDefinition = z.infer<typeof PolicyKindDefinitionSchema>;
-export type AgentPoliciesResponse = z.infer<typeof AgentPoliciesResponseSchema>;
 export type SessionPoliciesResponse = z.infer<
   typeof SessionPoliciesResponseSchema
 >;

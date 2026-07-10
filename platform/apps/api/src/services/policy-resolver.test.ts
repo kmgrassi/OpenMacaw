@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { resolveSessionPolicies } from "./policy-resolver.js";
+import { getAgentPolicySettings, resolveSessionPolicies } from "./policy-resolver.js";
 import type { PolicyRow } from "../../../../contracts/policy.js";
 
 const workspaceId = "22222222-2222-4222-8222-222222222222";
@@ -95,9 +95,35 @@ describe("resolveSessionPolicies", () => {
     expect(queries[1]?.eq).toHaveBeenCalledWith("agent_id", agentId);
     expect(queries[2]?.eq).toHaveBeenCalledWith("scope", "session");
     expect(queries[2]?.eq).toHaveBeenCalledWith("session_thread_id", sessionThreadId);
+    expect(queries[0]?.eq).toHaveBeenCalledWith("enabled", true);
+    expect(queries[1]?.eq).toHaveBeenCalledWith("enabled", true);
+    expect(queries[2]?.eq).toHaveBeenCalledWith("enabled", true);
     expect(resolution.workspacePolicies).toHaveLength(1);
     expect(resolution.agentPolicies).toHaveLength(1);
     expect(resolution.sessionPolicies).toHaveLength(1);
     expect(resolution.effectivePolicies.map((policy) => policy.scope)).toEqual(["session", "agent", "workspace"]);
+  });
+
+  it("keeps disabled rows in settings without making them effective", async () => {
+    const disabledAgentPolicy = policyRow({
+      id: "55555555-5555-4555-8555-555555555555",
+      scope: "agent",
+      agent_id: agentId,
+      kind: "ask_on_shell",
+      params: { kind: "ask_on_shell" },
+      enabled: false,
+    });
+    const { supabase, queries } = supabaseWithRows([disabledAgentPolicy]);
+
+    const settings = await getAgentPolicySettings({
+      agentId,
+      workspaceId,
+      supabase: supabase as never,
+    });
+
+    expect(settings.agentPolicies).toEqual([expect.objectContaining({ id: disabledAgentPolicy.id, enabled: false })]);
+    expect(settings.effectivePolicies).toEqual([]);
+    expect(queries[0]?.eq).not.toHaveBeenCalledWith("enabled", true);
+    expect(queries[1]?.eq).not.toHaveBeenCalledWith("enabled", true);
   });
 });

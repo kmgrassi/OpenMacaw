@@ -1,4 +1,6 @@
 import type {
+  AgentPolicySettingsResponse,
+  Policy,
   PolicyKind,
   UpsertAgentPolicyRequest,
 } from "../../../../../contracts/policy";
@@ -14,11 +16,18 @@ type Props = {
   workspaceId?: string | null;
 };
 
+export function editableAgentPolicies(
+  settings?: AgentPolicySettingsResponse,
+): Policy[] {
+  return settings?.agentPolicies ?? [];
+}
+
 export function AgentPoliciesPanel({ agentId, workspaceId }: Props) {
   const policies = useAgentPoliciesQuery(agentId, workspaceId);
   const savePolicy = useSaveAgentPolicyMutation(agentId, workspaceId);
   const deletePolicy = useDeleteAgentPolicyMutation(agentId, workspaceId);
   const saving = savePolicy.isPending || deletePolicy.isPending;
+  const editablePolicies = editableAgentPolicies(policies.data);
   const error =
     (policies.error as Error | null)?.message ??
     (savePolicy.error as Error | null)?.message ??
@@ -28,9 +37,8 @@ export function AgentPoliciesPanel({ agentId, workspaceId }: Props) {
   return (
     <PolicyPanel
       title="Policies"
-      description="Configure workspace and agent-tier policy rules that apply when this agent runs."
-      policies={policies.data?.policies ?? []}
-      availableKinds={policies.data?.availableKinds}
+      description="Configure policy rules that apply when this agent runs."
+      policies={editablePolicies}
       loading={policies.isLoading}
       saving={saving}
       error={error}

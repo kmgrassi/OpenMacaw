@@ -3,7 +3,6 @@ import {
   POLICY_KIND_DEFINITIONS,
   PolicyRowSchema,
   PolicySessionStateRowSchema,
-  type AgentPoliciesResponse,
   type CreateSessionPolicyRequest,
   type Policy,
   type PolicyRow,
@@ -73,36 +72,6 @@ function sortPolicies(policies: Policy[]) {
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-async function loadAgentAndWorkspacePolicies(input: { workspaceId: string; agentId: string }) {
-  const { data, error } = await policyTable()
-    .select(
-      "id,workspace_id,scope,agent_id,session_thread_id,kind,params,priority,enabled,source,reason,created_by_user_id,created_at,updated_at",
-    )
-    .eq("workspace_id", input.workspaceId)
-    .in("scope", ["workspace", "agent"])
-    .or(`scope.eq.workspace,and(scope.eq.agent,agent_id.eq.${input.agentId})`)
-    .order("priority", { ascending: true })
-    .order("created_at", { ascending: true });
-
-  if (error) throw normalizeSupabaseError("policy query", error);
-  return sortPolicies((data ?? []).map(mapPolicy));
-}
-
-export async function getAgentPolicies(input: {
-  accessToken: string;
-  userId: string;
-  agentId: string;
-  workspaceId?: string | null;
-}): Promise<AgentPoliciesResponse> {
-  const { workspaceId } = await assertAgentAccess(input);
-  const policies = await loadAgentAndWorkspacePolicies({ workspaceId, agentId: input.agentId });
-  return {
-    policies,
-    effectivePolicies: sortPolicies(policies.filter((policy) => policy.enabled)),
-    availableKinds: [...POLICY_KIND_DEFINITIONS],
-  };
 }
 
 export async function upsertAgentPolicy(input: {
