@@ -10,6 +10,7 @@ import { queryClient } from "../api/query-client";
 import { queryKeys } from "../api/query-keys";
 import { useAgentsStore } from "./agents";
 import { useOnboardingStore } from "./onboarding";
+import { describeSignInError } from "../lib/auth-error";
 import type { OnboardingReason } from "../api/ws-types";
 import type {
   DefaultAgentsAuthState,
@@ -96,7 +97,7 @@ function resolveInitialAgentId(auth: SetupAuthState): string | null {
   );
 }
 
-export const useAuthStore = create<AuthState>((set) => {
+export const useAuthStore = create<AuthState>((set, get) => {
   function applyAuthState(auth: SetupAuthState) {
     set({
       userId: auth.userId,
@@ -210,7 +211,9 @@ export const useAuthStore = create<AuthState>((set) => {
               defaultAgents: EMPTY_DEFAULT_AGENTS,
               managerAgent: EMPTY_MANAGER_AGENT,
               defaultAgentOnboarding: EMPTY_DEFAULT_AGENT_ONBOARDING,
-              error: null,
+              // A delayed SIGNED_OUT event from login-page cleanup can arrive
+              // after a failed sign-in. Preserve that failure for the form.
+              error: get().error,
             });
           }
         });
@@ -254,7 +257,11 @@ export const useAuthStore = create<AuthState>((set) => {
         console.error("[auth-store] signIn failed:", message);
         queryClient.clear();
         useAgentsStore.getState().reset();
-        set({ error: message, status: "unauthenticated", userId: null });
+        set({
+          error: describeSignInError(err),
+          status: "unauthenticated",
+          userId: null,
+        });
       }
     },
 
