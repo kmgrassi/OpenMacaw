@@ -25,10 +25,27 @@ func TestHealthRejectsProductionAppOriginByDefault(t *testing.T) {
 	}
 }
 
+func TestHealthRejectsMissingOrigin(t *testing.T) {
+	s := NewServer("127.0.0.1:0", nil)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.RemoteAddr = "127.0.0.1:50000"
+	rec := httptest.NewRecorder()
+
+	s.server.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusForbidden, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "origin_required") {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
 func TestRejectsNonLoopbackRequests(t *testing.T) {
 	s := NewServer("127.0.0.1:0", nil)
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	req.RemoteAddr = "192.0.2.10:50000"
+	req.Header.Set("Origin", "http://127.0.0.1:5173")
 	rec := httptest.NewRecorder()
 
 	s.server.Handler.ServeHTTP(rec, req)
@@ -66,6 +83,24 @@ func TestAllowedOriginsDefaultsToLocalhostOnly(t *testing.T) {
 
 	if len(got) != 2 || got[0] != "http://localhost:5173" || got[1] != "http://127.0.0.1:5173" {
 		t.Fatalf("allowedOrigins() = %#v", got)
+	}
+}
+
+func TestPickDirectoryRejectsNonJSONRequests(t *testing.T) {
+	s := NewServer("127.0.0.1:0", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/local/pick-directory", strings.NewReader("prompt=pick"))
+	req.RemoteAddr = "127.0.0.1:50000"
+	req.Header.Set("Origin", "http://127.0.0.1:5173")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := httptest.NewRecorder()
+
+	s.server.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusUnsupportedMediaType, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "content_type_required") {
+		t.Fatalf("body = %s", rec.Body.String())
 	}
 }
 

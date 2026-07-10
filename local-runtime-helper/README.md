@@ -112,7 +112,8 @@ export OPENMACAW_LOCAL_API_ALLOWED_ORIGINS="https://app.openmacaw.ai"
 
 Use a comma-separated list if you need both hosted and local development
 origins. Keep the list narrow because any allowed origin can trigger native
-local-machine helper actions.
+local-machine helper actions. Requests without an `Origin` header are rejected,
+and browser POSTs must send `Content-Type: application/json`.
 
 ## Wire protocol
 
