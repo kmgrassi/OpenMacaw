@@ -1,4 +1,5 @@
 import type { Json, Tables, TablesInsert } from "@kmgrassi/supabase-schema";
+import type { PlanTaskV1, PlanV1 } from "@harper/plan-schema";
 import type { PlanRecord } from "../../../../contracts/plans.js";
 import type {
   WorkItemProjection,
@@ -9,23 +10,7 @@ import type {
 import { executeSupabaseRows, getServiceRoleSupabase } from "../supabase-client.js";
 
 type JsonObject = { [key: string]: Json | undefined };
-type PlanTaskForCreate = {
-  id: string;
-  title: string;
-  instructions: string;
-  labels?: Record<string, string>;
-  dependsOn?: string[];
-  completionGates?: string[];
-};
-type PersistablePlan = {
-  workspaceId: string;
-  schemaVersion: "1";
-  title: string;
-  intent: string;
-  defaultRunner?: string;
-  defaultModel?: string;
-  tasks: PlanTaskForCreate[];
-};
+type PersistablePlan = PlanV1 & { workspaceId: string };
 type PlanRow = Tables<"plan">;
 type WorkItemRow = Tables<"work_items">;
 type EventLogRow = Tables<"event_log">;
@@ -50,7 +35,7 @@ function asJsonObject(value: Record<string, unknown>): JsonObject {
   return value as JsonObject;
 }
 
-function validateTaskGraph(tasks: PlanTaskForCreate[]) {
+function validateTaskGraph(tasks: PlanTaskV1[]) {
   const ids = new Set<string>();
   for (const task of tasks) {
     if (ids.has(task.id)) {

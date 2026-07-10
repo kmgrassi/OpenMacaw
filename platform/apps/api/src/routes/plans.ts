@@ -1,5 +1,5 @@
 import type { Express, Response } from "express";
-import { validatePlan } from "@harper/plan-schema";
+import { validatePlan, type PlanV1 } from "@harper/plan-schema";
 
 import {
   PlanDraftFromPromptRequestSchema,
@@ -16,24 +16,6 @@ import { createPlanWithWorkItems, PlanGraphValidationError } from "../services/p
 import type { UpstreamResponse } from "../services/upstream.js";
 import { assertWorkspaceMembership } from "../services/work-item-ingest.js";
 import { deletePlanForWorkspace, listPlansForWorkspace } from "../services/workspace-plans.js";
-
-type PlanCreateTask = {
-  id: string;
-  title: string;
-  instructions: string;
-  labels?: Record<string, string>;
-  dependsOn?: string[];
-  completionGates?: Array<"lint" | "tests" | "peer-review" | "self-review">;
-};
-
-type PlanCreateBody = {
-  schemaVersion: "1";
-  title: string;
-  intent: string;
-  defaultRunner?: "codex" | "openclaw" | "computer_use" | "openai_compatible" | "local_model_coding";
-  defaultModel?: string;
-  tasks: PlanCreateTask[];
-};
 
 function handlePlanDraftError(res: Response, error: unknown) {
   if (error instanceof PlanDraftValidationError) {
@@ -79,7 +61,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
-function parsePlanCreateBody(body: unknown): { workspaceId: string; plan: PlanCreateBody } | { errors: unknown[] } {
+function parsePlanCreateBody(body: unknown): { workspaceId: string; plan: PlanV1 } | { errors: unknown[] } {
   const record = asRecord(body);
   const workspaceId = typeof record?.workspaceId === "string" ? record.workspaceId.trim() : "";
   const { workspaceId: _workspaceId, ...planCandidate } = record ?? {};
@@ -98,7 +80,7 @@ function parsePlanCreateBody(body: unknown): { workspaceId: string; plan: PlanCr
     return { errors };
   }
 
-  return { workspaceId, plan: validation.plan as PlanCreateBody };
+  return { workspaceId, plan: validation.plan };
 }
 
 async function requireWorkspaceAccess(userId: string, workspaceId: string) {
