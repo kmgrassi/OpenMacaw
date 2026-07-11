@@ -115,7 +115,8 @@ export OPENMACAW_LOCAL_API_ALLOWED_ORIGINS="https://app.openmacaw.ai"
 
 Use a comma-separated list if you need both hosted and local development
 origins. Avoid broad allowlists; any allowed origin can trigger local helper
-browser actions.
+browser actions. Requests without an `Origin` header are rejected, and browser
+POSTs must send `Content-Type: application/json`.
 
 For launchd installs, shell exports are not inherited by the service. Put the
 allowlist in the LaunchAgent plist's `EnvironmentVariables` dictionary before

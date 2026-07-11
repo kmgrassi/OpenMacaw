@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -134,20 +135,22 @@ func (s *Server) handlePickDirectory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) allowLocalBrowserRequest(w http.ResponseWriter, r *http.Request) bool {
-	origin := r.Header.Get("Origin")
-	if origin != "" {
-		if !allowedOrigin(origin) {
-			writeError(w, http.StatusForbidden, "origin_forbidden", "Origin is not allowed")
-			return false
-		}
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Vary", "Origin")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "content-type")
-		w.Header().Set("Access-Control-Max-Age", "600")
-		if r.Header.Get("Access-Control-Request-Private-Network") == "true" {
-			w.Header().Set("Access-Control-Allow-Private-Network", "true")
-		}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		writeError(w, http.StatusForbidden, "origin_required", "Origin header is required")
+		return false
+	}
+	if !allowedOrigin(origin) {
+		writeError(w, http.StatusForbidden, "origin_forbidden", "Origin is not allowed")
+		return false
+	}
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Vary", "Origin")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "content-type")
+	w.Header().Set("Access-Control-Max-Age", "600")
+	if r.Header.Get("Access-Control-Request-Private-Network") == "true" {
+		w.Header().Set("Access-Control-Allow-Private-Network", "true")
 	}
 
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
@@ -159,7 +162,16 @@ func (s *Server) allowLocalBrowserRequest(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusForbidden, "loopback_required", "Local helper API only accepts loopback requests")
 		return false
 	}
+	if r.Method == http.MethodPost && !jsonContentType(r.Header.Get("Content-Type")) {
+		writeError(w, http.StatusUnsupportedMediaType, "content_type_required", "Content-Type must be application/json")
+		return false
+	}
 	return true
+}
+
+func jsonContentType(value string) bool {
+	mediaType, _, err := mime.ParseMediaType(value)
+	return err == nil && mediaType == "application/json"
 }
 
 func allowedOrigin(origin string) bool {
