@@ -4,10 +4,20 @@ import type { AddressInfo } from "node:net";
 import express from "express";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ExecutionProfileResolution } from "../../../../contracts/execution-profile.js";
 import type { LauncherClient } from "../services/launcher.js";
-import type { SetupAgentRow } from "../repositories/agents.js";
 import { ApiRouteError } from "../http.js";
+import {
+  agentId,
+  grantId,
+  localCodingProfile,
+  plannerLocalProfile,
+  plannerTool,
+  resourceId,
+  setupAgent,
+  shellTool,
+  userId,
+  workspaceId,
+} from "./proxy-runtime-dispatch.fixtures.js";
 import { registerProxyRoutes } from "./proxy.js";
 
 const upstreamMocks = vi.hoisted(() => ({
@@ -69,14 +79,6 @@ const { resolveContainerDispatchResources } = vi.mocked(await import("../service
 const { resolveSessionPolicies } = vi.mocked(await import("../services/policy-resolver.js"));
 const { findSetupAgentById, findStoredAgentRowById } = vi.mocked(await import("../repositories/agents.js"));
 
-const agentId = "11111111-1111-4111-8111-111111111111";
-const workspaceId = "22222222-2222-4222-8222-222222222222";
-const userId = "33333333-3333-4333-8333-333333333333";
-const credentialId = "44444444-4444-4444-8444-444444444444";
-const toolId = "55555555-5555-4555-8555-555555555555";
-const grantId = "66666666-6666-4666-8666-666666666666";
-const resourceId = "77777777-7777-4777-8777-777777777777";
-
 function closeServer(server: Server | undefined) {
   if (!server) return Promise.resolve();
   server.closeAllConnections?.();
@@ -87,115 +89,6 @@ function closeServer(server: Server | undefined) {
 async function listen(server: Server) {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   return (server.address() as AddressInfo).port;
-}
-
-function localCodingProfile(): ExecutionProfileResolution {
-  return {
-    agent: { agentId, workspaceId, role: "coding" },
-    profile: {
-      agentId,
-      workspaceId,
-      role: "coding",
-      runnerKind: "local_model_coding",
-      provider: "openai_compatible",
-      model: "qwen2.5-coder:latest",
-      credentialRef: { type: "credential_id", value: credentialId },
-      fallbacks: [],
-      modelTierFloor: "any",
-      toolProfile: "coding",
-      capabilities: {
-        streaming: true,
-        toolCalls: true,
-        workspaceWrite: true,
-        structuredOutput: true,
-        interrupt: true,
-      },
-    },
-    missing: [],
-    source: {
-      routingRuleId: "66666666-6666-4666-8666-666666666666",
-      credentialAlias: null,
-      fallbackUsed: false,
-      legacyGatewayConfigUsed: false,
-    },
-  };
-}
-
-function plannerLocalProfile(): ExecutionProfileResolution {
-  return {
-    agent: { agentId, workspaceId, role: "planning" },
-    profile: {
-      agentId,
-      workspaceId,
-      role: "planning",
-      runnerKind: "planner",
-      provider: "local",
-      model: "qwen2.5-coder:7b",
-      credentialRef: null,
-      fallbacks: [],
-      modelTierFloor: "any",
-      toolProfile: "planning",
-      capabilities: {
-        streaming: true,
-        toolCalls: true,
-        workspaceWrite: false,
-        structuredOutput: true,
-        interrupt: false,
-      },
-    },
-    missing: [],
-    source: {
-      routingRuleId: "66666666-6666-4666-8666-666666666666",
-      credentialAlias: null,
-      fallbackUsed: false,
-      legacyGatewayConfigUsed: false,
-    },
-  };
-}
-
-function shellTool() {
-  return {
-    id: toolId,
-    workspaceId: null,
-    slug: "shell.exec",
-    name: "Run Shell Command",
-    description: "Execute a shell command in the workspace.",
-    parameters: { type: "object", properties: {} },
-    examples: [],
-    executionKind: "shell",
-    runnerKind: "local_model_coding",
-    enabled: true,
-  };
-}
-
-function plannerTool() {
-  return {
-    id: toolId,
-    workspaceId: null,
-    slug: "create_plan",
-    name: "Create Plan",
-    description: "Create a planning record.",
-    parameters: { type: "object", properties: {} },
-    examples: [],
-    executionKind: "database",
-    runnerKind: "planner",
-    enabled: true,
-  };
-}
-
-function setupAgent(toolPolicy: SetupAgentRow["tool_policy"] = {}): SetupAgentRow {
-  return {
-    id: agentId,
-    workspace_id: workspaceId,
-    name: "Coding Agent",
-    status: "active",
-    type: "coding",
-    context: null,
-    model_settings: {},
-    tool_policy: toolPolicy,
-    created_by_user_id: userId,
-    updated_at: "2026-04-29T12:00:00.000Z",
-  };
 }
 
 describe("runtime dispatch proxy contract", () => {
