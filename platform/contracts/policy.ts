@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+const IsoDateTimeSchema = z.string().datetime({ offset: true });
+const SupabaseDateTimeSchema = z.preprocess(
+  (value) =>
+    typeof value === "string"
+      ? value.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00")
+      : value,
+  IsoDateTimeSchema,
+);
+
 export const PolicyScopeSchema = z.enum(["workspace", "agent", "session"]);
 
 export const PolicyVerdictSchema = z.enum(["allow", "deny", "ask"]);
@@ -153,8 +162,8 @@ export const PolicySchema = z
     source: PolicySourceSchema,
     reason: z.string().nullable(),
     createdByUserId: z.string().uuid().nullable(),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime().nullable().optional(),
+    createdAt: IsoDateTimeSchema,
+    updatedAt: IsoDateTimeSchema.nullable().optional(),
   })
   .superRefine(requireMatchingPolicyParamsKind);
 
@@ -172,8 +181,8 @@ export const PolicyRowSchema = z
     source: PolicySourceSchema,
     reason: z.string().nullable(),
     created_by_user_id: z.string().uuid().nullable(),
-    created_at: z.string().datetime(),
-    updated_at: z.string().datetime().nullable().optional(),
+    created_at: SupabaseDateTimeSchema,
+    updated_at: SupabaseDateTimeSchema.nullable().optional(),
   })
   .superRefine(requireMatchingPolicyParamsKind);
 
@@ -211,7 +220,7 @@ export const PolicySessionStateSchema = z.object({
   key: z.string().trim().min(1),
   valueNumeric: z.number().nullable(),
   valueJson: z.unknown().nullable(),
-  updatedAt: z.string().datetime(),
+  updatedAt: IsoDateTimeSchema,
 });
 
 export const PolicySessionStateRowSchema = z.object({
@@ -220,7 +229,7 @@ export const PolicySessionStateRowSchema = z.object({
   key: z.string().trim().min(1),
   value_numeric: z.coerce.number().nullable(),
   value_json: z.unknown().nullable(),
-  updated_at: z.string().datetime(),
+  updated_at: SupabaseDateTimeSchema,
 });
 
 export const PolicyKindDefinitionSchema = z.object({

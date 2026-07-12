@@ -136,6 +136,27 @@ describe("policy contract", () => {
     expect(parsed.session_thread_id).toBe(sessionThreadId);
   });
 
+  it("accepts offset timestamps returned by Supabase", () => {
+    const parsed = PolicyRowSchema.parse({
+      id: policyId,
+      workspace_id: workspaceId,
+      scope: "agent",
+      agent_id: agentId,
+      session_thread_id: null,
+      kind: "max_tool_calls_per_session",
+      params: { kind: "max_tool_calls_per_session", limit: 20 },
+      priority: 0,
+      enabled: true,
+      source: "manual",
+      reason: null,
+      created_by_user_id: userId,
+      created_at: "2026-06-30T12:00:00+00",
+      updated_at: "2026-06-30T12:01:00+00",
+    });
+
+    expect(parsed.updated_at).toBe("2026-06-30T12:01:00+00:00");
+  });
+
   it("rejects DB-shaped policy rows when params kind does not match the policy kind", () => {
     const result = PolicyRowSchema.safeParse({
       id: policyId,
