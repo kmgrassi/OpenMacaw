@@ -33,6 +33,25 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Reject duplicate migration versions
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          duplicate_versions="$(
+            find platform/supabase/migrations -maxdepth 1 -type f -name '*.sql' -print \
+              | sed 's#.*/##' \
+              | cut -d_ -f1 \
+              | sort \
+              | uniq -d
+          )"
+
+          if [[ -n "$duplicate_versions" ]]; then
+            echo "Duplicate Supabase migration version(s):" >&2
+            echo "$duplicate_versions" >&2
+            exit 1
+          fi
+
       - name: Set up Supabase CLI
         uses: supabase/setup-cli@v1
         with:
