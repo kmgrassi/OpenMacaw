@@ -36,6 +36,12 @@ describe("agent diagnostic route — auth", () => {
       timestamp: "2026-05-20T00:00:00.000Z",
       agentId,
       workspaceId,
+      agent: {
+        found: true,
+        name: "Coding Agent",
+        type: "coding",
+        model_settings: null,
+      },
     } as never);
     runtimeRequest = vi.fn().mockResolvedValue({
       status: 200,
@@ -131,6 +137,30 @@ describe("agent diagnostic route — auth", () => {
       workspaceId,
       workItemId: null,
     });
+  });
+
+  it("returns 404 when the agent is not in the authorized workspace", async () => {
+    vi.mocked(loadAgentDiagnostic).mockResolvedValueOnce({
+      timestamp: "2026-05-20T00:00:00.000Z",
+      agentId,
+      workspaceId,
+      agent: {
+        found: false,
+        name: null,
+        type: null,
+        model_settings: null,
+      },
+    } as never);
+
+    const response = await fetch(`${baseUrl}/api/diagnostic/agents/${agentId}?workspaceId=${workspaceId}`, {
+      headers: { authorization: "Bearer test-token" },
+    });
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "agent_not_found" },
+    });
+    expect(assertWorkspaceMembership).toHaveBeenCalledWith(userId, workspaceId);
   });
 
   it("forwards a workItemId query param when present", async () => {

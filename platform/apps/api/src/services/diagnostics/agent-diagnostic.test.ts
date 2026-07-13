@@ -122,4 +122,39 @@ describe("loadAgentDiagnostic", () => {
     });
     expect(probeOllamaEndpoint).toHaveBeenCalledWith("http://127.0.0.1:11434");
   });
+
+  it("does not disclose an agent from another workspace when a workspaceId is provided", async () => {
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(
+      createMockSupabaseClient({
+        agent: [
+          {
+            id: "agent-1",
+            workspace_id: "workspace-2",
+            name: "Secret Agent",
+            type: "coding",
+            model_settings: { model: "secret-model" },
+          },
+        ],
+        routing_rule: [],
+        routing_rule_match: [],
+        local_runtime_machine: [],
+      }) as never,
+    );
+
+    const diagnostic = await loadAgentDiagnostic({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      workItemId: null,
+    });
+
+    expect(diagnostic.agent).toEqual({
+      found: false,
+      name: null,
+      type: null,
+      model_settings: null,
+    });
+    expect(diagnostic.workspaceId).toBe("workspace-1");
+    expect(diagnostic.canChat).toBe(false);
+    expect(probeOllamaEndpoint).not.toHaveBeenCalled();
+  });
 });
