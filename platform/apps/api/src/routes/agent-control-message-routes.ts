@@ -7,6 +7,7 @@ import {
   CreateAgentControlMessageRequestSchema,
 } from "../../../../contracts/agent-control.js";
 import { ApiRouteError, errorPayload, handleApiRouteError, requireRouteParam, requireVerifiedUser } from "../http.js";
+import { parseNullableSupabaseRow, parseSupabaseRows } from "../lib/supabase-row-parsers.js";
 import {
   assertAgentControlAccess,
   createAgentControlMessage,
@@ -25,43 +26,54 @@ const MessageCursorSchema = z.object({
 
 type MessageCursor = z.infer<typeof MessageCursorSchema>;
 
-type MessageToolCallRow = {
-  id: string;
-  tool_id: string | null;
-  input: string | null;
-  output: string | null;
-  created_at: string | null;
-};
+const AgentWorkspaceRowSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string(),
+});
 
-type MessageRowWithToolCalls = {
-  id: string;
-  role: string;
-  content: string;
-  created_at: string | null;
-  metadata: unknown;
-  run_id: string | null;
-  session_id: string | null;
-  user_id: string | null;
-  agent_id: string;
-  workspace_id: string;
-  message_type: string | null;
-  tool_call?: MessageToolCallRow[] | null;
-};
+const MessageToolCallRowSchema = z.object({
+  id: z.string(),
+  tool_id: z.string().nullable(),
+  input: z.string().nullable(),
+  output: z.string().nullable(),
+  created_at: z.string().nullable(),
+});
 
-type AgentToolCallEventForMessageRow = {
-  id: string;
-  run_id: string;
-  correlation_id: string | null;
-  tool_slug: string;
-  status: string;
-  arguments: unknown;
-  result: unknown;
-  output_summary: string | null;
-  error_code: string | null;
-  error_message: string | null;
-  created_at: string | null;
-  sequence: number;
-};
+type MessageToolCallRow = z.infer<typeof MessageToolCallRowSchema>;
+
+const MessageRowWithToolCallsSchema = z.object({
+  id: z.string(),
+  role: z.string(),
+  content: z.string(),
+  created_at: z.string().nullable(),
+  metadata: z.unknown(),
+  run_id: z.string().nullable(),
+  session_id: z.string().nullable(),
+  user_id: z.string().nullable(),
+  agent_id: z.string(),
+  workspace_id: z.string(),
+  message_type: z.string().nullable(),
+  tool_call: z.array(MessageToolCallRowSchema).nullable().optional(),
+});
+
+type MessageRowWithToolCalls = z.infer<typeof MessageRowWithToolCallsSchema>;
+
+const AgentToolCallEventForMessageRowSchema = z.object({
+  id: z.string(),
+  run_id: z.string(),
+  correlation_id: z.string().nullable(),
+  tool_slug: z.string(),
+  status: z.string(),
+  arguments: z.unknown(),
+  result: z.unknown(),
+  output_summary: z.string().nullable(),
+  error_code: z.string().nullable(),
+  error_message: z.string().nullable(),
+  created_at: z.string().nullable(),
+  sequence: z.number(),
+});
+
+type AgentToolCallEventForMessageRow = z.infer<typeof AgentToolCallEventForMessageRowSchema>;
 
 function isWorkspaceAuthorizationMiss(error: unknown) {
   return error instanceof Error && error.message === "Authenticated user is not authorized for the requested workspace";
@@ -145,7 +157,11 @@ async function getToolCallsByRunId(runIds: string[]): Promise<Map<string, Messag
   if (error) return new Map();
 
   const grouped = new Map<string, MessageToolCallRow[]>();
-  for (const event of (data ?? []) as unknown as AgentToolCallEventForMessageRow[]) {
+  for (const event of parseSupabaseRows(
+    "agent_tool_call_event query",
+    AgentToolCallEventForMessageRowSchema,
+    Array.isArray(data) ? data : [],
+  )) {
     const toolCalls = grouped.get(event.run_id) ?? [];
     toolCalls.push(toolCallFromEvent(event));
     grouped.set(event.run_id, toolCalls);
@@ -210,12 +226,13 @@ export async function getAgentMessages(req: Request, res: Response) {
       throw normalizeSupabaseError("agent query", agentError);
     }
 
-    if (!agent) {
+    const parsedAgent = parseNullableSupabaseRow("agent query", AgentWorkspaceRowSchema, agent);
+    if (!parsedAgent) {
       return res.status(404).json(errorPayload("agent_not_found", "Agent not found"));
     }
 
     try {
-      await assertWorkspaceMembership(requireVerifiedUser(req), agent.workspace_id);
+      await assertWorkspaceMembership(requireVerifiedUser(req), parsedAgent.workspace_id);
     } catch (error) {
       if (isWorkspaceAuthorizationMiss(error)) {
         throw new ApiRouteError(403, "forbidden", "Authenticated user is not authorized for the requested workspace");
@@ -232,7 +249,7 @@ export async function getAgentMessages(req: Request, res: Response) {
         .from("message")
         .select(messageSelect)
         .eq("agent_id", agentId)
-        .eq("workspace_id", agent.workspace_id)
+        .eq("workspace_id", parsedAgent.workspace_id)
         .is("deleted_at", null)
         .eq("created_at", cursor.createdAt)
         .lt("id", cursor.id)
@@ -244,13 +261,17 @@ export async function getAgentMessages(req: Request, res: Response) {
         throw normalizeSupabaseError("message query", sameTimestampError);
       }
 
-      rows = ((sameTimestampRows ?? []) as unknown as MessageRowWithToolCalls[]).map(sortMessageToolCalls);
+      rows = parseSupabaseRows(
+        "message query",
+        MessageRowWithToolCallsSchema,
+        Array.isArray(sameTimestampRows) ? sameTimestampRows : [],
+      ).map(sortMessageToolCalls);
       if (rows.length < MESSAGE_PAGE_FETCH_LIMIT) {
         const { data: olderTimestampRows, error: olderTimestampError } = await supabase
           .from("message")
           .select(messageSelect)
           .eq("agent_id", agentId)
-          .eq("workspace_id", agent.workspace_id)
+          .eq("workspace_id", parsedAgent.workspace_id)
           .is("deleted_at", null)
           .lt("created_at", cursor.createdAt)
           .order("created_at", { ascending: false })
@@ -263,7 +284,11 @@ export async function getAgentMessages(req: Request, res: Response) {
 
         rows = [
           ...rows,
-          ...((olderTimestampRows ?? []) as unknown as MessageRowWithToolCalls[]).map(sortMessageToolCalls),
+          ...parseSupabaseRows(
+            "message query",
+            MessageRowWithToolCallsSchema,
+            Array.isArray(olderTimestampRows) ? olderTimestampRows : [],
+          ).map(sortMessageToolCalls),
         ];
       }
     } else {
@@ -271,7 +296,7 @@ export async function getAgentMessages(req: Request, res: Response) {
         .from("message")
         .select(messageSelect)
         .eq("agent_id", agentId)
-        .eq("workspace_id", agent.workspace_id)
+        .eq("workspace_id", parsedAgent.workspace_id)
         .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .order("id", { ascending: false })
@@ -281,7 +306,9 @@ export async function getAgentMessages(req: Request, res: Response) {
         throw normalizeSupabaseError("message query", error);
       }
 
-      rows = ((data ?? []) as unknown as MessageRowWithToolCalls[]).map(sortMessageToolCalls);
+      rows = parseSupabaseRows("message query", MessageRowWithToolCallsSchema, Array.isArray(data) ? data : []).map(
+        sortMessageToolCalls,
+      );
     }
 
     const pageRows = rows.slice(0, MESSAGE_PAGE_LIMIT);
