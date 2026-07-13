@@ -65,6 +65,10 @@ export function registerAgentDiagnosticRoutes(app: Express, runtimeRequest: Upst
           workItemId: workItemIdParam || null,
         });
 
+        if (!diagnostic.agent.found) {
+          throw new ApiRouteError(404, "agent_not_found", "Agent not found");
+        }
+
         return res.status(200).json(diagnostic);
       },
     }),

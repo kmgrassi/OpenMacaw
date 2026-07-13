@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resolveExecutionProfile } from "../execution-profile-resolver.js";
 import { getServiceRoleSupabase } from "../../supabase-client.js";
 import { createMockSupabaseClient } from "../../test-utils/supabase-client-mock.js";
 import { loadAgentDiagnostic } from "./agent-diagnostic.js";
@@ -121,5 +122,56 @@ describe("loadAgentDiagnostic", () => {
       },
     });
     expect(probeOllamaEndpoint).toHaveBeenCalledWith("http://127.0.0.1:11434");
+  });
+
+  it("does not disclose an agent from another workspace when a workspaceId is provided", async () => {
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(
+      createMockSupabaseClient({
+        agent: [
+          {
+            id: "agent-1",
+            workspace_id: "workspace-2",
+            name: "Secret Agent",
+            type: "coding",
+            model_settings: { model: "secret-model" },
+          },
+        ],
+        routing_rule: [],
+        routing_rule_match: [],
+        local_runtime_machine: [],
+      }) as never,
+    );
+
+    const diagnostic = await loadAgentDiagnostic({
+      agentId: "agent-1",
+      workspaceId: "workspace-1",
+      workItemId: null,
+    });
+
+    expect(diagnostic.agent).toEqual({
+      found: false,
+      name: null,
+      type: null,
+      model_settings: null,
+    });
+    expect(diagnostic.workspaceId).toBe("workspace-1");
+    expect(diagnostic.canChat).toBe(false);
+    expect(diagnostic.executionProfile).toEqual({
+      resolved: false,
+      missing: ["agent_not_found"],
+      profile: null,
+      source: {
+        routingRuleId: null,
+        fallbackUsed: false,
+        legacyGatewayConfigUsed: false,
+      },
+    });
+    expect(diagnostic.launcher).toEqual({
+      healthy: false,
+      agentRegistered: false,
+    });
+    expect(diagnostic.blockers).toEqual(["Agent not found in authorized workspace"]);
+    expect(resolveExecutionProfile).not.toHaveBeenCalled();
+    expect(probeOllamaEndpoint).not.toHaveBeenCalled();
   });
 });

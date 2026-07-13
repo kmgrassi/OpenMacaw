@@ -33,14 +33,15 @@ export async function loadAgentDiagnostic(input: {
   // -----------------------------------------------------------------
   // Step 1: Agent lookup
   // -----------------------------------------------------------------
-  const { data: agentRows } = await supabase
-    .from("agent")
-    .select("id, name, type, model_settings")
-    .eq("id", agentId)
-    .limit(1);
+  let agentQuery = supabase.from("agent").select("id, workspace_id, name, type, model_settings").eq("id", agentId);
+  if (workspaceIdParam) {
+    agentQuery = agentQuery.eq("workspace_id", workspaceIdParam);
+  }
+
+  const { data: agentRows } = await agentQuery.limit(1);
 
   const agentRow = (agentRows ?? [])[0] as
-    | { id: string; name: string | null; type: string | null; model_settings: unknown }
+    | { id: string; workspace_id: string; name: string | null; type: string | null; model_settings: unknown }
     | undefined;
   const agentFound = Boolean(agentRow);
 
@@ -54,9 +55,53 @@ export async function loadAgentDiagnostic(input: {
   // Determine workspaceId — prefer query param, fall back to agent's workspace
   let workspaceId = workspaceIdParam;
   if (!workspaceId && agentFound) {
-    const { data: agentFull } = await supabase.from("agent").select("workspace_id").eq("id", agentId).limit(1);
-    const row = (agentFull ?? [])[0] as { workspace_id: string } | undefined;
-    workspaceId = row?.workspace_id ?? null;
+    workspaceId = agentRow?.workspace_id ?? null;
+  }
+
+  if (workspaceIdParam && !agentFound) {
+    return {
+      timestamp: new Date().toISOString(),
+      agentId,
+      workspaceId: workspaceIdParam,
+      agent: agentSection,
+      routing: {
+        rulesInWorkspace: 0,
+        matchesForAgent: [],
+        selectedRule: null,
+        selectionReason: "agent not found in workspace",
+      },
+      executionProfile: {
+        resolved: false,
+        missing: ["agent_not_found"],
+        profile: null,
+        source: {
+          routingRuleId: null,
+          fallbackUsed: false,
+          legacyGatewayConfigUsed: false,
+        },
+      },
+      policies: {
+        resolved: false,
+        workspacePolicies: [],
+        agentPolicies: [],
+        sessionPolicies: [],
+        effectivePolicies: [],
+        error: "agent not found in workspace",
+      },
+      localRuntime: null,
+      codexOAuth: null,
+      claudeCode: null,
+      workItems: {
+        found: false,
+        snoozed: false,
+      },
+      launcher: {
+        healthy: false,
+        agentRegistered: false,
+      },
+      canChat: false,
+      blockers: ["Agent not found in authorized workspace"],
+    };
   }
 
   // -----------------------------------------------------------------
