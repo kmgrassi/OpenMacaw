@@ -37,7 +37,9 @@ defmodule SymphonyElixir.WorkerBridge.Server do
     CredentialResolver,
     RepositoryManager,
     ResourceAuthorization,
-    SecretResolver
+    PortLauncher,
+    SecretResolver,
+    SessionLifecycle
   }
 
   @type start_params :: %{required(String.t()) => term()}
@@ -91,7 +93,7 @@ defmodule SymphonyElixir.WorkerBridge.Server do
     {:ok,
      %{
        sessions: %{},
-       port_opener: Keyword.get(opts, :port_opener, &open_port/1),
+       port_opener: Keyword.get(opts, :port_opener, &PortLauncher.open/1),
        lease_registry:
          Keyword.get(
            opts,
@@ -112,7 +114,7 @@ defmodule SymphonyElixir.WorkerBridge.Server do
          {:ok, launch_spec} <- build_launch_spec(params, resolved_env, workspace_path, resources),
          {:ok, port} <- state.port_opener.(launch_spec) do
       entry = build_session_entry(id, params, resolved_env, launch_spec, port, authorized_resources)
-      :ok = write_session_lease(state.lease_registry, entry, params)
+      :ok = SessionLifecycle.write_lease(state.lease_registry, entry, params)
 
       {:reply, {:ok, serialize_entry(entry)}, put_in(state.sessions[id], entry)}
     else
@@ -143,7 +145,7 @@ defmodule SymphonyElixir.WorkerBridge.Server do
         {:reply, {:error, :not_found}, state}
 
       entry ->
-        case revalidate_and_heartbeat_entry(entry, state.lease_registry) do
+        case SessionLifecycle.heartbeat(entry, state.lease_registry) do
           {:ok, refreshed} ->
             {:reply, {:ok, serialize_entry(refreshed)}, put_in(state.sessions[id], refreshed)}
 
@@ -159,7 +161,7 @@ defmodule SymphonyElixir.WorkerBridge.Server do
         {:reply, {:error, :not_found}, state}
 
       entry ->
-        case revalidate_and_heartbeat_entry(entry, state.lease_registry) do
+        case SessionLifecycle.heartbeat(entry, state.lease_registry) do
           {:ok, refreshed} ->
             {:reply, :ok, put_in(state.sessions[id], refreshed)}
 
@@ -175,8 +177,8 @@ defmodule SymphonyElixir.WorkerBridge.Server do
         {:reply, {:error, :not_found}, state}
 
       entry ->
-        stop_port(entry.port)
-        stopped = finalize_entry(entry, "stopped", entry.exit_status || 0, state.lease_registry)
+        PortLauncher.stop(entry.port)
+        stopped = SessionLifecycle.finalize(entry, "stopped", entry.exit_status || 0, state.lease_registry)
 
         {:reply, {:ok, serialize_entry(stopped)}, put_in(state.sessions[id], stopped)}
     end
@@ -191,15 +193,15 @@ defmodule SymphonyElixir.WorkerBridge.Server do
       |> Enum.filter(&(&1.kind == "session"))
 
     {sessions, metrics} =
-      Enum.reduce(stale_session_leases, {state.sessions, empty_reap_metrics()}, fn lease, {sessions, metrics} ->
+      Enum.reduce(stale_session_leases, {state.sessions, SessionLifecycle.empty_reap_metrics()}, fn lease, {sessions, metrics} ->
         case Map.get(sessions, lease.session_id || lease.id) do
           nil ->
-            metrics = cleanup_stale_workspace(lease.workspace_path, metrics)
+            metrics = SessionLifecycle.cleanup_stale_workspace(lease.workspace_path, metrics)
             {sessions, %{metrics | stale_missing_sessions: metrics.stale_missing_sessions + 1}}
 
           entry ->
-            stop_port(entry.port)
-            stopped = finalize_entry(entry, "stale", entry.exit_status || 0, state.lease_registry)
+            PortLauncher.stop(entry.port)
+            stopped = SessionLifecycle.finalize(entry, "stale", entry.exit_status || 0, state.lease_registry)
             metrics = %{metrics | reaped_sessions: metrics.reaped_sessions + 1}
             {Map.put(sessions, stopped.id, stopped), metrics}
         end
@@ -212,7 +214,7 @@ defmodule SymphonyElixir.WorkerBridge.Server do
   def handle_info({port, {:exit_status, exit_status}}, state) when is_port(port) do
     {:noreply,
      update_session_for_port(state, port, fn entry ->
-       finalize_entry(entry, "exited", exit_status, state.lease_registry)
+       SessionLifecycle.finalize(entry, "exited", exit_status, state.lease_registry)
      end)}
   end
 
@@ -592,36 +594,6 @@ defmodule SymphonyElixir.WorkerBridge.Server do
       {:error, {:invalid_runtime_config, Exception.message(error)}}
   end
 
-  defp revalidate_and_heartbeat_entry(entry, lease_registry) do
-    with {:ok, refreshed} <- revalidate_entry(entry, lease_registry),
-         {:ok, heartbeat} <-
-           RuntimeLease.Registry.heartbeat(lease_registry, refreshed.lease_id, idle_timeout_ms: refreshed.idle_timeout_ms) do
-      {:ok, %{refreshed | heartbeat_at: heartbeat.heartbeat_at, idle_expires_at: heartbeat.idle_expires_at}}
-    else
-      {:error, reason, stopped} -> {:error, reason, stopped}
-      {:error, reason} -> {:error, reason, entry}
-    end
-  end
-
-  defp revalidate_entry(%{status: status} = entry, _lease_registry) when status != "running" do
-    {:ok, entry}
-  end
-
-  defp revalidate_entry(%{authorized_resources: []} = entry, _lease_registry), do: {:ok, entry}
-
-  defp revalidate_entry(%{authorized_resources: resources} = entry, lease_registry) when is_list(resources) do
-    case ResourceAuthorization.revalidate(resources, entry) do
-      {:ok, refreshed_resources} ->
-        {:ok, %{entry | authorized_resources: refreshed_resources}}
-
-      {:error, reason} ->
-        stop_port(entry.port)
-        {:error, reason, finalize_entry(entry, "revoked", entry.exit_status || 0, lease_registry)}
-    end
-  end
-
-  defp revalidate_entry(entry, _lease_registry), do: {:ok, Map.put(entry, :authorized_resources, [])}
-
   defp update_session_for_port(state, port, fun) do
     updated_sessions =
       Map.new(state.sessions, fn {id, entry} ->
@@ -656,114 +628,6 @@ defmodule SymphonyElixir.WorkerBridge.Server do
 
   defp sanitize_resource_status(resource), do: resource
 
-  defp finalize_entry(entry, status, exit_status, lease_registry) do
-    cleanup_result = maybe_cleanup_workspace(entry.workspace_cleanup_path)
-    release_session_lease(lease_registry, entry, status)
-    log_cleanup_result(entry, status, cleanup_result)
-
-    %{
-      entry
-      | status: status,
-        stopped_at: DateTime.utc_now(),
-        exit_status: exit_status,
-        workspace_cleanup_path: nil
-    }
-  end
-
-  defp maybe_cleanup_workspace(nil), do: :ok
-
-  defp maybe_cleanup_workspace(path) do
-    case RepositoryManager.cleanup_workspace(path) do
-      :ok ->
-        :ok
-
-      {:error, {:workspace_cleanup_failed, failed_path, reason}} ->
-        {:error, {reason, failed_path}}
-
-      {:error, {:resource_path_outside_workspace, _expanded_path, _expanded_root}} ->
-        cleanup_workspace_fallback(path)
-
-      {:error, :invalid_workspace_path} ->
-        cleanup_workspace_fallback(path)
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp cleanup_workspace_fallback(path) do
-    case File.rm_rf(path) do
-      {:ok, _paths} -> :ok
-      {:error, reason, failed_path} -> {:error, {reason, failed_path}}
-    end
-  end
-
-  defp empty_reap_metrics do
-    %{reaped_sessions: 0, stale_missing_sessions: 0, cleanup_failures: 0}
-  end
-
-  defp cleanup_stale_workspace(nil, metrics), do: metrics
-
-  defp cleanup_stale_workspace(path, metrics) do
-    case maybe_cleanup_workspace(path) do
-      :ok ->
-        metrics
-
-      {:error, reason} ->
-        require Logger
-        Logger.warning("worker_bridge_cleanup event=workspace_cleanup_failed path=#{path} reason=#{inspect(reason)}")
-        %{metrics | cleanup_failures: metrics.cleanup_failures + 1}
-    end
-  end
-
-  defp write_session_lease(lease_registry, entry, params) do
-    metadata = Map.get(params, "lease", %{}) |> normalize_lease_metadata()
-    grant_versions = Map.merge(resource_grant_versions(entry), Map.get(metadata, "materialized_grant_versions", %{}))
-
-    {:ok, _lease} =
-      RuntimeLease.Registry.upsert_lease(lease_registry, %{
-        id: entry.lease_id,
-        kind: "session",
-        owner: "worker_bridge",
-        workspace_id: entry.workspace_id,
-        agent_id: entry.agent_id,
-        session_id: entry.id,
-        workspace_path: entry.workspace_cleanup_path,
-        heartbeat_at: entry.heartbeat_at,
-        idle_expires_at: entry.idle_expires_at,
-        max_expires_at: entry.max_expires_at,
-        materialized_grant_versions: grant_versions,
-        metadata: metadata
-      })
-
-    :ok
-  end
-
-  defp release_session_lease(lease_registry, entry, status) do
-    if Map.get(entry, :lease_id) do
-      case RuntimeLease.Registry.release_lease(lease_registry, entry.lease_id) do
-        {:ok, _lease} ->
-          :ok
-
-        {:error, :not_found} ->
-          require Logger
-          Logger.warning("worker_bridge_cleanup event=lease_release_missing session_id=#{entry.id} status=#{status}")
-      end
-    end
-  end
-
-  defp log_cleanup_result(entry, status, :ok) do
-    require Logger
-
-    Logger.info("worker_bridge_cleanup event=session_finalized session_id=#{entry.id} status=#{status} workspace_id=#{entry.workspace_id || "unknown"}")
-  end
-
-  defp log_cleanup_result(entry, status, {:error, reason}) do
-    require Logger
-
-    Logger.warning("worker_bridge_cleanup event=session_cleanup_failed session_id=#{entry.id} status=#{status} reason=#{inspect(reason)}")
-  end
-
   defp lease_timeout_ms(params, key, default) do
     params
     |> Map.get("lease", %{})
@@ -791,58 +655,5 @@ defmodule SymphonyElixir.WorkerBridge.Server do
       | idle_expires_at: DateTime.add(entry.heartbeat_at, entry.idle_timeout_ms, :millisecond),
         max_expires_at: DateTime.add(entry.started_at, entry.max_lifetime_ms, :millisecond)
     }
-  end
-
-  defp normalize_lease_metadata(%{} = metadata), do: metadata
-  defp normalize_lease_metadata(_metadata), do: %{}
-
-  defp resource_grant_versions(%{authorized_resources: resources}) when is_list(resources) do
-    Map.new(resources, fn resource -> {resource.grant_id, resource.grant_version} end)
-  end
-
-  defp resource_grant_versions(_entry), do: %{}
-
-  defp open_port(%{command: command, cwd: cwd, env: env}) do
-    case System.find_executable("bash") do
-      nil ->
-        {:error, :bash_not_found}
-
-      executable ->
-        opts =
-          [
-            :binary,
-            :exit_status,
-            :stderr_to_stdout,
-            args: [~c"-lc", String.to_charlist(command)]
-          ]
-          |> maybe_put_cd(cwd)
-          |> maybe_put_env(env)
-
-        {:ok, Port.open({:spawn_executable, String.to_charlist(executable)}, opts)}
-    end
-  end
-
-  defp maybe_put_cd(opts, nil), do: opts
-  defp maybe_put_cd(opts, cwd), do: Keyword.put(opts, :cd, String.to_charlist(cwd))
-
-  defp maybe_put_env(opts, env) when env in [%{}, nil], do: opts
-
-  defp maybe_put_env(opts, env) when is_map(env) do
-    formatted =
-      Enum.map(env, fn {key, value} ->
-        {String.to_charlist(key), String.to_charlist(value)}
-      end)
-
-    Keyword.put(opts, :env, formatted)
-  end
-
-  defp stop_port(port) when is_port(port) do
-    try do
-      Port.close(port)
-    catch
-      :error, :badarg -> :ok
-    end
-
-    :ok
   end
 end
