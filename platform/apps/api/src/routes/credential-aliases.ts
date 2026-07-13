@@ -5,6 +5,7 @@ import {
   UpsertCredentialAliasRequestSchema,
   UpsertCredentialAliasResponseSchema,
 } from "../../../../contracts/credentials.js";
+import { CredentialAliasRouteTemplates } from "../../../../contracts/routes.js";
 import { ApiRouteError, apiRoute, errorPayload, handleApiRouteError, requestWorkspaceId } from "../http.js";
 import {
   getCredentialRowByIdForWorkspace,
@@ -32,7 +33,7 @@ async function requireWorkspaceAccess(userId: string, workspaceId: string) {
 
 export function registerCredentialAliasRoutes(app: Express) {
   app.get(
-    "/api/credential-aliases",
+    CredentialAliasRouteTemplates.collection,
     apiRoute({
       requireAuth: true,
       handler: async ({ req, res, userId }) => {
@@ -55,7 +56,7 @@ export function registerCredentialAliasRoutes(app: Express) {
   );
 
   app.put(
-    "/api/credential-aliases/:alias",
+    CredentialAliasRouteTemplates.item,
     apiRoute({
       requireAuth: true,
       handler: async ({ req, res, userId }) => {

@@ -22,6 +22,12 @@ const STORED_AGENTS_PREFIX = "/api/stored-agents";
 const AGENTS_PREFIX = "/api/agents";
 const SESSIONS_PREFIX = "/api/sessions";
 const LOCAL_RUNTIME_PREFIX = "/api/local-runtime/runtimes";
+const AGENT_DASHBOARD_PREFIX = "/api/agent-dashboard";
+const AGENT_DIAGNOSTIC_PREFIX = "/api/diagnostic/agents";
+const WORKSPACE_DIAGNOSTIC_PREFIX = "/api/diagnostic/workspace";
+const CREDENTIAL_ALIASES_PREFIX = "/api/credential-aliases";
+const WORKER_BRIDGE_PREFIX = "/api/worker-bridge/sessions";
+const MANAGER_RUNTIME_PREFIX = "/api/runtime";
 
 export const StoredAgentRouteTemplates = {
   collection: STORED_AGENTS_PREFIX,
@@ -38,11 +44,42 @@ export const StoredAgentRouteTemplates = {
 export const AgentRouteTemplates = {
   runtimeProfile: `${AGENTS_PREFIX}/:agentId/runtime-profile`,
   assignLocalModel: `${AGENTS_PREFIX}/:agentId/assign-local-model`,
+  schedulerConfig: `${AGENTS_PREFIX}/:agentId/scheduler-config`,
   policies: `${AGENTS_PREFIX}/:agentId/policies`,
   policy: `${AGENTS_PREFIX}/:agentId/policies/:policyId`,
   liveInput: `${AGENTS_PREFIX}/:agentId/input`,
   liveInterrupt: `${AGENTS_PREFIX}/:agentId/interrupt`,
   liveStream: `${AGENTS_PREFIX}/:agentId/stream`,
+} as const;
+
+export const AgentDashboardRouteTemplates = {
+  item: `${AGENT_DASHBOARD_PREFIX}/:agentId`,
+  latestRun: `${AGENT_DASHBOARD_PREFIX}/:agentId/latest-run`,
+  runs: `${AGENT_DASHBOARD_PREFIX}/:agentId/runs`,
+  tasks: `${AGENT_DASHBOARD_PREFIX}/:agentId/tasks`,
+  toolEvents: `${AGENT_DASHBOARD_PREFIX}/:agentId/tool-events`,
+  gatewayConfigState: `${AGENT_DASHBOARD_PREFIX}/:agentId/gateway-config-state`,
+  events: `${AGENT_DASHBOARD_PREFIX}/:agentId/events`,
+  version: `${AGENT_DASHBOARD_PREFIX}/:agentId/version`,
+} as const;
+
+export const DiagnosticRouteTemplates = {
+  workspaceAgents: `${WORKSPACE_DIAGNOSTIC_PREFIX}/:workspaceId/agents`,
+  agent: `${AGENT_DIAGNOSTIC_PREFIX}/:agentId`,
+} as const;
+
+export const CredentialAliasRouteTemplates = {
+  collection: CREDENTIAL_ALIASES_PREFIX,
+  item: `${CREDENTIAL_ALIASES_PREFIX}/:alias`,
+} as const;
+
+export const WorkerBridgeRouteTemplates = {
+  collection: WORKER_BRIDGE_PREFIX,
+  item: `${WORKER_BRIDGE_PREFIX}/:id`,
+} as const;
+
+export const ManagerRouteTemplates = {
+  runtimeStatus: `${MANAGER_RUNTIME_PREFIX}/manager-status`,
 } as const;
 
 export const SessionRouteTemplates = {
@@ -125,6 +162,16 @@ export function agentAssignLocalModelRoute(
   );
 }
 
+export function agentSchedulerConfigRoute(
+  agentId: string,
+  workspaceId?: string | null,
+) {
+  return appendWorkspaceQuery(
+    `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/scheduler-config`,
+    workspaceId,
+  );
+}
+
 export function agentPoliciesRoute(
   agentId: string,
   workspaceId?: string | null,
@@ -195,6 +242,75 @@ export function agentLiveStreamRoute(
   });
 }
 
+export function agentDashboardRoute(agentId: string) {
+  return `${AGENT_DASHBOARD_PREFIX}/${encodeURIComponent(agentId)}`;
+}
+
+export function agentDashboardLatestRunRoute(agentId: string) {
+  return `${agentDashboardRoute(agentId)}/latest-run`;
+}
+
+export function agentDashboardRunsRoute(agentId: string, page: number) {
+  return appendQuery(`${agentDashboardRoute(agentId)}/runs`, { page });
+}
+
+export function agentDashboardTasksRoute(agentId: string) {
+  return `${agentDashboardRoute(agentId)}/tasks`;
+}
+
+export function agentDashboardToolEventsRoute(agentId: string) {
+  return `${agentDashboardRoute(agentId)}/tool-events`;
+}
+
+export function agentDashboardGatewayConfigStateRoute(
+  agentId: string,
+  workspaceId?: string | null,
+) {
+  return appendWorkspaceQuery(
+    `${agentDashboardRoute(agentId)}/gateway-config-state`,
+    workspaceId,
+  );
+}
+
+export function agentDashboardEventsRoute(agentId: string) {
+  return `${agentDashboardRoute(agentId)}/events`;
+}
+
+export function agentDashboardVersionRoute(
+  agentId: string,
+  workspaceId?: string | null,
+) {
+  return appendWorkspaceQuery(
+    `${agentDashboardRoute(agentId)}/version`,
+    workspaceId,
+  );
+}
+
+export function workspaceAgentDiagnosticsRoute(workspaceId: string) {
+  return `${WORKSPACE_DIAGNOSTIC_PREFIX}/${encodeURIComponent(workspaceId)}/agents`;
+}
+
+export function agentDiagnosticRoute(
+  agentId: string,
+  options: { workspaceId?: string | null; workItemId?: string | null } = {},
+) {
+  return appendQuery(
+    `${AGENT_DIAGNOSTIC_PREFIX}/${encodeURIComponent(agentId)}`,
+    {
+      workspaceId: options.workspaceId,
+      workItemId: options.workItemId,
+    },
+  );
+}
+
+export function credentialAliasesRoute() {
+  return CREDENTIAL_ALIASES_PREFIX;
+}
+
+export function credentialAliasRoute(alias: string) {
+  return `${CREDENTIAL_ALIASES_PREFIX}/${encodeURIComponent(alias)}`;
+}
+
 export function localRuntimeRoute(machineId: string) {
   return `${LOCAL_RUNTIME_PREFIX}/${encodeURIComponent(machineId)}`;
 }
@@ -241,4 +357,18 @@ export function localRuntimeUnassignRunnerRoute(
   agentId: string,
 ) {
   return `${localRuntimeAssignRunnerRoute(runnerId)}/${encodeURIComponent(agentId)}`;
+}
+
+export function workerBridgeSessionsRoute() {
+  return WORKER_BRIDGE_PREFIX;
+}
+
+export function workerBridgeSessionRoute(id: string) {
+  return `${WORKER_BRIDGE_PREFIX}/${encodeURIComponent(id)}`;
+}
+
+export function managerRuntimeStatusRoute(workspaceId?: string | null) {
+  return appendQuery(ManagerRouteTemplates.runtimeStatus, {
+    workspace_id: workspaceId,
+  });
 }

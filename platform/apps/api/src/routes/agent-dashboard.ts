@@ -14,6 +14,7 @@ import {
   LatestBrokerRunResponseSchema,
   RUN_HISTORY_PAGE_SIZE,
 } from "../../../../contracts/agent-dashboard.js";
+import { AgentDashboardRouteTemplates } from "../../../../contracts/routes.js";
 import {
   apiRoute,
   ApiRouteError,
@@ -50,7 +51,7 @@ function handleDashboardError(res: Parameters<typeof handleApiRouteError>[0], er
 
 export function registerAgentDashboardRoutes(app: Express) {
   app.get(
-    "/api/agent-dashboard/:agentId",
+    AgentDashboardRouteTemplates.item,
     apiRoute({
       requireAuth: true,
       onError: handleDashboardError,
@@ -84,7 +85,7 @@ export function registerAgentDashboardRoutes(app: Express) {
   );
 
   app.get(
-    "/api/agent-dashboard/:agentId/latest-run",
+    AgentDashboardRouteTemplates.latestRun,
     apiRoute({
       requireAuth: true,
       onError: handleDashboardError,
@@ -102,7 +103,7 @@ export function registerAgentDashboardRoutes(app: Express) {
   );
 
   app.get(
-    "/api/agent-dashboard/:agentId/runs",
+    AgentDashboardRouteTemplates.runs,
     apiRoute({
       requireAuth: true,
       onError: handleDashboardError,
@@ -132,7 +133,7 @@ export function registerAgentDashboardRoutes(app: Express) {
   );
 
   app.post(
-    "/api/agent-dashboard/:agentId/tasks",
+    AgentDashboardRouteTemplates.tasks,
     apiRoute({
       requireAuth: true,
       bodySchema: BrokerTaskListRequestSchema,
@@ -153,7 +154,7 @@ export function registerAgentDashboardRoutes(app: Express) {
   );
 
   app.post(
-    "/api/agent-dashboard/:agentId/tool-events",
+    AgentDashboardRouteTemplates.toolEvents,
     apiRoute({
       requireAuth: true,
       bodySchema: AgentToolCallEventCreateRequestSchema,
@@ -174,7 +175,7 @@ export function registerAgentDashboardRoutes(app: Express) {
   );
 
   app.get(
-    "/api/agent-dashboard/:agentId/gateway-config-state",
+    AgentDashboardRouteTemplates.gatewayConfigState,
     apiRoute({
       requireAuth: true,
       onError: handleDashboardError,
@@ -193,7 +194,7 @@ export function registerAgentDashboardRoutes(app: Express) {
   );
 
   app.get(
-    "/api/agent-dashboard/:agentId/events",
+    AgentDashboardRouteTemplates.events,
     apiRoute({
       requireAuth: true,
       async handler({ res }) {
@@ -203,7 +204,7 @@ export function registerAgentDashboardRoutes(app: Express) {
   );
 
   app.get(
-    "/api/agent-dashboard/:agentId/version",
+    AgentDashboardRouteTemplates.version,
     apiRoute({
       requireAuth: true,
       onError: handleDashboardError,
