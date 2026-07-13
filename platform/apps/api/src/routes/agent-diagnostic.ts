@@ -1,5 +1,6 @@
 import type { Express } from "express";
 
+import { DiagnosticRouteTemplates } from "../../../../contracts/routes.js";
 import { ApiRouteError, apiRoute, requireRouteParam } from "../http.js";
 import { loadAgentDiagnostic } from "../services/diagnostics/agent-diagnostic.js";
 import { loadWorkspaceAgentDiagnostic } from "../services/diagnostics/workspace-agent-diagnostic.js";
@@ -25,7 +26,7 @@ async function requireWorkspaceAccess(userId: string, workspaceId: string) {
 
 export function registerAgentDiagnosticRoutes(app: Express, runtimeRequest: UpstreamRequest) {
   app.get(
-    "/api/diagnostic/workspace/:workspaceId/agents",
+    DiagnosticRouteTemplates.workspaceAgents,
     apiRoute({
       requireAuth: true,
       handler: async ({ req, res, userId }) => {
@@ -42,7 +43,7 @@ export function registerAgentDiagnosticRoutes(app: Express, runtimeRequest: Upst
   );
 
   app.get(
-    "/api/diagnostic/agents/:agentId",
+    DiagnosticRouteTemplates.agent,
     apiRoute({
       requireAuth: true,
       handler: async ({ req, res, userId }) => {

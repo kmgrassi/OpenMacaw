@@ -7,6 +7,7 @@ import {
   ManagerAgentConfigResponseSchema,
   ManagerRuntimeStatusResponseSchema,
 } from "../../../../contracts/manager-agent.js";
+import { AgentRouteTemplates, ManagerRouteTemplates } from "../../../../contracts/routes.js";
 import { apiRoute, ApiRouteError, handleApiRouteError, requireRouteParam } from "../http.js";
 import { getManagerRuntimeStatus } from "../services/manager-runtime-status.js";
 import { getManagerAgentConfig, updateManagerAgentConfig } from "../services/manager-agent-config.js";
@@ -45,7 +46,7 @@ function handleManagerStatusError(res: Parameters<typeof handleApiRouteError>[0]
 
 export function registerManagerAgentRoutes(app: Express, runtimeRequest: RuntimeRequest) {
   app.get(
-    "/api/agents/:agentId/scheduler-config",
+    AgentRouteTemplates.schedulerConfig,
     apiRoute({
       requireAuth: true,
       async handler({ req, res, accessToken }) {
@@ -61,7 +62,7 @@ export function registerManagerAgentRoutes(app: Express, runtimeRequest: Runtime
   );
 
   app.put(
-    "/api/agents/:agentId/scheduler-config",
+    AgentRouteTemplates.schedulerConfig,
     apiRoute({
       requireAuth: true,
       bodySchema: ManagerAgentConfigRequestSchema,
@@ -81,7 +82,7 @@ export function registerManagerAgentRoutes(app: Express, runtimeRequest: Runtime
   );
 
   app.get(
-    "/api/runtime/manager-status",
+    ManagerRouteTemplates.runtimeStatus,
     apiRoute({
       requireAuth: true,
       onError: handleManagerStatusError,

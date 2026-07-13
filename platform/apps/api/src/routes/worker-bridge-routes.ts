@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 
 import { z } from "zod";
 
+import { WorkerBridgeRouteTemplates } from "../../../../contracts/routes.js";
 import {
   ApiRouteError,
   errorPayload,
@@ -101,7 +102,7 @@ function handleWorkerBridgeRouteError(res: Response, error: unknown, fallback: {
 }
 
 export function registerWorkerBridgeRoutes(app: Express, launcherClient: LauncherClient) {
-  app.get("/api/worker-bridge/sessions", async (req: Request, res: Response) => {
+  app.get(WorkerBridgeRouteTemplates.collection, async (req: Request, res: Response) => {
     try {
       requireAccessToken(req);
       requireVerifiedUser(req);
@@ -122,7 +123,7 @@ export function registerWorkerBridgeRoutes(app: Express, launcherClient: Launche
     }
   });
 
-  app.post("/api/worker-bridge/sessions", async (req: Request, res: Response) => {
+  app.post(WorkerBridgeRouteTemplates.collection, async (req: Request, res: Response) => {
     try {
       const { parsed, agentId, workspaceId, credentialId } = requireWorkerBridgeIdentityLaunch(req.body);
       await assertAgentAccess({
@@ -149,7 +150,7 @@ export function registerWorkerBridgeRoutes(app: Express, launcherClient: Launche
     }
   });
 
-  app.get("/api/worker-bridge/sessions/:id", async (req: Request, res: Response) => {
+  app.get(WorkerBridgeRouteTemplates.item, async (req: Request, res: Response) => {
     try {
       const result = await launcherClient.getWorkerBridgeSession(requireRouteParam(req, "id"));
       if (result.data) {
@@ -164,7 +165,7 @@ export function registerWorkerBridgeRoutes(app: Express, launcherClient: Launche
     }
   });
 
-  app.delete("/api/worker-bridge/sessions/:id", async (req: Request, res: Response) => {
+  app.delete(WorkerBridgeRouteTemplates.item, async (req: Request, res: Response) => {
     try {
       const sessionId = requireRouteParam(req, "id");
       const existing = await launcherClient.getWorkerBridgeSession(sessionId);

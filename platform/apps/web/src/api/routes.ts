@@ -1,7 +1,19 @@
 import {
+  agentDashboardEventsRoute,
+  agentDashboardGatewayConfigStateRoute,
+  agentDashboardLatestRunRoute,
+  agentDashboardRoute,
+  agentDashboardRunsRoute,
+  agentDashboardTasksRoute,
+  agentDashboardVersionRoute,
+  agentDiagnosticRoute,
+  agentSchedulerConfigRoute,
   agentPoliciesRoute,
   agentPolicyRoute,
   agentRuntimeProfileRoute,
+  credentialAliasRoute,
+  credentialAliasesRoute,
+  managerRuntimeStatusRoute,
   sessionPoliciesRoute,
   sessionPolicyRoute,
   sessionPolicyStateRoute,
@@ -13,6 +25,9 @@ import {
   storedAgentGatewayConfigRoute,
   storedAgentRoute,
   storedAgentRuntimeProfileRoute,
+  workerBridgeSessionRoute,
+  workerBridgeSessionsRoute,
+  workspaceAgentDiagnosticsRoute,
 } from "../../../../contracts/routes";
 
 /**
@@ -30,12 +45,7 @@ const SETUP_PREFIX = "/api/setup";
 const AUTH_STATE_PATH = "/api/auth/state";
 const DEFAULT_AGENTS_PREFIX = "/api/default-agents";
 const MANAGER_AGENT_ACTIVATION_PATH = "/api/manager-agent/activation";
-const AGENT_DASHBOARD_PREFIX = "/api/agent-dashboard";
-const AGENT_DIAGNOSTIC_PREFIX = "/api/diagnostic/agents";
-const WORKSPACE_DIAGNOSTIC_PREFIX = "/api/diagnostic/workspace";
 const CREDENTIALS_PREFIX = "/api/credentials";
-const CREDENTIAL_ALIASES_PREFIX = "/api/credential-aliases";
-const WORKER_BRIDGE_PREFIX = "/api/worker-bridge/sessions";
 const LOCAL_RUNTIME_PREFIX = "/api/local-runtime";
 const WORK_ITEMS_PREFIX = "/api/work-items";
 const PLANS_PREFIX = "/api/plans";
@@ -65,41 +75,20 @@ export const ROUTES = {
   sessionPolicyState: sessionPolicyStateRoute,
   agentHealth: (id: string) =>
     `${AGENTS_PREFIX}/${encodeURIComponent(id)}/health`,
-  agentDashboardVersion: (agentId: string, workspaceId?: string | null) => {
-    const params = new URLSearchParams();
-    if (workspaceId) params.set("workspaceId", workspaceId);
-    const query = params.toString();
-    return `${AGENT_DASHBOARD_PREFIX}/${encodeURIComponent(agentId)}/version${query ? `?${query}` : ""}`;
-  },
-  agentDiagnostic: (agentId: string, workspaceId?: string | null) => {
-    const params = new URLSearchParams();
-    if (workspaceId) params.set("workspaceId", workspaceId);
-    const query = params.toString();
-    return `${AGENT_DIAGNOSTIC_PREFIX}/${encodeURIComponent(agentId)}${query ? `?${query}` : ""}`;
-  },
-  workspaceAgentDiagnostics: (workspaceId: string) =>
-    `${WORKSPACE_DIAGNOSTIC_PREFIX}/${encodeURIComponent(workspaceId)}/agents`,
+  agentDashboardVersion: agentDashboardVersionRoute,
+  agentDiagnostic: (agentId: string, workspaceId?: string | null) =>
+    agentDiagnosticRoute(agentId, { workspaceId }),
+  workspaceAgentDiagnostics: workspaceAgentDiagnosticsRoute,
 
   /** Start or reuse the orchestrator runtime for an agent */
   agentStart: (id: string) =>
     `${AGENTS_PREFIX}/${encodeURIComponent(id)}/start`,
 
   /** Supabase-backed agent dashboard data via the local API */
-  agentDashboardLatestRun: (agentId: string) =>
-    `${AGENT_DASHBOARD_PREFIX}/${encodeURIComponent(agentId)}/latest-run`,
-  agentDashboardRuns: (agentId: string, page: number) =>
-    `${AGENT_DASHBOARD_PREFIX}/${encodeURIComponent(agentId)}/runs?page=${encodeURIComponent(page)}`,
-  agentDashboardTasks: (agentId: string) =>
-    `${AGENT_DASHBOARD_PREFIX}/${encodeURIComponent(agentId)}/tasks`,
-  agentDashboardGatewayConfigState: (
-    agentId: string,
-    workspaceId?: string | null,
-  ) => {
-    const path = `${AGENT_DASHBOARD_PREFIX}/${encodeURIComponent(agentId)}/gateway-config-state`;
-    return workspaceId
-      ? `${path}?workspaceId=${encodeURIComponent(workspaceId)}`
-      : path;
-  },
+  agentDashboardLatestRun: agentDashboardLatestRunRoute,
+  agentDashboardRuns: agentDashboardRunsRoute,
+  agentDashboardTasks: agentDashboardTasksRoute,
+  agentDashboardGatewayConfigState: agentDashboardGatewayConfigStateRoute,
 
   /** Messages for an agent (fallback/chat history endpoint) */
   agentMessages: (agentId: string, before?: string | null) => {
@@ -128,9 +117,8 @@ export const ROUTES = {
   storedAgentCredentialReference: storedAgentCredentialReferenceRoute,
   storedAgentEnsureDefaultRouting: storedAgentEnsureDefaultRoutingRoute,
   credentials: CREDENTIALS_PREFIX,
-  credentialAliases: CREDENTIAL_ALIASES_PREFIX,
-  credentialAlias: (alias: string) =>
-    `${CREDENTIAL_ALIASES_PREFIX}/${encodeURIComponent(alias)}`,
+  credentialAliases: credentialAliasesRoute(),
+  credentialAlias: credentialAliasRoute,
   openaiCodexOAuthStart: "/api/credentials/openai-codex/oauth/start",
   openaiCodexOAuthPoll: "/api/credentials/openai-codex/oauth/poll",
   openaiCodexOAuthImport: "/api/credentials/openai-codex/oauth/import",
@@ -235,10 +223,8 @@ export const ROUTES = {
     `${WORKSPACES_PREFIX}/${encodeURIComponent(workspaceId)}/plan-reviews`,
 
   /** Agent dashboard reads */
-  agentDashboard: (agentId: string) =>
-    `${AGENT_DASHBOARD_PREFIX}/${encodeURIComponent(agentId)}`,
-  agentDashboardEvents: (agentId: string) =>
-    `${AGENT_DASHBOARD_PREFIX}/${encodeURIComponent(agentId)}/events`,
+  agentDashboard: agentDashboardRoute,
+  agentDashboardEvents: agentDashboardEventsRoute,
 
   /** Local runtime model management */
   localRuntimeModels: `${LOCAL_RUNTIME_PREFIX}/models`,
@@ -256,13 +242,10 @@ export const ROUTES = {
   containerArtifactHandoffSmoke: `${SMOKE_PREFIX}/container-execution-e1-handoff`,
 
   /** Scheduled agent config and live manager status */
-  managerAgentConfig: (agentId: string, workspaceId: string) =>
-    `${AGENTS_PREFIX}/${encodeURIComponent(agentId)}/scheduler-config?workspaceId=${encodeURIComponent(workspaceId)}`,
-  managerAgentStatus: (workspaceId: string) =>
-    `/api/runtime/manager-status?workspace_id=${encodeURIComponent(workspaceId)}`,
+  managerAgentConfig: agentSchedulerConfigRoute,
+  managerAgentStatus: managerRuntimeStatusRoute,
 
   /** Worker bridge session lifecycle */
-  workerBridgeSessions: WORKER_BRIDGE_PREFIX,
-  workerBridgeSession: (id: string) =>
-    `${WORKER_BRIDGE_PREFIX}/${encodeURIComponent(id)}`,
+  workerBridgeSessions: workerBridgeSessionsRoute(),
+  workerBridgeSession: workerBridgeSessionRoute,
 } as const;
