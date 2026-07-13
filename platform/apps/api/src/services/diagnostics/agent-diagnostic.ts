@@ -58,6 +58,52 @@ export async function loadAgentDiagnostic(input: {
     workspaceId = agentRow?.workspace_id ?? null;
   }
 
+  if (workspaceIdParam && !agentFound) {
+    return {
+      timestamp: new Date().toISOString(),
+      agentId,
+      workspaceId: workspaceIdParam,
+      agent: agentSection,
+      routing: {
+        rulesInWorkspace: 0,
+        matchesForAgent: [],
+        selectedRule: null,
+        selectionReason: "agent not found in workspace",
+      },
+      executionProfile: {
+        resolved: false,
+        missing: ["agent_not_found"],
+        profile: null,
+        source: {
+          routingRuleId: null,
+          fallbackUsed: false,
+          legacyGatewayConfigUsed: false,
+        },
+      },
+      policies: {
+        resolved: false,
+        workspacePolicies: [],
+        agentPolicies: [],
+        sessionPolicies: [],
+        effectivePolicies: [],
+        error: "agent not found in workspace",
+      },
+      localRuntime: null,
+      codexOAuth: null,
+      claudeCode: null,
+      workItems: {
+        found: false,
+        snoozed: false,
+      },
+      launcher: {
+        healthy: false,
+        agentRegistered: false,
+      },
+      canChat: false,
+      blockers: ["Agent not found in authorized workspace"],
+    };
+  }
+
   // -----------------------------------------------------------------
   // Step 2: Routing rules
   // -----------------------------------------------------------------

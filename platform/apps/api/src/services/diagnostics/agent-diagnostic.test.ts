@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { resolveExecutionProfile } from "../execution-profile-resolver.js";
 import { getServiceRoleSupabase } from "../../supabase-client.js";
 import { createMockSupabaseClient } from "../../test-utils/supabase-client-mock.js";
 import { loadAgentDiagnostic } from "./agent-diagnostic.js";
@@ -155,6 +156,22 @@ describe("loadAgentDiagnostic", () => {
     });
     expect(diagnostic.workspaceId).toBe("workspace-1");
     expect(diagnostic.canChat).toBe(false);
+    expect(diagnostic.executionProfile).toEqual({
+      resolved: false,
+      missing: ["agent_not_found"],
+      profile: null,
+      source: {
+        routingRuleId: null,
+        fallbackUsed: false,
+        legacyGatewayConfigUsed: false,
+      },
+    });
+    expect(diagnostic.launcher).toEqual({
+      healthy: false,
+      agentRegistered: false,
+    });
+    expect(diagnostic.blockers).toEqual(["Agent not found in authorized workspace"]);
+    expect(resolveExecutionProfile).not.toHaveBeenCalled();
     expect(probeOllamaEndpoint).not.toHaveBeenCalled();
   });
 });
