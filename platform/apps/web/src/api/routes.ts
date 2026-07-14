@@ -47,6 +47,8 @@ const DEFAULT_AGENTS_PREFIX = "/api/default-agents";
 const MANAGER_AGENT_ACTIVATION_PATH = "/api/manager-agent/activation";
 const CREDENTIALS_PREFIX = "/api/credentials";
 const LOCAL_RUNTIME_PREFIX = "/api/local-runtime";
+const MODELS_PATH = "/api/models";
+const MODEL_PROVIDERS_PATH = "/api/model-providers";
 const WORK_ITEMS_PREFIX = "/api/work-items";
 const PLANS_PREFIX = "/api/plans";
 const SMOKE_PREFIX = "/api/smoke";
@@ -122,6 +124,8 @@ export const ROUTES = {
   openaiCodexOAuthStart: "/api/credentials/openai-codex/oauth/start",
   openaiCodexOAuthPoll: "/api/credentials/openai-codex/oauth/poll",
   openaiCodexOAuthImport: "/api/credentials/openai-codex/oauth/import",
+  models: MODELS_PATH,
+  modelProviders: MODEL_PROVIDERS_PATH,
 
   githubAppInstallations: "/api/resource-credentials/github-app-installations",
   githubAppInstallationPulls: (credentialId: string) =>
