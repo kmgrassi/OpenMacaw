@@ -15,8 +15,9 @@ import type {
   ModelProviderListResponse,
   SaveModelProviderCredentialResponse,
 } from "../../../../contracts/model-catalog";
-import { brokerFetch } from "./broker-fetch";
+import { apiFetch } from "./client";
 import { saveStoredCredential } from "./credentials";
+import { ROUTES } from "./routes";
 
 type ListModelCatalogInput = {
   agentId?: string | null;
@@ -39,18 +40,12 @@ export async function listModelCatalog(
   if (input.agentId) params.set("agentId", input.agentId);
   if (input.workspaceId) params.set("workspaceId", input.workspaceId);
   if (input.refresh) params.set("refresh", "true");
-
-  const response = await brokerFetch(
-    `/api/models${params.size ? `?${params.toString()}` : ""}`,
-  );
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `/api/models failed (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
-
-  return ModelCatalogResponseSchema.parse(await response.json());
+  const path = `${ROUTES.models}${params.size ? `?${params.toString()}` : ""}`;
+  return apiFetch(path, {
+    method: "GET",
+    schema: ModelCatalogResponseSchema,
+    defaultErrorMessage: (status) => `${ROUTES.models} failed (${status})`,
+  });
 }
 
 export async function listModelProviders(input: {
@@ -59,18 +54,12 @@ export async function listModelProviders(input: {
 }): Promise<ModelProviderListResponse> {
   const params = new URLSearchParams({ workspaceId: input.workspaceId });
   if (input.refresh) params.set("refresh", "true");
-
-  const response = await brokerFetch(
-    `/api/model-providers?${params.toString()}`,
-  );
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `/api/model-providers failed (${response.status})${body ? `: ${body}` : ""}`,
-    );
-  }
-
-  return ModelProviderListResponseSchema.parse(await response.json());
+  return apiFetch(`${ROUTES.modelProviders}?${params.toString()}`, {
+    method: "GET",
+    schema: ModelProviderListResponseSchema,
+    defaultErrorMessage: (status) =>
+      `${ROUTES.modelProviders} failed (${status})`,
+  });
 }
 
 export async function saveModelProviderCredential(
@@ -98,31 +87,7 @@ export async function saveModelProviderCredential(
     apiVersion: input.apiVersion,
   });
 
-  const params = new URLSearchParams({ workspaceId: input.workspaceId });
-  const response = await brokerFetch(
-    `/api/model-providers?${params.toString()}`,
-    {
-      method: "GET",
-    },
-  );
-
-  const text = await response.text();
-  let body: unknown = {};
-  try {
-    body = text ? JSON.parse(text) : {};
-  } catch {
-    body = text || {};
-  }
-
-  if (!response.ok) {
-    const parsed = body as { error?: { message?: string } };
-    throw new Error(
-      parsed.error?.message ||
-        `Failed to refresh provider state (${response.status})`,
-    );
-  }
-
-  const providers = ModelProviderListResponseSchema.parse(body);
+  const providers = await listModelProviders({ workspaceId: input.workspaceId });
   const savedProvider = providers.providers.find(
     (candidate) => candidate.id === provider,
   );
