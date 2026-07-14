@@ -1,42 +1,60 @@
+import { z } from "zod";
+
 import { SkillCreateToolRequestSchema, SkillCreateToolResponseSchema } from "../../../../../contracts/skills.js";
 import { ApiRouteError } from "../../http.js";
+import { parseNullableSupabaseRow, parseSupabaseRow } from "../../lib/supabase-row-parsers.js";
 import { getServiceRoleSupabase, normalizeSupabaseError } from "../../supabase-client.js";
 import { asRecord, jsonOutput, stringArg, type DatabaseToolResult } from "./shared.js";
 import type { ToolExecutionContext } from "../tool-execution-client.js";
 
-type SkillRow = {
-  id: string;
-  workspace_id: string;
-  agent_id: string;
-  name: string;
-  description: string;
-  body: string;
-  status: "draft" | "approved" | "archived";
-  copied_from_skill_id: string | null;
-  created_by_agent_id: string | null;
-  created_by_user_id: string | null;
-  source_run_id: string | null;
-  created_at: string;
-  updated_at: string;
+const AgentOwnershipRowSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string(),
+});
+
+const SkillRowSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string(),
+  agent_id: z.string(),
+  name: z.string(),
+  description: z.string(),
+  body: z.string(),
+  status: z.enum(["draft", "approved", "archived"]),
+  copied_from_skill_id: z.string().nullable(),
+  created_by_agent_id: z.string().nullable(),
+  created_by_user_id: z.string().nullable(),
+  source_run_id: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string(),
+});
+
+type SkillRow = z.infer<typeof SkillRowSchema>;
+type SkillInsertRow = Pick<
+  SkillRow,
+  | "workspace_id"
+  | "agent_id"
+  | "name"
+  | "description"
+  | "body"
+  | "status"
+  | "copied_from_skill_id"
+  | "created_by_agent_id"
+  | "created_by_user_id"
+  | "source_run_id"
+>;
+
+type SkillInsertQuery = {
+  select: (columns?: string) => {
+    single: () => Promise<{ data: unknown; error: Parameters<typeof normalizeSupabaseError>[1] | null }>;
+  };
+};
+
+type SkillInsertTable = {
+  insert: (payload: SkillInsertRow) => SkillInsertQuery;
 };
 
 const SKILL_SELECT =
   "id,workspace_id,agent_id,name,description,body,status,copied_from_skill_id,created_by_agent_id,created_by_user_id,source_run_id,created_at,updated_at" as const;
-
-type SupabaseLike = {
-  from: (table: string) => {
-    select: (columns?: string) => QueryBuilderLike;
-    insert: (body: Record<string, unknown>) => QueryBuilderLike;
-  };
-};
-
-type QueryBuilderLike = {
-  eq: (column: string, value: unknown) => QueryBuilderLike;
-  limit: (count: number) => QueryBuilderLike;
-  maybeSingle: () => Promise<{ data: unknown; error: Error | null }>;
-  select: (columns?: string) => QueryBuilderLike;
-  single: () => Promise<{ data: unknown; error: Error | null }>;
-};
 
 function skillFromRow(row: SkillRow) {
   return {
@@ -83,7 +101,7 @@ export async function createSkill(
   }
   const request = parsedRequest.data;
 
-  const supabase = getServiceRoleSupabase() as unknown as SupabaseLike;
+  const supabase = getServiceRoleSupabase();
   const agentQuery = supabase
     .from("agent")
     .select("id,workspace_id")
@@ -93,40 +111,43 @@ export async function createSkill(
     .maybeSingle();
   const { data: agent, error: agentError } = await agentQuery;
   if (agentError) {
-    throw normalizeSupabaseError(
-      "skill target agent query",
-      agentError as Parameters<typeof normalizeSupabaseError>[1],
-    );
+    throw normalizeSupabaseError("skill target agent query", agentError);
   }
-  if (!agent) throw new ApiRouteError(404, "agent_not_found", "Target agent was not found in the runtime workspace");
+  if (!parseNullableSupabaseRow("skill target agent query", AgentOwnershipRowSchema, agent)) {
+    throw new ApiRouteError(404, "agent_not_found", "Target agent was not found in the runtime workspace");
+  }
 
   const createdByAgentId = context?.agentId?.trim() || null;
   const createdByUserId = context?.userId?.trim() || null;
   const sourceRunId = context?.sessionId?.trim() || null;
-  const insertQuery = supabase
-    .from("skill")
-    .insert({
-      workspace_id: workspaceId,
-      agent_id: request.agentId,
-      name: request.name,
-      description: request.description,
-      body: request.body,
-      status: "draft",
-      copied_from_skill_id: null,
-      created_by_agent_id: createdByAgentId,
-      created_by_user_id: createdByUserId,
-      source_run_id: sourceRunId,
-    })
+  const insertPayload: SkillInsertRow = {
+    workspace_id: workspaceId,
+    agent_id: request.agentId,
+    name: request.name,
+    description: request.description,
+    body: request.body,
+    status: "draft",
+    copied_from_skill_id: null,
+    created_by_agent_id: createdByAgentId,
+    created_by_user_id: createdByUserId,
+    source_run_id: sourceRunId,
+  };
+  const insertQuery = (supabase.from("skill" as never) as unknown as SkillInsertTable)
+    .insert(insertPayload)
     .select(SKILL_SELECT)
     .single();
   const { data: skillRow, error: skillError } = await insertQuery;
   if (skillError) {
-    throw normalizeSupabaseError("skill insert", skillError as Parameters<typeof normalizeSupabaseError>[1]);
+    throw normalizeSupabaseError("skill insert", skillError);
   }
   if (!skillRow) throw new ApiRouteError(502, "skill_create_failed", "Skill creation returned no row");
 
   return {
     status: 201,
-    output: jsonOutput(SkillCreateToolResponseSchema.parse({ skill: skillFromRow(skillRow as SkillRow) })),
+    output: jsonOutput(
+      SkillCreateToolResponseSchema.parse({
+        skill: skillFromRow(parseSupabaseRow("skill insert", SkillRowSchema, skillRow)),
+      }),
+    ),
   };
 }

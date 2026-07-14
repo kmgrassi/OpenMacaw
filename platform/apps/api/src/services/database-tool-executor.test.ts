@@ -406,6 +406,73 @@ describe("executeDatabaseTool scheduled_task tools", () => {
     });
   });
 
+  it("rejects malformed skill rows returned from Supabase inserts", async () => {
+    const malformedSkillClient = {
+      from: (table: string) => {
+        if (table === "agent") {
+          return {
+            select: () => ({
+              eq: () => ({
+                eq: () => ({
+                  limit: () => ({
+                    maybeSingle: async () => ({
+                      data: { id: targetAgentId, workspace_id: workspaceId },
+                      error: null,
+                    }),
+                  }),
+                }),
+              }),
+            }),
+          };
+        }
+
+        if (table === "skill") {
+          return {
+            insert: () => ({
+              select: () => ({
+                single: async () => ({
+                  data: {
+                    id: "77777777-7777-4777-8777-000000000001",
+                    workspace_id: workspaceId,
+                    agent_id: targetAgentId,
+                    name: "debug-tool-failures",
+                    body: "Inspect the tool schema before retrying.",
+                    status: "draft",
+                    copied_from_skill_id: null,
+                    created_by_agent_id: agentId,
+                    created_by_user_id: null,
+                    source_run_id: null,
+                    created_at: "2026-04-25T00:00:00.000Z",
+                    updated_at: "2026-04-25T00:00:00.000Z",
+                  },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+
+        throw new Error(`Unexpected table ${table}`);
+      },
+    };
+    vi.mocked(getServiceRoleSupabase).mockReturnValue(malformedSkillClient as never);
+
+    await expect(
+      executeDatabaseTool(
+        scheduledTaskTool("skill.create"),
+        {
+          agentId: targetAgentId,
+          name: "debug-tool-failures",
+          description: "Use when a tool call fails with a database or validation error.",
+          body: "Inspect the tool schema before retrying.",
+        },
+        { workspaceId, agentId },
+      ),
+    ).rejects.toMatchObject({
+      code: "invalid_supabase_row",
+    });
+  });
+
   it("rejects tool example updates for tools not assigned to the runtime agent", async () => {
     tables.tool?.push({
       id: "tool-unassigned",
