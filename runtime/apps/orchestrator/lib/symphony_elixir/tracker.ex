@@ -86,12 +86,19 @@ defmodule SymphonyElixir.Tracker do
     end
   end
 
-  @spec adapter(String.t()) :: module() | {:error, term()}
-  def adapter(workspace_id) when is_binary(workspace_id) and workspace_id != "" do
+  @doc """
+  Resolves the tracker adapter configured for a workspace.
+
+  Use `adapter/0` for the process-wide workflow configuration. Keeping the
+  workspace-scoped lookup under its own name makes the configuration scope
+  explicit at call sites.
+  """
+  @spec adapter_for_workspace(String.t()) :: module() | {:error, term()}
+  def adapter_for_workspace(workspace_id) when is_binary(workspace_id) and workspace_id != "" do
     with {:ok, adapter} <- resolve_adapter(workspace_id), do: adapter
   end
 
-  def adapter(_workspace_id), do: {:error, :missing_workspace_id}
+  def adapter_for_workspace(_workspace_id), do: {:error, :missing_workspace_id}
 
   @doc false
   @spec invalidate_adapter_cache(String.t()) :: :ok

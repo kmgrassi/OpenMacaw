@@ -38,36 +38,40 @@ defmodule SymphonyElixir.TrackerTest do
     :ok
   end
 
-  test "adapter/1 resolves tracker kind from workspace_settings" do
+  test "adapter_for_workspace/1 resolves tracker kind from workspace_settings" do
     WorkspaceSettingsStub.put("workspace-1", %{"tracker_kind" => "memory", "tracker_credential_id" => nil})
 
-    assert Tracker.adapter("workspace-1") == SymphonyElixir.Tracker.Memory
+    assert Tracker.adapter_for_workspace("workspace-1") == SymphonyElixir.Tracker.Memory
     assert_receive {:tracker_settings, "workspace-1"}
   end
 
-  test "adapter/1 falls back to database when workspace_settings row is absent" do
-    assert Tracker.adapter("workspace-2") == SymphonyElixir.Tracker.Database
+  test "adapter_for_workspace/1 falls back to database when workspace_settings row is absent" do
+    assert Tracker.adapter_for_workspace("workspace-2") == SymphonyElixir.Tracker.Database
     assert_receive {:tracker_settings, "workspace-2"}
   end
 
-  test "adapter/1 caches per workspace and can be invalidated" do
+  test "adapter_for_workspace/1 caches per workspace and can be invalidated" do
     WorkspaceSettingsStub.put("workspace-1", %{"tracker_kind" => "memory", "tracker_credential_id" => nil})
 
-    assert Tracker.adapter("workspace-1") == SymphonyElixir.Tracker.Memory
+    assert Tracker.adapter_for_workspace("workspace-1") == SymphonyElixir.Tracker.Memory
     assert_receive {:tracker_settings, "workspace-1"}
 
     WorkspaceSettingsStub.put("workspace-1", %{"tracker_kind" => "database", "tracker_credential_id" => nil})
-    assert Tracker.adapter("workspace-1") == SymphonyElixir.Tracker.Memory
+    assert Tracker.adapter_for_workspace("workspace-1") == SymphonyElixir.Tracker.Memory
     refute_receive {:tracker_settings, "workspace-1"}
 
     :ok = Tracker.invalidate_adapter_cache("workspace-1")
-    assert Tracker.adapter("workspace-1") == SymphonyElixir.Tracker.Database
+    assert Tracker.adapter_for_workspace("workspace-1") == SymphonyElixir.Tracker.Database
     assert_receive {:tracker_settings, "workspace-1"}
   end
 
-  test "adapter/1 rejects external trackers without credentials" do
+  test "adapter_for_workspace/1 rejects external trackers without credentials" do
     WorkspaceSettingsStub.put("workspace-1", %{"tracker_kind" => "linear", "tracker_credential_id" => nil})
 
-    assert {:error, {:missing_tracker_credential, "linear"}} = Tracker.adapter("workspace-1")
+    assert {:error, {:missing_tracker_credential, "linear"}} = Tracker.adapter_for_workspace("workspace-1")
+  end
+
+  test "adapter_for_workspace/1 requires a workspace id" do
+    assert {:error, :missing_workspace_id} = Tracker.adapter_for_workspace(nil)
   end
 end
